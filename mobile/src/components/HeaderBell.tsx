@@ -10,7 +10,7 @@ export function HeaderBell() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Notificações"
-      onPress={() => router.push('/notifications')}
+      onPress={() => router.navigate('/notifications')}
       style={styles.button}
     >
       <Ionicons name="notifications-outline" size={24} color={colors.text} />

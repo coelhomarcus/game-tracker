@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button, TextField } from '@/components';
+import { Button, TextField, type TextFieldInput } from '@/components';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import { authErrorMessage } from './messages';
@@ -12,6 +12,9 @@ import { validateRegister, type RegisterErrors } from './validation';
 export function RegisterForm() {
   const router = useRouter();
   const signUp = useSession((state) => state.signUp);
+  const usernameRef = useRef<TextFieldInput>(null);
+  const emailRef = useRef<TextFieldInput>(null);
+  const passwordRef = useRef<TextFieldInput>(null);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -28,6 +31,7 @@ export function RegisterForm() {
   }
 
   async function submit() {
+    if (submitting) return;
     const input = {
       name: name.trim(),
       username: username.trim(),
@@ -60,31 +64,42 @@ export function RegisterForm() {
         onChangeText={edit(setName)}
         error={errors.name}
         autoComplete="name"
+        returnKeyType="next"
+        onSubmitEditing={() => usernameRef.current?.focus()}
       />
       <TextField
         label="Username"
+        inputRef={usernameRef}
         value={username}
         onChangeText={edit(setUsername)}
         error={errors.username}
         autoCapitalize="none"
         autoComplete="username-new"
+        returnKeyType="next"
+        onSubmitEditing={() => emailRef.current?.focus()}
       />
       <TextField
         label="E-mail"
+        inputRef={emailRef}
         value={email}
         onChangeText={edit(setEmail)}
         error={errors.email}
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
       />
       <TextField
         label="Senha"
+        inputRef={passwordRef}
         value={password}
         onChangeText={edit(setPassword)}
         error={errors.password}
         secureTextEntry
         autoComplete="new-password"
+        returnKeyType="go"
+        onSubmitEditing={() => void submit()}
       />
       {serverError ? (
         <Text accessibilityLiveRegion="polite" style={styles.serverError}>

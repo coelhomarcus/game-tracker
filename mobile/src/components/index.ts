@@ -6,4 +6,4 @@ export { Pill, type PillProps } from './Pill';
 export { Screen, type ScreenProps } from './Screen';
 export { Skeleton, type SkeletonProps } from './Skeleton';
 export { Tabs, type TabsProps } from './Tabs';
-export { TextField, type TextFieldProps } from './TextField';
+export { TextField, type TextFieldInput, type TextFieldProps } from './TextField';

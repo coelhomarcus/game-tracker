@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button, TextField } from '@/components';
+import { Button, TextField, type TextFieldInput } from '@/components';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import { authErrorMessage } from './messages';
@@ -12,6 +12,7 @@ import { validateLogin, type LoginErrors } from './validation';
 export function LoginForm() {
   const router = useRouter();
   const signIn = useSession((state) => state.signIn);
+  const passwordRef = useRef<TextFieldInput>(null);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<LoginErrors>({});
@@ -26,6 +27,7 @@ export function LoginForm() {
   }
 
   async function submit() {
+    if (submitting) return;
     const trimmed = identifier.trim();
     const found = validateLogin({ identifier: trimmed, password });
     setErrors(found);
@@ -54,14 +56,19 @@ export function LoginForm() {
         error={errors.identifier}
         autoCapitalize="none"
         autoComplete="username"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
       />
       <TextField
         label="Senha"
+        inputRef={passwordRef}
         value={password}
         onChangeText={edit(setPassword)}
         error={errors.password}
         secureTextEntry
         autoComplete="current-password"
+        returnKeyType="go"
+        onSubmitEditing={() => void submit()}
       />
       {serverError ? (
         <Text accessibilityLiveRegion="polite" style={styles.serverError}>

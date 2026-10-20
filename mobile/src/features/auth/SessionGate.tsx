@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button, EmptyState } from '@/components';
@@ -11,6 +11,8 @@ export function SessionGate() {
   const bootstrap = useSession((state) => state.bootstrap);
   const signOut = useSession((state) => state.signOut);
   const started = useRef(false);
+  const retrying = useRef(false);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     // The ref survives StrictMode's simulated remount, so bootstrap runs once per app start.
@@ -18,6 +20,18 @@ export function SessionGate() {
     started.current = true;
     void bootstrap();
   }, [bootstrap]);
+
+  async function retry() {
+    if (retrying.current) return;
+    retrying.current = true;
+    setPending(true);
+    try {
+      await bootstrap();
+    } finally {
+      retrying.current = false;
+      setPending(false);
+    }
+  }
 
   if (status === 'restoring') {
     return (
@@ -33,8 +47,8 @@ export function SessionGate() {
         <EmptyState
           title="Não foi possível conectar"
           message="Sua sessão está guardada. Verifique a conexão e tente de novo."
-          action={{ label: 'Tentar novamente', onPress: () => void bootstrap() }}
         />
+        <Button label="Tentar novamente" variant="secondary" loading={pending} onPress={() => void retry()} />
         <Button label="Sair da conta" variant="secondary" onPress={() => void signOut()} />
       </View>
     );

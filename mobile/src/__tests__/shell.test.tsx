@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
 
 import { useSession } from '@/features/auth';
@@ -102,4 +103,36 @@ test('profile placeholder signs out', async () => {
   await renderApp('/profile');
   await fireEvent.press(await screen.findByRole('button', { name: 'Sair da conta' }));
   expect(signOut).toHaveBeenCalledTimes(1);
+});
+
+test('retry shows progress and ignores taps while the restore is pending', async () => {
+  setStatus('unreachable');
+  await renderApp('/');
+  await screen.findByText('Não foi possível conectar');
+  let finish!: () => void;
+  bootstrap.mockReset();
+  bootstrap.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+  expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeDisabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+
+  await act(async () => finish());
+  expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+  expect(bootstrap).toHaveBeenCalledTimes(2);
+});
+
+test('double-tapping the bell opens notifications only once', async () => {
+  setStatus('signedIn');
+  const app = await renderApp('/');
+  const bell = await screen.findByRole('button', { name: 'Notificações' });
+  await fireEvent.press(bell);
+  await fireEvent.press(bell);
+  expect(await screen.findByText('Notificações')).toBeOnTheScreen();
+  expect(app.getPathname()).toBe('/notifications');
+
+  await act(async () => router.back());
+  expect(app.getPathname()).toBe('/');
 });

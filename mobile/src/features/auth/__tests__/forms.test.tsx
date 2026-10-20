@@ -71,6 +71,24 @@ describe('LoginForm', () => {
     expect(signIn).toHaveBeenCalledTimes(1);
   });
 
+  it('submits from the keyboard on the password field', async () => {
+    signIn.mockResolvedValue(undefined);
+    await render(<LoginForm />);
+    await fillLogin('ana', 'secret');
+    expect(screen.getByLabelText('Senha').props.returnKeyType).toBe('go');
+    await fireEvent(screen.getByLabelText('Senha'), 'submitEditing');
+    expect(signIn).toHaveBeenCalledWith('ana', 'secret');
+  });
+
+  it('ignores the keyboard submit while a sign-in is pending', async () => {
+    signIn.mockReturnValue(new Promise<void>(() => {}));
+    await render(<LoginForm />);
+    await fillLogin('ana', 'secret');
+    await fireEvent(screen.getByLabelText('Senha'), 'submitEditing');
+    await fireEvent(screen.getByLabelText('Senha'), 'submitEditing');
+    expect(signIn).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the heading and links to the register screen', async () => {
     await render(<LoginForm />);
     expect(screen.getByRole('header', { name: 'GameTracker' })).toBeOnTheScreen();
@@ -128,6 +146,26 @@ describe('RegisterForm', () => {
     });
     await fireEvent.press(screen.getByRole('button', { name: 'Criar conta' }));
     expect(await screen.findByText('Username ou e-mail já cadastrado.')).toBeOnTheScreen();
+  });
+
+  it('submits from the keyboard on the password field', async () => {
+    signUp.mockResolvedValue(undefined);
+    await render(<RegisterForm />);
+    await fillRegister({
+      name: 'Ana',
+      username: 'ana_1',
+      email: 'ana@example.com',
+      password: 'longpassword',
+    });
+    expect(screen.getByLabelText('Senha').props.returnKeyType).toBe('go');
+    expect(screen.getByLabelText('Nome').props.returnKeyType).toBe('next');
+    await fireEvent(screen.getByLabelText('Senha'), 'submitEditing');
+    expect(signUp).toHaveBeenCalledWith({
+      username: 'ana_1',
+      name: 'Ana',
+      email: 'ana@example.com',
+      password: 'longpassword',
+    });
   });
 
   it('shows the heading and links to the login screen', async () => {
