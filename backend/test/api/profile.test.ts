@@ -46,7 +46,7 @@ function upload(field: string, bytes: Buffer, type: string, name = 'f.png'): For
   return f;
 }
 
-describe('perfil e uploads', () => {
+describe('profile and uploads', () => {
   let api: TestApi;
   let a: TestUser;
   let b: TestUser;
@@ -61,46 +61,46 @@ describe('perfil e uploads', () => {
   });
   after(() => api.close());
 
-  it('PATCH {} é válido e não muda nada', async () => {
+  it('PATCH {} is valid and does not change nothing', async () => {
     assert.equal((await api.http('PATCH', '/users/me', a.accessToken, {})).status, 204);
   });
 
-  it('altera só o que foi enviado', async () => {
+  it('changes only the that was sent', async () => {
     assert.equal((await api.http('PATCH', '/users/me', a.accessToken, { bio: 'Olá' })).status, 204);
     const m = await me();
     assert.equal(m.bio, 'Olá');
     assert.equal(m.name, 'pa');
   });
 
-  it('bio vazia limpa a bio', async () => {
+  it('bio empty clears the bio', async () => {
     assert.equal((await api.http('PATCH', '/users/me', a.accessToken, { bio: '' })).status, 204);
     assert.ok(!(await me()).bio);
   });
 
-  it('username repetido devolve 409 e não altera nada', async () => {
+  it('username repeated returns 409 and does not changes nothing', async () => {
     const r = await api.http('PATCH', '/users/me', a.accessToken, { username: b.user.username, name: 'Outro' });
     assert.equal(r.status, 409);
     assert.equal((await me()).name, 'pa');
   });
 
-  it('manter o próprio username não é conflito', async () => {
+  it('keep the own username is not conflict', async () => {
     assert.equal((await api.http('PATCH', '/users/me', a.accessToken, { username: a.user.username })).status, 204);
   });
 
-  it('duas trocas simultâneas para o mesmo username: uma vence (204), a outra é 409 (nunca 500)', async () => {
+  it('two simultaneous changes for the same username: one wins (204), the other is 409 (never 500)', async () => {
     const target = `race_${Date.now().toString(36)}`;
     const results = await Promise.all([a, b].map((u) => api.http('PATCH', '/users/me', u.accessToken, { username: target })));
     const statuses = results.map((r) => r.status).sort();
     assert.deepEqual(statuses, [204, 409], `recebeu ${statuses}`);
   });
 
-  it('validações de limite (bio 281, username curto/inválido, nome vazio)', async () => {
+  it('limit validation (bio 281, short/invalid username, empty name)', async () => {
     for (const body of [{ bio: 'x'.repeat(281) }, { username: 'ab' }, { username: 'com espaço' }, { name: '' }]) {
       assert.equal((await api.http('PATCH', '/users/me', a.accessToken, body)).status, 400, JSON.stringify(body).slice(0, 40));
     }
   });
 
-  it('avatar válido: devolve URL, vira JPEG e aparece em /auth/me', async () => {
+  it('avatar valid: returns URL, becomes JPEG and appears in /auth/me', async () => {
     const r = await post('/users/me/avatar', a, upload('avatar', png(900, 300), 'image/png'));
     assert.equal(r.status, 200);
     assert.match(r.body.avatarUrl, /\/uploads\/avatars\/.+\.jpg$/);
@@ -110,13 +110,13 @@ describe('perfil e uploads', () => {
     assert.equal((await me()).avatarUrl, r.body.avatarUrl);
   });
 
-  it('banner válido: devolve URL em /uploads/banners', async () => {
+  it('banner valid: returns URL in /uploads/banners', async () => {
     const r = await post('/users/me/banner', a, upload('banner', png(600, 600), 'image/png'));
     assert.equal(r.status, 200);
     assert.match(r.body.bannerUrl, /\/uploads\/banners\/.+\.jpg$/);
   });
 
-  it('trocar o avatar apaga o arquivo antigo e devolve outra URL', async () => {
+  it('switch the avatar deletes the file old and returns another URL', async () => {
     const first = (await me()).avatarUrl;
     const r = await post('/users/me/avatar', a, upload('avatar', png(50, 50), 'image/png'));
     assert.notEqual(r.body.avatarUrl, first);
@@ -124,31 +124,31 @@ describe('perfil e uploads', () => {
     assert.equal((await fetch(first)).status, 404, 'arquivo antigo removido');
   });
 
-  it('arquivo que não é imagem (MIME) é 400', async () => {
+  it('the non-image file (MIME) is 400', async () => {
     const r = await post('/users/me/avatar', a, upload('avatar', Buffer.from('texto'), 'text/plain', 'a.txt'));
     assert.equal(r.status, 400);
   });
 
-  it('bytes corrompidos com MIME de imagem são 400 (não 500)', async () => {
+  it('corrupted bytes with an image MIME are 400 (not 500)', async () => {
     const r = await post('/users/me/avatar', a, upload('avatar', Buffer.from('isto nao e um png'), 'image/png'));
     assert.equal(r.status, 400, `recebeu ${r.status} ${JSON.stringify(r.body)}`);
     assert.equal(r.body.error.code, 'validation_error');
   });
 
-  it('sem arquivo é 400', async () => {
+  it('missing file is 400', async () => {
     assert.equal((await post('/users/me/avatar', a, new FormData())).status, 400);
   });
 
-  it('arquivo acima de 8 MiB é 400', async () => {
+  it('file above 8 MiB is 400', async () => {
     const big = Buffer.concat([png(10, 10), Buffer.alloc(9 * 1024 * 1024)]);
     assert.equal((await post('/users/me/avatar', a, upload('avatar', big, 'image/png'))).status, 400);
   });
 
-  it('campo com nome errado é 400', async () => {
+  it('field with the wrong name is 400', async () => {
     assert.equal((await post('/users/me/avatar', a, upload('foto', png(10, 10), 'image/png'))).status, 400);
   });
 
-  it('upload sem autenticação é 401', async () => {
+  it('upload without authentication: 401', async () => {
     assert.equal((await post('/users/me/avatar', null, upload('avatar', png(10, 10), 'image/png'))).status, 401);
   });
 });

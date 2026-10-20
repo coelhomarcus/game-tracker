@@ -96,38 +96,38 @@ AppHarness rich({bool signedIn = true}) {
 
 /// Telas por caminho. `login` e `register` precisam de sessão encerrada.
 const _signedInRoutes = {
-  'biblioteca': '/library',
-  'explorar': '/explore',
-  'comunidade': '/community',
-  'mensagens': '/messages',
-  'perfil': '/me',
-  'editar perfil': '/me/edit',
-  'configurações': '/settings',
-  'notificações': '/notifications',
+  'library': '/library',
+  'explore': '/explore',
+  'community': '/community',
+  'messages': '/messages',
+  'profile': '/me',
+  'edit profile': '/me/edit',
+  'settings': '/settings',
+  'notifications': '/notifications',
   'post': '/posts/p0',
-  'perfil de outra pessoa': '/users/u-beto',
-  'jogo': '/games/1000',
-  'conversa': '/messages/$convId',
-  'novo post': '/posts/new',
+  'another user profile': '/users/u-beto',
+  'game': '/games/1000',
+  'conversation': '/messages/$convId',
+  'new post': '/posts/new',
 };
-const _signedOutRoutes = {'entrar': '/login', 'criar conta': '/register'};
+const _signedOutRoutes = {'login': '/login', 'create account': '/register'};
 
 const _viewports = {
-  'celular 400': (Size(400, 900), 1.0),
-  'celular pequeno 360, texto 200%': (Size(360, 640), 2.0),
-  'tablet retrato 800': (Size(800, 1100), 1.0),
-  'janela larga 1400': (Size(1400, 900), 1.0),
+  'phone 400': (Size(400, 900), 1.0),
+  'small phone 360, text 200%': (Size(360, 640), 2.0),
+  'portrait tablet 800': (Size(800, 1100), 1.0),
+  'wide window 1400': (Size(1400, 900), 1.0),
 };
 
 /// Os dois lados de cada corte de layout (barra/rail, rail estendido) e um texto intermediário.
 const _breakpointViewports = {
-  'janela 599': (Size(599, 900), 1.0),
-  'janela 600': (Size(600, 960), 1.0),
-  'janela 839': (Size(839, 900), 1.0),
-  'janela 840': (Size(840, 900), 1.0),
-  'janela 1239': (Size(1239, 900), 1.0),
-  'janela 1240': (Size(1240, 900), 1.0),
-  'celular 390, texto 150%': (Size(390, 844), 1.5),
+  'window 599': (Size(599, 900), 1.0),
+  'window 600': (Size(600, 960), 1.0),
+  'window 839': (Size(839, 900), 1.0),
+  'window 840': (Size(840, 900), 1.0),
+  'window 1239': (Size(1239, 900), 1.0),
+  'window 1240': (Size(1240, 900), 1.0),
+  'phone 390, text 150%': (Size(390, 844), 1.5),
 };
 
 /// [tapTargets] fica desligado só no Explorar: a diretriz mede o nó interno do campo do `SearchBar`
@@ -141,14 +141,14 @@ Future<void> _guidelines(WidgetTester tester, {bool tapTargets = true}) async {
 }
 
 void main() {
-  group('layout: nenhuma tela estoura em nenhuma largura, escala ou tema', () {
+  group('layout: in the screen overflows in in the width, scale or theme', () {
     for (final dark in [false, true]) {
       for (final MapEntry(key: viewName, value: (size, scale))
           in _viewports.entries) {
         for (final MapEntry(key: name, value: path) in {
           ..._signedInRoutes,
         }.entries) {
-          testWidgets('${dark ? 'escuro' : 'claro'} · $viewName · $name', (
+          testWidgets('${dark ? 'dark' : 'light'} · $viewName · $name', (
             tester,
           ) async {
             final h = rich();
@@ -170,7 +170,7 @@ void main() {
           in _breakpointViewports.entries) {
         for (final MapEntry(key: name, value: path)
             in _signedInRoutes.entries) {
-          testWidgets('${dark ? 'escuro' : 'claro'} · $viewName · $name', (
+          testWidgets('${dark ? 'dark' : 'light'} · $viewName · $name', (
             tester,
           ) async {
             final h = rich();
@@ -190,7 +190,7 @@ void main() {
     for (final MapEntry(key: name, value: path) in _signedOutRoutes.entries) {
       for (final MapEntry(key: viewName, value: (size, scale))
           in _viewports.entries) {
-        testWidgets('sem sessão · $viewName · $name', (tester) async {
+        testWidgets('without the session · $viewName · $name', (tester) async {
           final h = rich(signedIn: false);
           await h.pump(tester, size: size, textScale: scale);
           await goTo(tester, path);
@@ -200,12 +200,12 @@ void main() {
     }
   });
 
-  group('diretrizes de acessibilidade (toque ≥ 48 dp, rótulos, contraste)', () {
+  group('guidelines of accessibility (tap ≥ 48 dp, labels, contrast)', () {
     for (final dark in [false, true]) {
       for (final MapEntry(key: name, value: path) in {
         ..._signedInRoutes,
       }.entries) {
-        testWidgets('${dark ? 'escuro' : 'claro'} · $name', (tester) async {
+        testWidgets('${dark ? 'dark' : 'light'} · $name', (tester) async {
           final handle = tester.ensureSemantics();
           try {
             final h = rich();
@@ -224,7 +224,7 @@ void main() {
 
     for (final dark in [false, true]) {
       for (final MapEntry(key: name, value: path) in _signedOutRoutes.entries) {
-        testWidgets('${dark ? 'escuro' : 'claro'} · $name', (tester) async {
+        testWidgets('${dark ? 'dark' : 'light'} · $name', (tester) async {
           final handle = tester.ensureSemantics();
           try {
             final h = rich(signedIn: false);
@@ -242,9 +242,9 @@ void main() {
     }
   });
 
-  group('barra de busca', () {
+  group('slash of search', () {
     testWidgets(
-      'a barra inteira tem 48 dp ou mais e recebe o toque em qualquer ponto',
+      'the slash entire has 48 dp or more and receives the tap in any dot',
       (tester) async {
         await rich().pump(tester);
         await goTo(tester, '/explore');
@@ -261,8 +261,8 @@ void main() {
     );
   });
 
-  group('navegação assistiva', () {
-    testWidgets('a navegação principal expõe cada destino com nome', (
+  group('navigation assistive', () {
+    testWidgets('main navigation exposes every destination by name', (
       tester,
     ) async {
       final handle = tester.ensureSemantics();
@@ -286,7 +286,7 @@ void main() {
       }
     });
 
-    testWidgets('todo campo de texto do login tem rótulo', (tester) async {
+    testWidgets('all field of text of the login has label', (tester) async {
       final handle = tester.ensureSemantics();
       try {
         await rich(signedIn: false).pump(tester);
@@ -314,7 +314,7 @@ void main() {
     });
 
     testWidgets(
-      'o estado "não lida" e o tipo da notificação são lidos, não só mostrados',
+      'the "unread" state and notification type are read, not only displayed',
       (tester) async {
         final handle = tester.ensureSemantics();
         try {
@@ -331,27 +331,29 @@ void main() {
     );
   });
 
-  group('gesto de voltar e teclado', () {
-    testWidgets('voltar fecha a tela empilhada e volta à anterior', (
-      tester,
-    ) async {
-      await rich().pump(tester);
-      await tapAndSettle(tester, find.byTooltip(RegExp('Notificações')));
-      expect(find.text('Notificações'), findsWidgets);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.byTooltip(RegExp('Notificações')), findsOneWidget);
-      expect(find.byType(NavigationBar), findsOneWidget);
-    });
+  group('gesture of return and keyboard', () {
+    testWidgets(
+      'return closes the screen stacked and returns to the previous',
+      (tester) async {
+        await rich().pump(tester);
+        await tapAndSettle(tester, find.byTooltip(RegExp('Notificações')));
+        expect(find.text('Notificações'), findsWidgets);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byTooltip(RegExp('Notificações')), findsOneWidget);
+        expect(find.byType(NavigationBar), findsOneWidget);
+      },
+    );
 
-    testWidgets('voltar na raiz de uma aba entrega o gesto ao sistema', (
-      tester,
-    ) async {
-      await rich().pump(tester);
-      expect(await tester.binding.handlePopRoute(), isFalse);
-    });
+    testWidgets(
+      'return in the root of the tab delivers the gesture to the system',
+      (tester) async {
+        await rich().pump(tester);
+        expect(await tester.binding.handlePopRoute(), isFalse);
+      },
+    );
 
-    testWidgets('Enter no último campo envia o login', (tester) async {
+    testWidgets('Enter in the last field sends the login', (tester) async {
       final h = rich(signedIn: false);
       await h.pump(tester);
       await goTo(tester, '/login');

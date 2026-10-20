@@ -33,7 +33,6 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
       - run: flutter test
-      - run: flutter build web
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:

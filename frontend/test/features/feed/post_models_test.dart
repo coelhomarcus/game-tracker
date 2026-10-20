@@ -7,8 +7,8 @@ import '../../support/fake_feed.dart';
 import '../../support/fixtures.dart';
 
 void main() {
-  group('contrato: respostas reais do backend', () {
-    test('feed: página com itens e cursor opaco', () {
+  group('contract: replies real from the backend', () {
+    test('feed: page with items and cursor opaque', () {
       final page = PostPage.fromJson(
         fixtureBody('feed_general') as Map<String, dynamic>,
       );
@@ -25,7 +25,7 @@ void main() {
       );
     });
 
-    test('post ligado só a um jogo (sem registro)', () {
+    test('post linked only the the game (without entry)', () {
       final page = PostPage.fromJson(
         fixtureBody('feed_default_scope') as Map<String, dynamic>,
       );
@@ -41,7 +41,7 @@ void main() {
       expect(page.items, isA<List<Post>>());
     });
 
-    test('atividade: status é o snapshot histórico, não o atual', () {
+    test('activity: status is the snapshot history, does not the current', () {
       final page = PostPage.fromJson(
         fixtureBody('user_posts_activity') as Map<String, dynamic>,
       );
@@ -50,7 +50,7 @@ void main() {
       expect(activity.type, PostType.activity);
     });
 
-    test('atividade sobrevive à exclusão do registro (gameEntry nulo)', () {
+    test('activity survives to the deletion of the entry (gameEntry null)', () {
       final page = PostPage.fromJson(
         fixtureBody('user_posts_after_entry_deleted') as Map<String, dynamic>,
       );
@@ -60,7 +60,7 @@ void main() {
       expect(orphan.first.game, isNotNull);
     });
 
-    test('comentários: árvore com respostas aninhadas e curtidas', () {
+    test('comments: tree with replies nested and likes', () {
       final tree = (fixtureBody('post_comments') as List)
           .cast<Map<String, dynamic>>()
           .map(Comment.fromJson)
@@ -73,7 +73,7 @@ void main() {
     });
   });
 
-  group('árvore de comentários', () {
+  group('tree of comments', () {
     final deep = [
       fakeComment(
         id: 'a',
@@ -100,11 +100,11 @@ void main() {
       fakeComment(id: 'f'),
     ];
 
-    test('contagem inclui todos os níveis', () {
+    test('count includes all the levels', () {
       expect(countComments(deep), 6);
     });
 
-    test('atualiza um comentário profundo preservando o resto da árvore', () {
+    test('updates the comment deep preserving the rest of the tree', () {
       final updated = updateCommentInTree(
         deep,
         'e',
@@ -121,7 +121,7 @@ void main() {
       );
     });
 
-    test('id inexistente não altera nada', () {
+    test('id missing does not changes nothing', () {
       expect(
         countComments(
           updateCommentInTree(deep, 'zzz', (c) => c.copyWith(likeCount: 1)),
@@ -132,22 +132,22 @@ void main() {
     });
   });
 
-  group('tempo relativo', () {
+  group('time relative', () {
     final now = DateTime.utc(2026, 6, 10, 15);
     String rel(DateTime t) => formatRelativeTime(t, now: now);
 
-    test('faixas', () {
+    test('bands', () {
       expect(rel(now.subtract(const Duration(seconds: 10))), 'agora');
       expect(rel(now.subtract(const Duration(minutes: 5))), 'há 5 min');
       expect(rel(now.subtract(const Duration(hours: 3))), 'há 3 h');
       expect(rel(now.subtract(const Duration(days: 3))), contains('dias'));
     });
 
-    test('futuro (relógios dessincronizados) vira "agora"', () {
+    test('future (clocks out-of-sync) becomes "now"', () {
       expect(rel(now.add(const Duration(minutes: 3))), 'agora');
     });
 
-    test('datas antigas mostram dia/mês e, em outro ano, o ano', () {
+    test('dates old show day/month and, in another year, the year', () {
       final sameYear = formatRelativeTime(
         DateTime(2026, 1, 5, 12),
         now: DateTime(2026, 6, 10, 12),
@@ -171,7 +171,7 @@ void main() {
     });
   });
 
-  test('GameStatus do snapshot de atividade é lido da API', () {
+  test('GameStatus of the snapshot of activity is read of the API', () {
     final p = Post.fromJson({
       'id': 'x',
       'content': 'zerou',

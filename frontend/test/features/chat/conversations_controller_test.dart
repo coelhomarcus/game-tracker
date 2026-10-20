@@ -237,7 +237,7 @@ void main() {
     expect(c.read(unreadConversationsProvider), 0);
   });
 
-  test('conversa sem a outra pessoa não quebra o parse', () {
+  test('conversation without the another person does not crash the parse', () {
     final c = ConversationSummary.fromJson({
       'id': 'x',
       'otherUser': null,

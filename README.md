@@ -1,110 +1,233 @@
 # GameTracker
 
-App social pra acompanhar os jogos que você tá jogando: trackeie playthroughs (status, horas, nota, plataforma), veja um perfil com seu backlog e o dos amigos, poste sobre o que tá jogando, comente, siga outras pessoas e converse em tempo real. Trabalho de faculdade.
+GameTracker is an academic social Android app for tracking games, sharing
+activity with friends, and chatting in real time. The project has two parts:
 
-## O que o app faz
+- a Flutter Android client in `frontend/`;
+- a Node.js/Express API in `backend/`.
 
-- **Biblioteca**: seus jogos por status (backlog, jogando, concluído, abandonado), com horas, nota de 1 a 10, datas, plataforma e anotações pessoais (só você vê). Replays contam como registros separados.
-- **Explorar**: busca de jogos (dados da IGDB) e de pessoas.
-- **Comunidade**: feed Geral e Seguindo, posts, atividades automáticas ao concluir ou abandonar um jogo, curtidas e comentários com respostas.
-- **Perfis**: coleção, atividades e posts, favoritos, seguir, editar nome, bio, foto e capa.
-- **Mensagens**: chat 1:1 em tempo real, com reconexão, envio sem duplicar, digitação e presença.
-- **Notificações**: curtidas, comentários e novos seguidores, com selo no sino.
+There is no production web frontend. The distributed client is the Android APK.
 
-Push com o app fechado ainda não existe (precisa de um projeto Firebase); as notificações aparecem dentro do app.
+## Features
 
-## Estrutura
+- Game library with backlog, playing, completed, and abandoned statuses.
+- Playthrough history with hours, rating, platform, dates, and private notes.
+- IGDB game search and user search.
+- Community feed, posts, likes, comments, and follows.
+- User profiles, favorites, profile pictures, and cover images.
+- One-to-one realtime chat with presence and reconnection.
+- In-app notifications and Android push-notification support.
 
-| Pasta | O que é |
+## Project structure
+
+| Path | Description |
 | --- | --- |
-| [`frontend/`](frontend/) | App oficial: Flutter (Android e web), Material 3, Riverpod, go_router, Dio, Socket.IO |
-| [`backend/`](backend/) | API: Node.js, Express 5, TypeScript, Drizzle ORM (PostgreSQL), Redis + Socket.IO, JWT, IGDB |
-| [`docs/`](docs/) | Documentação: [migração para Flutter](docs/MIGRACAO_FLUTTER.md) (decisões, histórico, aceite e o que falta), [roadmap histórico](docs/01_ROADMAP.md), [plano do redesign da experiência](docs/PLANO_REDESIGN_EXPERIENCIA.md) e o [registro de execução](docs/REDESIGN_EXECUCAO.md) (decisões, verificações e limitações) |
-| `docker-compose.test.yml` | Postgres e Redis descartáveis só para os testes |
-| `.github/workflows/` | CI do Flutter, do backend (com integração Flutter↔API) e geração do APK de release |
+| `frontend/` | Flutter Android app using Riverpod, go_router, Dio, and Socket.IO. |
+| `backend/` | TypeScript API using Express, Drizzle ORM, PostgreSQL, Redis, JWT, and Socket.IO. |
+| `backend/drizzle/` | Committed database migrations. |
+| `.github/workflows/` | Backend CI, Flutter CI, and automatic APK releases. |
+| `docs/DEPLOY_DOKPLOY.md` | Production deployment notes for Dokploy. |
+| `docker-compose.dev.yml` | Local PostgreSQL and Redis services. |
+| `docker-compose.test.yml` | Disposable PostgreSQL and Redis services for tests. |
 
-## Rodando localmente
+## Requirements
 
-Pré-requisitos: Node 22+, Docker (pro Postgres e Redis locais), Flutter 3.47 (e o Android SDK, se for gerar APK) e uma conta na [IGDB/Twitch Developer](https://api-docs.igdb.com/#getting-started) pra buscar jogos.
+- Node.js 22 or newer.
+- Docker and Docker Compose.
+- Flutter 3.47.6 and the Android SDK for APK builds.
+- IGDB/Twitch Developer credentials for game search.
 
-### 1. Banco e Redis
+## Local development
+
+### Start PostgreSQL and Redis
+
+From the repository root:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # Postgres :5432 e Redis :6379
+docker compose -f docker-compose.dev.yml up -d
 ```
 
-### 2. Backend
+### Start the backend
 
 ```bash
 cd backend
-cp .env.example .env   # preencha DATABASE_URL, JWT_ACCESS_SECRET, IGDB_CLIENT_ID e IGDB_CLIENT_SECRET
-npm install
-npm run db:migrate     # aplica as migrations
-npm run dev            # http://localhost:3000
+cp .env.example .env
+npm ci
+npm run db:migrate
+npm run dev
 ```
 
-Variáveis do `.env` que merecem atenção:
+The local API listens on `http://localhost:3000` by default. Configure the
+following values in `backend/.env` as needed:
 
-| Variável | Para quê |
+| Variable | Description |
 | --- | --- |
-| `DATABASE_URL`, `REDIS_URL` | Postgres e Redis |
-| `JWT_ACCESS_SECRET` | Segredo dos tokens (troque o valor do exemplo) |
-| `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | Busca de jogos. Sem elas a busca responde `igdb_not_configured` |
-| `PUBLIC_API_URL` | URL pública da API, usada nas URLs de capa e de upload |
-| `CORS_ORIGINS` | Origens web autorizadas, separadas por vírgula. Sem ela qualquer origem é aceita. Defina em produção |
-| `AUTH_RATE_LIMIT_MAX` | Só para ambientes de teste: sobe o limite de login e cadastro (padrão 20 por 15 min por IP) |
+| `DATABASE_URL` | PostgreSQL connection string. |
+| `REDIS_URL` | Redis connection string. |
+| `JWT_ACCESS_SECRET` | Secret used to sign access tokens. |
+| `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET` | Credentials for IGDB game search. |
+| `PUBLIC_API_URL` | Public API URL used in generated image and upload URLs. |
+| `CORS_ORIGINS` | Comma-separated browser origins for production. |
 
-### 3. App Flutter
+### Run the Android app
 
 ```bash
 cd frontend
 flutter pub get
-flutter run -d chrome --dart-define=API_URL=http://localhost:3000
+flutter run --dart-define=API_URL=http://localhost:3000
 ```
 
-O app procura a API em `http://localhost:3100` por padrão (`http://10.0.2.2:3100` no emulador Android); passe `--dart-define=API_URL=...` para apontar para outro endereço, sem `/api` no fim. Mais detalhes em [`frontend/README.md`](frontend/README.md).
+For an Android emulator, use `http://10.0.2.2:3000` as the API host. Do not add
+`/api` to `API_URL`; the client adds that path itself.
 
-## Testes
+## Tests
 
-Os testes ficam junto de cada projeto:
+### Backend tests
 
-| Onde | O que cobre | Como rodar |
-| --- | --- | --- |
-| `frontend/test/` | Unidade e widget, suíte de aceite (layout, acessibilidade, volume) | `cd frontend && flutter analyze && flutter test` |
-| `frontend/test/integration/` | O app contra um **backend real** (sessão, biblioteca, feed, perfis, chat com sockets, volume) | veja abaixo |
-| `backend/src/**/*.test.ts` | Unidade (CORS, push, controllers) | `cd backend && npm test` |
-| `backend/test/api/` | A **API de verdade** (Express + Socket.IO + Postgres + Redis): sessão e refresh, PATCH da biblioteca, privacidade das notas, notificações, perfil e upload, push, chat | `cd backend && npm test` |
-
-Os testes criam e apagam dados, então rodam **só** em um banco local cujo nome termina em `_test` (a trava recusa qualquer outro, inclusive o de desenvolvimento). O ambiente descartável sobe com Docker:
+Backend tests require the disposable test services and a test environment file:
 
 ```bash
 cd backend
-cp .env.test.example .env.test   # uma vez (fica fora do git)
-npm run test:db:up               # Postgres :5434 e Redis :6381 de teste + migrations
-npm test                         # backend: unidade + API (108 testes)
+cp .env.test.example .env.test
+npm run test:db:up
+npm test
 ```
 
-Para os testes de integração do Flutter, suba a API de teste em outro terminal:
+The test database must end with `_test`. The test safety guard rejects remote
+databases and development databases.
 
-```bash
-cd backend && npm run test:seed && npm run dev:test        # jogos sintéticos + API em :3100
-cd frontend && flutter test test/integration --dart-define=GT_BACKEND=http://localhost:3100
-```
-
-`frontend/test/fixtures/` guarda respostas reais do backend para os testes de modelo (veja o README da pasta). O GitHub Actions roda tudo isso em `.github/workflows/backend.yml`.
-
-## Build do APK (Android)
+### Flutter tests
 
 ```bash
 cd frontend
-# precisa de android/key.properties (fora do git) com a chave de assinatura
-API_URL=https://api.seudominio.com tool/build_release.sh
+flutter pub get
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
 ```
 
-O script exige API com HTTPS e recusa APK assinado com a chave de debug. O mesmo fluxo roda no GitHub Actions (`.github/workflows/flutter-release.yml`, com secrets). Para só demonstrar o app, o APK debug que o CI gera (`flutter.yml`) já basta. Detalhes e como gerar a chave em [`docs/MIGRACAO_FLUTTER.md`](docs/MIGRACAO_FLUTTER.md#9-build-distribuição-e-ambientes).
+Flutter integration tests run against a real local test API. Start the backend
+test API first:
 
-## Documentação
+```bash
+cd backend
+npm run test:seed
+npm run dev:test
+```
 
-- [`docs/MIGRACAO_FLUTTER.md`](docs/MIGRACAO_FLUTTER.md): como e por que o app foi refeito em Flutter, o que foi verificado, as limitações e as ideias do que falta.
-- [`docs/01_ROADMAP.md`](docs/01_ROADMAP.md): histórico do projeto, anterior à migração.
-- [`docs/REDESIGN_EXECUCAO.md`](docs/REDESIGN_EXECUCAO.md): o redesign da experiência do app (biblioteca por jogo, página do jogo como hub, comunidade, mensagens, perfil, recorte de imagens): o que mudou, como foi verificado e o que não foi validado. Capturas em [`docs/redesign/evidencias/`](docs/redesign/evidencias/).
+Then, in another terminal:
+
+```bash
+cd frontend
+flutter test test/integration --dart-define=GT_BACKEND=http://localhost:3100
+```
+
+## Branches and commits
+
+- Make all development changes on `develop`.
+- Update `main` through Pull Requests from `develop`.
+- Do not commit directly to `main`.
+
+Use Conventional Commits:
+
+```text
+<type>(<optional scope>): <imperative description>
+```
+
+Examples:
+
+```text
+feat(frontend): add replay tracking
+fix(backend): reject expired refresh tokens
+ci: publish signed Android releases
+```
+
+Use `!` or a `BREAKING CHANGE:` footer for incompatible changes.
+
+## Automatic APK releases
+
+Every push to `main` runs `.github/workflows/flutter-release.yml`. Pull
+Requests run validation workflows but do not publish releases.
+
+The release workflow:
+
+1. runs the Flutter quality gate;
+2. calculates the next SemVer version from Conventional Commits;
+3. builds a signed APK;
+4. creates a `vX.Y.Z` Git tag;
+5. creates a GitHub Release with the APK attached.
+
+The first release uses version `1.0.0`. Later releases increment the major,
+minor, or patch number according to the commit history. APK files are named
+`gametracker-X.Y.Z.apk`.
+
+For a local release build:
+
+```bash
+cd frontend
+API_URL=https://api.example.com tool/build_release.sh
+```
+
+The local build requires `frontend/android/key.properties` and a real release
+keystore. Debug-signed APKs are rejected.
+
+## Dokploy deployment
+
+The backend is deployed from `backend/Dockerfile` to Dokploy. PostgreSQL and
+Redis are existing Dokploy-managed services; the application does not create
+or provision them.
+
+The container automatically applies Drizzle migrations before starting the API:
+
+```text
+node dist/db/migrate.js && node dist/server.js
+```
+
+If a migration fails, the API does not start. See
+[`docs/DEPLOY_DOKPLOY.md`](docs/DEPLOY_DOKPLOY.md) for the production variables
+and deployment sequence.
+
+## Manual configuration checklist
+
+The repository changes cannot configure external GitHub or Dokploy settings.
+Complete these steps once:
+
+1. Create or verify the `develop` branch on GitHub.
+2. Protect `main` and require Pull Requests from `develop`.
+3. Add the GitHub Actions repository variable `API_URL`, containing the HTTPS
+   Dokploy API URL without `/api`.
+4. Add these GitHub Actions secrets:
+   - `ANDROID_KEYSTORE_BASE64`
+   - `ANDROID_KEYSTORE_PASSWORD`
+   - `ANDROID_KEY_ALIAS`
+   - `ANDROID_KEY_PASSWORD`
+5. Configure the Dokploy backend environment variables listed in
+   `docs/DEPLOY_DOKPLOY.md`.
+6. Confirm that the Dokploy backend can reach its PostgreSQL and Redis services.
+
+The Android keystore is the signing key for distributed APKs. Keep the
+keystore file and all passwords private; never commit them to Git.
+
+### Create the release keystore manually
+
+Run this once on a secure machine. Keep the generated `.jks` file in a secure
+backup because future APK updates must use the same keystore:
+
+```bash
+keytool -genkeypair -v \
+  -keystore gametracker-release.jks \
+  -alias gametracker \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then encode it and add the result as the `ANDROID_KEYSTORE_BASE64` repository
+secret. On macOS or Linux:
+
+```bash
+base64 < gametracker-release.jks | tr -d '\n' | pbcopy   # macOS
+base64 -w 0 gametracker-release.jks                     # Linux
+```
+
+Add the keystore password, alias, and key password as the other three secrets.
+The workflow recreates the temporary keystore on the runner and deletes it
+after the build.

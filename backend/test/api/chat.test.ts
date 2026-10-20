@@ -58,35 +58,35 @@ describe('chat', () => {
     await api.close();
   });
 
-  it('sem token válido a conexão é recusada', async () => {
+  it('without valid token: the connection is rejected', async () => {
     await assert.rejects(connect('token-invalido'), /unauthorized/);
   });
 
-  it('join com id inválido devolve erro e NÃO derruba o servidor', async () => {
+  it('join with id invalid returns error and does not crashes the server', async () => {
     const r = await emitAck(sa, 'conversation:join', { conversationId: 'isto-nao-e-uuid' });
     assert.ok(r && r.error, `esperava {error}, veio ${JSON.stringify(r)}`);
     await sleep(300);
     assert.ok(await healthy(), 'servidor caiu');
   });
 
-  it('join de conversa alheia é recusado', async () => {
+  it('join of conversation other is rejected', async () => {
     const r = await emitAck(sc, 'conversation:join', { conversationId: conv.id });
     assert.ok(r && r.error);
   });
 
-  it('participantes entram na sala', async () => {
+  it('participants enter in the room', async () => {
     assert.deepEqual(await emitAck(sa, 'conversation:join', { conversationId: conv.id }), { ok: true });
     assert.deepEqual(await emitAck(sb, 'conversation:join', { conversationId: conv.id }), { ok: true });
   });
 
-  it('mensagem legada (sem clientMessageId) continua funcionando', async () => {
+  it('message legacy (without clientMessageId) continues working', async () => {
     const got = new Promise<any>((res) => sb.once('message:receive', res));
     const r = await emitAck(sa, 'message:send', { conversationId: conv.id, content: 'legado' });
     assert.equal(r.message.content, 'legado');
     assert.equal((await got).id, r.message.id);
   });
 
-  it('send com id inválido no payload é recusado', async () => {
+  it('send with id invalid in the payload is rejected', async () => {
     const r = await emitAck(sa, 'message:send', { conversationId: 'xxx', content: 'oi' });
     assert.ok(r && r.error);
     const r2 = await emitAck(sa, 'message:send', { conversationId: conv.id, content: 'oi', clientMessageId: 'nao-uuid' });
@@ -94,7 +94,7 @@ describe('chat', () => {
     assert.ok(await healthy());
   });
 
-  it('mesmo clientMessageId duas vezes: uma mensagem, mesmo id, um único evento', async () => {
+  it('same clientMessageId twice: the message, same id, the single event', async () => {
     const cid = randomUUID();
     let events = 0;
     const onRecv = (m: { clientMessageId?: string }) => {
@@ -113,7 +113,7 @@ describe('chat', () => {
     assert.equal(hist.items.filter((m: { clientMessageId: string }) => m.clientMessageId === cid).length, 1, 'uma linha no histórico');
   });
 
-  it('o mesmo clientMessageId em outra conversa ou remetente não colide', async () => {
+  it('the same clientMessageId in another conversation or sender does not collides', async () => {
     const cid = randomUUID();
     const conv2 = (await api.http('POST', '/conversations', a.accessToken, { userId: c.user.id })).body;
     await emitAck(sa, 'conversation:join', { conversationId: conv2.id });
@@ -125,19 +125,19 @@ describe('chat', () => {
     assert.notEqual(r1.message.id, r3.message.id);
   });
 
-  it('message:receive carrega o clientMessageId (reconciliação)', async () => {
+  it('message:receive loads the clientMessageId (reconciliation)', async () => {
     const cid = randomUUID();
     const got = new Promise<any>((res) => sb.on('message:receive', (m) => (m.clientMessageId === cid ? res(m) : undefined)));
     await emitAck(sa, 'message:send', { conversationId: conv.id, content: 'reconcilia', clientMessageId: cid });
     assert.equal((await got).clientMessageId, cid);
   });
 
-  it('mensagens legadas têm clientMessageId nulo no histórico', async () => {
+  it('legacy messages have clientMessageId null in the history', async () => {
     const hist = (await api.http('GET', `/conversations/${conv.id}/messages?limit=50`, a.accessToken)).body;
     assert.ok(hist.items.some((m: { content: string; clientMessageId: unknown }) => m.content === 'legado' && m.clientMessageId === null));
   });
 
-  it('digitação só é retransmitida a quem está na conversa (e de quem está nela)', async () => {
+  it('typing is relayed only to users in the conversation', async () => {
     let leaked = 0;
     const onLeak = () => leaked++;
     sb.on('typing:start', onLeak);
@@ -153,14 +153,14 @@ describe('chat', () => {
     assert.equal(evt.userId, b.user.id);
   });
 
-  it('digitação com payload inválido não derruba o servidor', async () => {
+  it('typing with payload invalid does not crash the server', async () => {
     sa.emit('typing:start', { conversationId: { x: 1 } });
     sa.emit('typing:stop', { conversationId: 'lixo' });
     await sleep(300);
     assert.ok(await healthy());
   });
 
-  it('snapshot de presença: autorizado e correto', async () => {
+  it('snapshot of presence: authorized and correct', async () => {
     const r = await emitAck(sa, 'presence:get', { conversationId: conv.id });
     assert.ok(r && Array.isArray(r.online), JSON.stringify(r));
     assert.ok(r.online.includes(b.user.id), 'B está conectado');
@@ -173,7 +173,7 @@ describe('chat', () => {
     assert.ok(!after.online.includes(b.user.id), 'B saiu');
   });
 
-  it('criar a mesma conversa ao mesmo tempo devolve uma só', async () => {
+  it('create the same conversation at the same time returns the only', async () => {
     const x = await registerUser(api.http, 'cx');
     const y = await registerUser(api.http, 'cy');
     const results = await Promise.all([
@@ -186,7 +186,7 @@ describe('chat', () => {
     assert.equal((await api.http('GET', '/conversations', x.accessToken)).body.length, 1);
   });
 
-  it('lista de conversas: não lida, última mensagem e leitura', async () => {
+  it('list of conversations: unread, last message and reading', async () => {
     const list = (await api.http('GET', '/conversations', b.accessToken)).body;
     const item = list.find((i: { id: string }) => i.id === conv.id);
     assert.equal(item.otherUser.id, a.user.id);

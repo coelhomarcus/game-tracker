@@ -73,7 +73,7 @@ void main() {
       : null;
 
   test(
-    'busca por username acha a pessoa e nunca o próprio usuário',
+    'search by username finds the person and never the own user',
     skip: skip,
     () async {
       final a = await signUp('pa');
@@ -95,7 +95,7 @@ void main() {
   );
 
   test(
-    'seguir e deixar de seguir: relação e contadores no perfil',
+    'follow and unfollow: relationship and counters in the profile',
     skip: skip,
     () async {
       final a = await signUp('pc');
@@ -117,7 +117,7 @@ void main() {
     },
   );
 
-  test('perfil inexistente é 404', skip: skip, () async {
+  test('missing profile is 404', skip: skip, () async {
     final a = await signUp('pe');
     await expectLater(
       a.profiles.profile('00000000-0000-0000-0000-000000000000'),
@@ -126,7 +126,7 @@ void main() {
   });
 
   test(
-    'editar perfil: só os campos enviados; bio vazia limpa; username repetido é 409',
+    'edit profile: only sent fields; empty bio clears; repeated username is 409',
     skip: skip,
     () async {
       final a = await signUp('pf');
@@ -155,7 +155,7 @@ void main() {
   );
 
   test(
-    'upload de avatar e de capa: URLs servidas como JPEG e refletidas no perfil',
+    'upload of avatar and of cover: URLs served the JPEG and reflected in the profile',
     skip: skip,
     () async {
       final a = await signUp('ph');
@@ -191,7 +191,7 @@ void main() {
   );
 
   test(
-    'o arquivo exportado pelo editor de recorte é aceito e servido nas dimensões salvas',
+    'file exported by the crop editor is accepted and served at the saved dimensions',
     skip: skip,
     () async {
       final a = await signUp('pc');
@@ -230,7 +230,7 @@ void main() {
     },
   );
 
-  test('trocar o avatar devolve outra URL', skip: skip, () async {
+  test('switch the avatar returns another URL', skip: skip, () async {
     final a = await signUp('pi');
     final image = PickedImage(
       bytes: _png,
@@ -243,7 +243,7 @@ void main() {
   });
 
   test(
-    'arquivo corrompido com tipo de imagem é recusado como 400 (não 500)',
+    'file corrupted with type of image is rejected the 400 (does not 500)',
     skip: skip,
     () async {
       final a = await signUp('pj');
@@ -263,7 +263,7 @@ void main() {
     },
   );
 
-  test('arquivo que não é imagem é recusado', skip: skip, () async {
+  test('file that is not image is rejected', skip: skip, () async {
     final a = await signUp('pk');
     final text = PickedImage(
       bytes: utf8.encode('texto'),
@@ -276,22 +276,26 @@ void main() {
     );
   });
 
-  test('arquivo acima de 8 MiB é recusado pelo servidor', skip: skip, () async {
-    final a = await signUp('pl');
-    final big = PickedImage(
-      bytes: [..._png, ...List.filled(PickedImage.maxBytes + 1024, 0)],
-      fileName: 'grande.png',
-      mimeType: 'image/png',
-    );
-    expect(big.isTooLarge, isTrue);
-    await expectLater(
-      a.profiles.uploadImage(ProfileImageKind.avatar, big),
-      throwsA(isA<ApiException>().having((e) => e.status, 'status', 400)),
-    );
-  });
+  test(
+    'file above of 8 MiB is rejected through the server',
+    skip: skip,
+    () async {
+      final a = await signUp('pl');
+      final big = PickedImage(
+        bytes: [..._png, ...List.filled(PickedImage.maxBytes + 1024, 0)],
+        fileName: 'grande.png',
+        mimeType: 'image/png',
+      );
+      expect(big.isTooLarge, isTrue);
+      await expectLater(
+        a.profiles.uploadImage(ProfileImageKind.avatar, big),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 400)),
+      );
+    },
+  );
 
   test(
-    'coleção pública, favoritos e posts de outra pessoa',
+    'public collection, favorites and posts from another user',
     skip: skip,
     () async {
       final a = await signUp('pm');
@@ -322,7 +326,7 @@ void main() {
   );
 
   test(
-    'o perfil próprio reflete a edição na conta (GET /auth/me)',
+    'the profile own reflects the editing in the account (GET /auth/me)',
     skip: skip,
     () async {
       final a = await signUp('po');

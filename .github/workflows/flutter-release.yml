@@ -1,25 +1,31 @@
-name: Flutter release
+name: Android release
 
-# Candidato de lançamento: APK assinado + web, com a URL da API de produção.
-# Manual ou por tag `flutter-v*`. Exige os secrets abaixo (nunca entram no repositório):
-#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
-# e a variável de repositório API_URL (https, sem /api no fim).
+# Every push to main produces one signed APK release after the Flutter quality gate.
+# Pull Requests are validated by the regular CI workflows and do not publish releases.
 on:
-  workflow_dispatch:
   push:
-    tags: ['flutter-v*']
+    branches: [main]
 
-defaults:
-  run:
-    working-directory: frontend
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-main
+  cancel-in-progress: false
+
+env:
+  API_URL: ${{ vars.API_URL }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      API_URL: ${{ vars.API_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Calculate SemVer release
+        id: version
+        run: node .github/scripts/next-version.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -30,19 +36,34 @@ jobs:
           flutter-version: 3.47.6
           cache: true
       - name: Quality gate
+        working-directory: frontend
         run: |
           flutter pub get
           dart format --output=none --set-exit-if-changed lib test
           flutter analyze
           flutter test
-      - name: Keystore
+      - name: Validate production API URL
+        run: |
+          test -n "$API_URL" || { echo "Repository variable API_URL is missing" >&2; exit 1; }
+          case "$API_URL" in
+            https://*) ;;
+            *) echo "API_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+          case "$API_URL" in
+            */api|*/api/|*/) echo "API_URL must not end with / or /api" >&2; exit 1 ;;
+          esac
+      - name: Prepare signing keystore
+        working-directory: frontend
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$KEYSTORE_BASE64" || { echo "secrets de assinatura ausentes"; exit 1; }
+          test -n "$KEYSTORE_BASE64" || { echo "ANDROID_KEYSTORE_BASE64 is missing" >&2; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD is missing" >&2; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is missing" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is missing" >&2; exit 1; }
           echo "$KEYSTORE_BASE64" | base64 -d > android/release.jks
           {
             echo "storeFile=release.jks"
@@ -50,16 +71,31 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - name: Build (falha se não for HTTPS ou se sair com chave de debug)
+      - name: Build signed APK
+        working-directory: frontend
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: tool/build_release.sh
-      - name: Remove chaves do runner
+      - name: Remove signing files
         if: always()
+        working-directory: frontend
         run: rm -f android/release.jks android/key.properties
-      - run: cd build/web && zip -qr ../gametracker-web.zip .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gametracker-release
-          path: |
-            frontend/build/app/outputs/flutter-apk/app-release.apk
-            frontend/build/gametracker-web.zip
-          retention-days: 30
+      - name: Rename APK
+        run: cp frontend/build/app/outputs/flutter-apk/app-release.apk "gametracker-${{ steps.version.outputs.version }}.apk"
+      - name: Create Git tag
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "$RELEASE_TAG"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" "gametracker-${RELEASE_VERSION}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "GameTracker ${RELEASE_TAG}" \
+            --generate-notes

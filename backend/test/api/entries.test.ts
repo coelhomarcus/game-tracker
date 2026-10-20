@@ -9,7 +9,7 @@ import { startApi, type TestApi } from '../helpers/server';
 
 const OPTIONAL = ['hoursPlayed', 'rating', 'notes', 'startedAt', 'finishedAt'] as const;
 
-describe('game-entries: PATCH tri-estado', () => {
+describe('game-entries: PATCH tri-state', () => {
   let api: TestApi;
   let user: TestUser;
   let id: string;
@@ -37,7 +37,7 @@ describe('game-entries: PATCH tri-estado', () => {
   });
   after(() => api.close());
 
-  it('PATCH {} é válido e não muda nada (cliente legado)', async () => {
+  it('PATCH {} is valid and changes nothing (legacy client)', async () => {
     assert.equal((await patch({})).status, 200);
     const e = await get();
     assert.equal(e.hoursPlayed, '12.5');
@@ -46,7 +46,7 @@ describe('game-entries: PATCH tri-estado', () => {
     assert.equal(e.startedAt, '2026-01-05T00:00:00.000Z');
   });
 
-  it('campo omitido mantém os demais valores', async () => {
+  it('omitted field keeps the remaining values', async () => {
     assert.equal((await patch({ platform: 'Switch' })).status, 200);
     const e = await get();
     assert.equal(e.platform, 'Switch');
@@ -54,7 +54,7 @@ describe('game-entries: PATCH tri-estado', () => {
     assert.equal(e.hoursPlayed, '12.5');
   });
 
-  it('valor substitui', async () => {
+  it('value replaces', async () => {
     await patch({ hoursPlayed: 20, rating: 7, notes: 'outra', startedAt: '2026-02-01' });
     const e = await get();
     assert.equal(e.hoursPlayed, '20.0');
@@ -63,7 +63,7 @@ describe('game-entries: PATCH tri-estado', () => {
     assert.equal(e.startedAt, '2026-02-01T00:00:00.000Z');
   });
 
-  it('zero horas é valor, não ausência', async () => {
+  it('zero hours is the value, not absence', async () => {
     await patch({ hoursPlayed: 0 });
     assert.equal((await get()).hoursPlayed, '0.0');
   });
@@ -82,7 +82,7 @@ describe('game-entries: PATCH tri-estado', () => {
     });
   }
 
-  it('null em tudo de uma vez limpa todos os opcionais', async () => {
+  it('null in everything at once clears all the optional', async () => {
     const r = await patch({ hoursPlayed: null, rating: null, notes: null, startedAt: null, finishedAt: null });
     assert.equal(r.status, 200);
     const e = await get();
@@ -91,24 +91,24 @@ describe('game-entries: PATCH tri-estado', () => {
     assert.equal(e.status, 'completed');
   });
 
-  it('platform e status não aceitam null', async () => {
+  it('platform and status rejects null', async () => {
     assert.equal((await patch({ platform: null })).status, 400);
     assert.equal((await patch({ status: null })).status, 400);
   });
 
-  it('rating fora de 1–10 continua rejeitado', async () => {
+  it('rating outside of 1–10 continues rejected', async () => {
     assert.equal((await patch({ rating: 0 })).status, 400);
     assert.equal((await patch({ rating: 11 })).status, 400);
   });
 
-  it('a resposta do PATCH reflete o estado salvo', async () => {
+  it('the reply of the PATCH reflects the state saved', async () => {
     await patch({ rating: 4 });
     const r = await patch({ rating: null });
     assert.equal(r.body.rating, null);
   });
 });
 
-describe('game-entries: anotações pessoais', () => {
+describe('game-entries: private notes', () => {
   let api: TestApi;
   before(async () => {
     await ensureSyntheticGames();
@@ -116,7 +116,7 @@ describe('game-entries: anotações pessoais', () => {
   });
   after(() => api.close());
 
-  it('só o dono vê `notes` em GET /users/:id/game-entries; o resto do registro é público', async () => {
+  it('only the owner sees `notes` in GET /users/:id/game-entries; the rest of the entry is public', async () => {
     const owner = await registerUser(api.http, 'pv_dono');
     const other = await registerUser(api.http, 'pv_outro');
     const created = await api.http('POST', '/game-entries', owner.accessToken, {
@@ -145,7 +145,7 @@ describe('game-entries: anotações pessoais', () => {
     assert.equal(mine.body[0].notes, 'anotação pessoal');
   });
 
-  it('editar o registro de outra pessoa devolve 404 (não revela que existe)', async () => {
+  it('edit the entry from another user returns 404 (does not reveals that exists)', async () => {
     const owner = await registerUser(api.http, 'pv_dono');
     const other = await registerUser(api.http, 'pv_outro');
     const created = await api.http('POST', '/game-entries', owner.accessToken, { igdbId: 900001, platform: 'PC' });

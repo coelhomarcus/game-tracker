@@ -83,37 +83,37 @@ final gamesCounter = find.byWidgetPredicate(
 void main() {
   setUpAll(loadGoldenFonts);
 
-  group('perfil de outra pessoa', () {
+  group('profile from another user', () {
+    testWidgets('shows identity, bio and counters the labels (without links)', (
+      tester,
+    ) async {
+      await openProfile(tester, profiles: withBeto());
+      expect(find.text('Beto Silva'), findsWidgets);
+      expect(find.text('@beto'), findsOneWidget);
+      expect(find.text('Gosto de RPG'), findsOneWidget);
+      expect(find.textContaining('3 seguidores'), findsOneWidget);
+      expect(find.textContaining('1 seguindo'), findsOneWidget);
+      expect(
+        find.textContaining('1 registro'),
+        findsOneWidget,
+        reason: 'conta playthroughs, no singular',
+      );
+      expect(find.text('Editar perfil'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Seguir'), findsOneWidget);
+    });
+
     testWidgets(
-      'mostra identidade, bio e contadores como rótulos (sem links)',
+      'without name uses the username; without bio does not show bio',
       (tester) async {
-        await openProfile(tester, profiles: withBeto());
-        expect(find.text('Beto Silva'), findsWidgets);
-        expect(find.text('@beto'), findsOneWidget);
-        expect(find.text('Gosto de RPG'), findsOneWidget);
-        expect(find.textContaining('3 seguidores'), findsOneWidget);
-        expect(find.textContaining('1 seguindo'), findsOneWidget);
-        expect(
-          find.textContaining('1 registro'),
-          findsOneWidget,
-          reason: 'conta playthroughs, no singular',
-        );
-        expect(find.text('Editar perfil'), findsNothing);
-        expect(find.widgetWithText(FilledButton, 'Seguir'), findsOneWidget);
+        final profiles = FakeProfilesRepository()
+          ..profiles['u-beto'] = fakeProfile(name: null, bio: '');
+        await openProfile(tester, profiles: profiles);
+        expect(find.text('beto'), findsWidgets);
+        expect(find.text('Gosto de RPG'), findsNothing);
       },
     );
 
-    testWidgets('sem nome usa o username; sem bio não mostra bio', (
-      tester,
-    ) async {
-      final profiles = FakeProfilesRepository()
-        ..profiles['u-beto'] = fakeProfile(name: null, bio: '');
-      await openProfile(tester, profiles: profiles);
-      expect(find.text('beto'), findsWidgets);
-      expect(find.text('Gosto de RPG'), findsNothing);
-    });
-
-    testWidgets('seguir é imediato (+1 seguidor); falha desfaz e avisa', (
+    testWidgets('follow is immediate (+1 follower); fails undoes and warns', (
       tester,
     ) async {
       final profiles = withBeto();
@@ -136,7 +136,7 @@ void main() {
     });
 
     testWidgets(
-      'já seguindo mostra "Seguindo" e deixar de seguir tira 1 seguidor',
+      'already following shows "Following" and leave of follow removes 1 follower',
       (tester) async {
         final profiles = withBeto(followed: true);
         await openProfile(tester, profiles: profiles);
@@ -148,7 +148,7 @@ void main() {
       },
     );
 
-    testWidgets('perfil removido: não está mais disponível, com saída', (
+    testWidgets('removed profile is in the longer available, with exit', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -164,7 +164,7 @@ void main() {
       expect(find.text('Comunidade'), findsWidgets);
     });
 
-    testWidgets('falha de rede ao abrir o perfil oferece tentar de novo', (
+    testWidgets('fails of network when opening the profile offers try of new', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -179,7 +179,7 @@ void main() {
     });
 
     testWidgets(
-      'o próprio usuário é redirecionado para o perfil canônico (/me)',
+      'the current user is redirected to the canonical profile (/me)',
       (tester) async {
         final profiles = FakeProfilesRepository()
           ..profiles['u1'] = fakeProfile(
@@ -199,7 +199,7 @@ void main() {
     );
   });
 
-  group('coleção pública', () {
+  group('public collection', () {
     FakeProfilesRepository rich() {
       final p = withBeto();
       p.favoritesByUser['u-beto'] = [
@@ -228,7 +228,7 @@ void main() {
     );
 
     testWidgets(
-      'destaques e grade mostram identificação sem expor dados privados',
+      'highlights and grid identify the profile without exposing private date',
       (tester) async {
         await openProfile(tester, profiles: rich(), size: tall);
         expect(find.text('Favoritos'), findsOneWidget);
@@ -254,14 +254,14 @@ void main() {
       },
     );
 
-    testWidgets('nunca mostra as notas pessoais de outra pessoa', (
+    testWidgets('never shows the notes personal from another user', (
       tester,
     ) async {
       await openProfile(tester, profiles: rich(), size: tall);
       expect(find.textContaining('NOTA-PRIVADA'), findsNothing);
     });
 
-    testWidgets('filtro por status com contagem de jogos; "Todos" limpa', (
+    testWidgets('filter by status with a game count; "all" clears the filter', (
       tester,
     ) async {
       await openProfile(tester, profiles: rich(), size: tall);
@@ -280,7 +280,7 @@ void main() {
       expect(statusButtonText('Status'), findsOneWidget);
     });
 
-    testWidgets('é somente leitura: sem menu no cartão de outra pessoa', (
+    testWidgets('is read-only: without menu in the card from another user', (
       tester,
     ) async {
       await openProfile(tester, profiles: rich(), size: tall);
@@ -289,7 +289,7 @@ void main() {
       expect(find.byType(PopupMenuButton), findsNothing);
     });
 
-    testWidgets('tocar numa capa abre a página do jogo', (tester) async {
+    testWidgets('tap a cover opens the page of the game', (tester) async {
       await openProfile(tester, profiles: rich(), size: tall);
       // "Abandonado Ruim" é o único jogo que o fake de jogos conhece (900001) e vem primeiro
       // na ordem por título.
@@ -300,12 +300,12 @@ void main() {
       expect(find.text('Meu progresso'), findsOneWidget);
     });
 
-    testWidgets('coleção vazia mostra estado vazio', (tester) async {
+    testWidgets('empty collection shows state empty', (tester) async {
       await openProfile(tester, profiles: withBeto());
       expect(find.text('Coleção vazia'), findsOneWidget);
     });
 
-    testWidgets('falha ao carregar a coleção mostra erro e tenta de novo', (
+    testWidgets('failure loading the collection shows error and tries of new', (
       tester,
     ) async {
       final p = rich()..collectionError = const NetworkException();
@@ -317,16 +317,17 @@ void main() {
     });
 
     for (final width in [360.0, 390.0, 600.0, 840.0, 1280.0, 1440.0]) {
-      testWidgets('coleção identificável sem overflow em ${width.toInt()} dp', (
-        tester,
-      ) async {
-        await openProfile(tester, profiles: rich(), size: Size(width, 1400));
-        expect(grid, findsNWidgets(3));
-        expect(tester.takeException(), isNull);
-      });
+      testWidgets(
+        'identifiable collection without overflow in ${width.toInt()} dp',
+        (tester) async {
+          await openProfile(tester, profiles: rich(), size: Size(width, 1400));
+          expect(grid, findsNWidgets(3));
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
 
-    testWidgets('texto a 200% troca a coleção para linhas legíveis', (
+    testWidgets('200% text switches the collection to readable rows', (
       tester,
     ) async {
       await openProfile(
@@ -341,7 +342,7 @@ void main() {
     });
 
     testWidgets(
-      'replays viram um cartão só, com contexto textual, e não repetem destaques',
+      'replays become one card with text context and of the not repeat highlights',
       (tester) async {
         final p =
             withBeto(); // perfil diz 1 registro; a coleção tem 3 do mesmo jogo
@@ -366,7 +367,7 @@ void main() {
     );
   });
 
-  group('perfil próprio', () {
+  group('profile own', () {
     FakeProfilesRepository mine({String? bio}) => FakeProfilesRepository()
       ..profiles['u1'] = fakeProfile(
         id: 'u1',
@@ -377,7 +378,7 @@ void main() {
       );
 
     testWidgets(
-      'a coleção é a mesma da Biblioteca e a edição fica no próprio perfil',
+      'the collection matches the Library and editing stays in the current profile',
       (tester) async {
         final library = FakeLibraryRepository([
           _entry('a', 'Meu Jogo', GameStatus.playing, hours: 1),
@@ -396,7 +397,7 @@ void main() {
       },
     );
 
-    testWidgets('um registro novo aparece no perfil próprio sem recarregar', (
+    testWidgets('one entry new appears in the profile own without reload', (
       tester,
     ) async {
       final library = FakeLibraryRepository([
@@ -417,7 +418,7 @@ void main() {
       );
     });
 
-    testWidgets('"Gerenciar biblioteca" leva à aba Biblioteca', (tester) async {
+    testWidgets('"manage library" opens the Library tab', (tester) async {
       final h = AppHarness(profiles: mine());
       await h.pump(tester);
       await tapAndSettle(tester, find.text('Perfil').last);
@@ -427,7 +428,7 @@ void main() {
     });
 
     testWidgets(
-      'perfil de outra pessoa não tem "Gerenciar biblioteca" nem convite',
+      'another user profile has no "manage library" action or invitation',
       (tester) async {
         await openProfile(tester, profiles: withBeto());
         expect(find.text('Gerenciar biblioteca'), findsNothing);
@@ -436,7 +437,7 @@ void main() {
     );
 
     testWidgets(
-      'sem bio: convite discreto no próprio perfil; com bio, o texto completo',
+      'without bio: invitation subtle in the own profile; with bio, the text complete',
       (tester) async {
         final h = AppHarness(profiles: mine());
         await h.pump(tester);
@@ -458,7 +459,7 @@ void main() {
     );
 
     testWidgets(
-      'perfil de outra pessoa sem bio não reserva espaço nem convida',
+      'profile from another user without the bio does not reserve space or invite',
       (tester) async {
         final p = FakeProfilesRepository()
           ..profiles['u-beto'] = fakeProfile(name: 'Beto', bio: null);
@@ -468,31 +469,32 @@ void main() {
     );
   });
 
-  group('contadores e destaques', () {
-    testWidgets('jogos únicos vêm da coleção; registros, do perfil', (
-      tester,
-    ) async {
-      final p = withBeto();
-      p.profiles['u-beto'] = fakeProfile(
-        name: 'Beto',
-        entries: 7,
-        followers: 2,
-        following: 4,
-      );
-      p.collectionByUser['u-beto'] = [
-        _entry('a', 'Um', GameStatus.completed, igdb: 1),
-        _entry('b', 'Dois', GameStatus.completed, igdb: 2),
-        _entry('c', 'Dois', GameStatus.playing, igdb: 2),
-      ];
-      await openProfile(tester, profiles: p);
-      expect(find.textContaining('2 jogos'), findsOneWidget);
-      expect(find.textContaining('7 registros'), findsOneWidget);
-      expect(find.textContaining('2 seguidores'), findsOneWidget);
-      expect(find.textContaining('4 seguindo'), findsOneWidget);
-    });
+  group('counters and highlights', () {
+    testWidgets(
+      'unique games starts from the collection; entries starts from the profile',
+      (tester) async {
+        final p = withBeto();
+        p.profiles['u-beto'] = fakeProfile(
+          name: 'Beto',
+          entries: 7,
+          followers: 2,
+          following: 4,
+        );
+        p.collectionByUser['u-beto'] = [
+          _entry('a', 'Um', GameStatus.completed, igdb: 1),
+          _entry('b', 'Dois', GameStatus.completed, igdb: 2),
+          _entry('c', 'Dois', GameStatus.playing, igdb: 2),
+        ];
+        await openProfile(tester, profiles: p);
+        expect(find.textContaining('2 jogos'), findsOneWidget);
+        expect(find.textContaining('7 registros'), findsOneWidget);
+        expect(find.textContaining('2 seguidores'), findsOneWidget);
+        expect(find.textContaining('4 seguindo'), findsOneWidget);
+      },
+    );
 
     testWidgets(
-      'enquanto a coleção carrega não há contador de jogos (nunca zero)',
+      'while the collection loads, there is in the game counter (never zero)',
       (tester) async {
         final gate = Completer<void>();
         final p = withBeto()..collectionGate = gate;
@@ -518,36 +520,38 @@ void main() {
       },
     );
 
-    testWidgets('coleção com erro: o contador de jogos some, não vira zero', (
-      tester,
-    ) async {
-      final p = withBeto()..collectionError = const NetworkException();
-      await openProfile(tester, profiles: p);
-      expect(gamesCounter, findsNothing);
+    testWidgets(
+      'collection with an error: the game counter remains present, not zero',
+      (tester) async {
+        final p = withBeto()..collectionError = const NetworkException();
+        await openProfile(tester, profiles: p);
+        expect(gamesCounter, findsNothing);
 
-      expect(find.textContaining('1 registro'), findsOneWidget);
-    });
-
-    testWidgets('favoritos: até 6, "Ver todos" expande e "Ver menos" recolhe', (
-      tester,
-    ) async {
-      final p = withBeto();
-      p.favoritesByUser['u-beto'] = [
-        for (var i = 1; i <= 9; i++) fakeGame(igdbId: i, name: 'Favorito $i'),
-      ];
-      await openProfile(tester, profiles: p, size: tall);
-      Finder covers() => find.byWidgetPredicate(
-        (w) => w is GameShelfItem && w.title.startsWith('Favorito'),
-      );
-      expect(covers(), findsNWidgets(6));
-      await tapAndSettle(tester, find.text('Ver todos'));
-      expect(covers(), findsNWidgets(9));
-      await tapAndSettle(tester, find.text('Ver menos'));
-      expect(covers(), findsNWidgets(6));
-    });
+        expect(find.textContaining('1 registro'), findsOneWidget);
+      },
+    );
 
     testWidgets(
-      'com até 6 favoritos não há "Ver todos"; a ordem é a dos dados',
+      'favorites: up to 6, "show all" expands and "show less" collapses',
+      (tester) async {
+        final p = withBeto();
+        p.favoritesByUser['u-beto'] = [
+          for (var i = 1; i <= 9; i++) fakeGame(igdbId: i, name: 'Favorito $i'),
+        ];
+        await openProfile(tester, profiles: p, size: tall);
+        Finder covers() => find.byWidgetPredicate(
+          (w) => w is GameShelfItem && w.title.startsWith('Favorito'),
+        );
+        expect(covers(), findsNWidgets(6));
+        await tapAndSettle(tester, find.text('Ver todos'));
+        expect(covers(), findsNWidgets(9));
+        await tapAndSettle(tester, find.text('Ver menos'));
+        expect(covers(), findsNWidgets(6));
+      },
+    );
+
+    testWidgets(
+      'with up to 6 favorites there is in the "See all"; order follows the date',
       (tester) async {
         final p = withBeto();
         p.favoritesByUser['u-beto'] = [
@@ -565,7 +569,7 @@ void main() {
       },
     );
 
-    testWidgets('Jogando agora: até 6, um por jogo', (tester) async {
+    testWidgets('currently playing: up to 6, grouped by game', (tester) async {
       final p = withBeto();
       p.collectionByUser['u-beto'] = [
         for (var i = 1; i <= 8; i++)
@@ -579,8 +583,8 @@ void main() {
     });
   });
 
-  group('estrutura e layout', () {
-    testWidgets('abas fixas: Jogos, Atividade e Posts (sem Respostas)', (
+  group('structure and layout', () {
+    testWidgets('fixed tabs: games, activity, and posts (without replies)', (
       tester,
     ) async {
       await openProfile(tester, profiles: withBeto());
@@ -591,7 +595,7 @@ void main() {
       expect(find.text('Coleção'), findsNothing);
     });
 
-    testWidgets('banner 3:1 com o avatar de 88 sobreposto no telefone', (
+    testWidgets('banner 3:1 with the avatar of 88 overlaid in the phone', (
       tester,
     ) async {
       await openProfile(tester, profiles: withBeto());
@@ -613,7 +617,7 @@ void main() {
       );
     });
 
-    testWidgets('a metade de baixo do avatar também recebe o toque', (
+    testWidgets('the lower half of the avatar also receives taps', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -627,7 +631,7 @@ void main() {
       expect(find.byType(InteractiveViewer), findsOneWidget);
     });
 
-    testWidgets('nome de até duas linhas; handle separado', (tester) async {
+    testWidgets('name of until two lines; handle separate', (tester) async {
       final p = FakeProfilesRepository()
         ..profiles['u-beto'] = fakeProfile(
           name: 'Um Nome Muito Comprido ' * 8,
@@ -641,66 +645,66 @@ void main() {
       expect(find.text('@handle_longo'), findsOneWidget);
     });
 
-    testWidgets(
-      'em conteúdo largo: coluna de 280, avatar de 112 e abas ao lado',
-      (tester) async {
-        final p = withBeto();
-        p.collectionByUser['u-beto'] = [_entry('a', 'Um', GameStatus.playing)];
-        await openProfile(tester, profiles: p, size: const Size(1440, 900));
-        final column = tester.getSize(find.byType(SingleChildScrollView).first);
-        expect(column.width, 280);
-        final avatar = tester.widget<UserAvatar>(find.byType(UserAvatar).first);
-        expect(avatar.radius, (112 - 6) / 2);
-        // O banner mantém 3:1 dentro da coluna estreita.
-        final banner = tester.getSize(find.byType(AspectRatio).first);
-        expect(banner.width, 280);
-        expect(banner.width / banner.height, closeTo(3, 0.01));
-        // As abas ficam à direita da coluna de identidade.
-        expect(
-          tester.getTopLeft(find.byType(TabBar)).dx,
-          greaterThan(
-            tester.getTopRight(find.byType(SingleChildScrollView).first).dx,
-          ),
-        );
-        // Ações embaixo da identidade, não ao lado do avatar.
-        expect(find.widgetWithText(FilledButton, 'Seguir'), findsOneWidget);
-      },
-    );
-
-    testWidgets('o corte das duas colunas é 1000 dp de espaço útil', (
+    testWidgets('in wide content: 280 column, 112 avatar, and side tabs', (
       tester,
     ) async {
       final p = withBeto();
-      await openProfile(tester, profiles: p, size: const Size(1100, 900));
-      final area = tester
-          .getSize(
-            find
-                    .byType(LayoutBuilder)
-                    .evaluate()
-                    .map((e) => e.widget)
-                    .whereType<LayoutBuilder>()
-                    .isEmpty
-                ? find.byType(Scaffold).last
-                : find.byType(Scaffold).last,
-          )
-          .width;
-      final chrome = 1100 - area;
-      tester.view.physicalSize = Size(999 + chrome, 900);
-      await tester.pumpAndSettle();
+      p.collectionByUser['u-beto'] = [_entry('a', 'Um', GameStatus.playing)];
+      await openProfile(tester, profiles: p, size: const Size(1440, 900));
+      final column = tester.getSize(find.byType(SingleChildScrollView).first);
+      expect(column.width, 280);
+      final avatar = tester.widget<UserAvatar>(find.byType(UserAvatar).first);
+      expect(avatar.radius, (112 - 6) / 2);
+      // O banner mantém 3:1 dentro da coluna estreita.
+      final banner = tester.getSize(find.byType(AspectRatio).first);
+      expect(banner.width, 280);
+      expect(banner.width / banner.height, closeTo(3, 0.01));
+      // As abas ficam à direita da coluna de identidade.
       expect(
-        tester.widget<UserAvatar>(find.byType(UserAvatar).first).radius,
-        (88 - 6) / 2,
+        tester.getTopLeft(find.byType(TabBar)).dx,
+        greaterThan(
+          tester.getTopRight(find.byType(SingleChildScrollView).first).dx,
+        ),
       );
-      tester.view.physicalSize = Size(1000 + chrome, 900);
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<UserAvatar>(find.byType(UserAvatar).first).radius,
-        (112 - 6) / 2,
-      );
+      // Ações embaixo da identidade, não ao lado do avatar.
+      expect(find.widgetWithText(FilledButton, 'Seguir'), findsOneWidget);
     });
 
     testWidgets(
-      'sem imagens e com textos longos: sem overflow a 360 px e 200%',
+      'the breakpoint between the two columns is 1000 dp of space useful',
+      (tester) async {
+        final p = withBeto();
+        await openProfile(tester, profiles: p, size: const Size(1100, 900));
+        final area = tester
+            .getSize(
+              find
+                      .byType(LayoutBuilder)
+                      .evaluate()
+                      .map((e) => e.widget)
+                      .whereType<LayoutBuilder>()
+                      .isEmpty
+                  ? find.byType(Scaffold).last
+                  : find.byType(Scaffold).last,
+            )
+            .width;
+        final chrome = 1100 - area;
+        tester.view.physicalSize = Size(999 + chrome, 900);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<UserAvatar>(find.byType(UserAvatar).first).radius,
+          (88 - 6) / 2,
+        );
+        tester.view.physicalSize = Size(1000 + chrome, 900);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<UserAvatar>(find.byType(UserAvatar).first).radius,
+          (112 - 6) / 2,
+        );
+      },
+    );
+
+    testWidgets(
+      'without images and with texts long: without overflow the 360 px and 200%',
       (tester) async {
         final p = FakeProfilesRepository()
           ..profiles['u-beto'] = fakeProfile(
@@ -728,8 +732,8 @@ void main() {
     );
   });
 
-  group('atividades e posts', () {
-    testWidgets('abas mostram só o que pertence a cada uma', (tester) async {
+  group('activities and posts', () {
+    testWidgets('tabs show only the that belongs the each the', (tester) async {
       final feed = FakeFeedRepository();
       feed.userPostLists['u-beto:activity'] = [
         fakePost(
@@ -755,7 +759,7 @@ void main() {
       expect(feed.userPostCalls.map((c) => c.$2).toSet(), {true, false});
     });
 
-    testWidgets('sem atividades e sem posts mostram estado vazio', (
+    testWidgets('without activities and without posts show state empty', (
       tester,
     ) async {
       await openProfile(tester, profiles: withBeto());
@@ -765,49 +769,56 @@ void main() {
       expect(find.text('Ainda não há posts'), findsOneWidget);
     });
 
-    testWidgets('curtir um post do perfil usa a mesma contagem do feed', (
-      tester,
-    ) async {
-      final feed = FakeFeedRepository(
-        general: [
+    testWidgets(
+      'like the post of the profile uses the same count of the feed',
+      (tester) async {
+        final feed = FakeFeedRepository(
+          general: [
+            fakePost(
+              id: 'p1',
+              author: beto,
+              content: 'Compartilhado',
+              likes: 2,
+            ),
+          ],
+        );
+        feed.userPostLists['u-beto:post'] = [
           fakePost(id: 'p1', author: beto, content: 'Compartilhado', likes: 2),
-        ],
-      );
-      feed.userPostLists['u-beto:post'] = [
-        fakePost(id: 'p1', author: beto, content: 'Compartilhado', likes: 2),
-      ];
-      final h = AppHarness(profiles: withBeto(), feed: feed);
-      await h.pump(tester);
-      await tapAndSettle(tester, find.text('Comunidade').last);
-      expect(find.text('2'), findsOneWidget);
+        ];
+        final h = AppHarness(profiles: withBeto(), feed: feed);
+        await h.pump(tester);
+        await tapAndSettle(tester, find.text('Comunidade').last);
+        expect(find.text('2'), findsOneWidget);
 
-      await goTo(tester, '/users/u-beto');
-      await tapAndSettle(tester, find.text('Posts'));
-      await tapAndSettle(tester, find.text('2'));
-      expect(find.text('3'), findsOneWidget);
+        await goTo(tester, '/users/u-beto');
+        await tapAndSettle(tester, find.text('Posts'));
+        await tapAndSettle(tester, find.text('2'));
+        expect(find.text('3'), findsOneWidget);
 
-      await goTo(tester, '/community');
-      expect(
-        find.text('3'),
-        findsOneWidget,
-        reason: 'o feed mostra a curtida feita no perfil',
-      );
-    });
+        await goTo(tester, '/community');
+        expect(
+          find.text('3'),
+          findsOneWidget,
+          reason: 'o feed mostra a curtida feita no perfil',
+        );
+      },
+    );
   });
 
-  group('imagens do perfil', () {
-    testWidgets('sem foto nem capa não há o que ampliar (sem erro)', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
-      await openProfile(tester, profiles: withBeto());
-      await tester.tap(find.bySemanticsLabel('Sem foto'));
-      await tester.pumpAndSettle();
-      expect(find.byType(InteractiveViewer), findsNothing);
-      semantics.dispose();
-    });
+  group('images of the profile', () {
+    testWidgets(
+      'without photo or cover there is nothing to enlarge (without error)',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await openProfile(tester, profiles: withBeto());
+        await tester.tap(find.bySemanticsLabel('Sem foto'));
+        await tester.pumpAndSettle();
+        expect(find.byType(InteractiveViewer), findsNothing);
+        semantics.dispose();
+      },
+    );
 
-    testWidgets('tocar na foto abre a visualização ampliada e fecha', (
+    testWidgets('tapping the photo opens the enlarged view and closes it', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -829,7 +840,9 @@ void main() {
     });
   });
 
-  testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px with text 200% does not overflows', (
+    tester,
+  ) async {
     final p = withBeto();
     p.favoritesByUser['u-beto'] = [
       fakeGame(name: 'Favorito com nome muito comprido'),
@@ -848,7 +861,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  group('goldens da etapa 3', () {
+  group('goldens of the etapa 3', () {
     FakeProfilesRepository sample() {
       final profiles = withBeto();
       profiles.favoritesByUser['u-beto'] = [

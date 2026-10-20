@@ -60,8 +60,8 @@ String uri(WidgetTester tester) =>
         .toString();
 
 void main() {
-  group('feed em uma coluna de leitura', () {
-    testWidgets('em tela larga o post ocupa no máximo 680 dp, centralizado', (
+  group('feed in the column of reading', () {
+    testWidgets('in screen wide the post occupies at most 680 dp, centered', (
       tester,
     ) async {
       final feed = FakeFeedRepository(general: [written()]);
@@ -74,7 +74,7 @@ void main() {
       expect(box.center.dx, closeTo(area.center.dx, 1));
     });
 
-    testWidgets('título e abas ficam alinhados à coluna do feed', (
+    testWidgets('title and tabs remain aligned to the column of the feed', (
       tester,
     ) async {
       final feed = FakeFeedRepository(general: [written()]);
@@ -92,7 +92,7 @@ void main() {
       expect(tabs.right, closeTo(column.right, 1));
     });
 
-    testWidgets('no celular usa a largura menos a margem de 16', (
+    testWidgets('in the phone uses the width less the margin of 16', (
       tester,
     ) async {
       await openCommunity(tester, FakeFeedRepository(general: [written()]));
@@ -101,7 +101,7 @@ void main() {
       expect(box.width, 400 - 32);
     });
 
-    testWidgets('Geral continua sendo a aba inicial e cronológica', (
+    testWidgets('General remains the initial and chronological tab', (
       tester,
     ) async {
       final feed = FakeFeedRepository(
@@ -124,9 +124,9 @@ void main() {
     });
   });
 
-  group('post escrito e atividade', () {
+  group('post written and activity', () {
     testWidgets(
-      'post: avatar de 40, nome, handle, tempo, texto, jogo e ações',
+      'post: avatar of 40, name, handle, time, text, game and actions',
       (tester) async {
         await openCommunity(
           tester,
@@ -144,7 +144,7 @@ void main() {
     );
 
     testWidgets(
-      'atividade: avatar de 32, verbo, status com texto e jogo, mantendo as ações',
+      'activity: avatar of 32, verb, status with text and game, keeping the actions',
       (tester) async {
         await openCommunity(tester, FakeFeedRepository(general: [activity()]));
         final avatars = tester
@@ -166,32 +166,33 @@ void main() {
       },
     );
 
-    testWidgets('o alvo de toque do avatar tem 48 dp nos dois formatos', (
-      tester,
-    ) async {
-      await openCommunity(
-        tester,
-        FakeFeedRepository(general: [written(), activity()]),
-      );
-      for (final id in ['Perfil de Ana']) {
-        final targets = find.bySemanticsLabel(id);
-        expect(targets, findsNWidgets(2));
-      }
-      for (final e in find.byType(UserAvatar).evaluate()) {
-        final inkWell = find
-            .ancestor(
-              of: find.byWidget(e.widget),
-              matching: find.byType(InkWell),
-            )
-            .first;
-        final size = tester.getSize(inkWell);
-        expect(size.width, greaterThanOrEqualTo(48));
-        expect(size.height, greaterThanOrEqualTo(48));
-      }
-    });
+    testWidgets(
+      'the target of tap of the avatar has 48 dp in the two formats',
+      (tester) async {
+        await openCommunity(
+          tester,
+          FakeFeedRepository(general: [written(), activity()]),
+        );
+        for (final id in ['Perfil de Ana']) {
+          final targets = find.bySemanticsLabel(id);
+          expect(targets, findsNWidgets(2));
+        }
+        for (final e in find.byType(UserAvatar).evaluate()) {
+          final inkWell = find
+              .ancestor(
+                of: find.byWidget(e.widget),
+                matching: find.byType(InkWell),
+              )
+              .first;
+          final size = tester.getSize(inkWell);
+          expect(size.width, greaterThanOrEqualTo(48));
+          expect(size.height, greaterThanOrEqualTo(48));
+        }
+      },
+    );
 
     testWidgets(
-      'a atividade mostra o status do momento, mesmo que o registro mude depois',
+      'the activity shows the status of the moment, same that the entry change after',
       (tester) async {
         // Concluído quando aconteceu; hoje o registro está jogando (replay) ou nem existe mais.
         for (final library in [
@@ -214,7 +215,7 @@ void main() {
       },
     );
 
-    testWidgets('atividade sem jogo (apagado) continua legível', (
+    testWidgets('activity without the game (deleted) remains readable', (
       tester,
     ) async {
       final orphan = fakePost(
@@ -229,7 +230,7 @@ void main() {
       expect(find.widgetWithText(StatusChip, 'Jogando'), findsOneWidget);
     });
 
-    testWidgets('curtir um post vale também no detalhe (mesma entidade)', (
+    testWidgets('liking the post also applies in the detail (same entity)', (
       tester,
     ) async {
       final feed = FakeFeedRepository(general: [written(likes: 1)])
@@ -243,39 +244,42 @@ void main() {
       expect(find.text('2'), findsWidgets, reason: 'o contador acompanhou');
     });
 
-    testWidgets('nomes e textos longos não cobrem as ações a 360 px e 200%', (
-      tester,
-    ) async {
-      final longAuthor = fakePost(
-        id: 'p9',
-        author: const UserSummary(
-          id: 'u-long',
-          username: 'um_username_muito_comprido_mesmo',
-          name: 'Um Nome Extremamente Comprido Para Testar Quebra De Linha',
-        ),
-        content: 'Texto comprido ' * 20,
-        game: fakeGame(
-          name: 'Um jogo com um nome extremamente comprido para testar',
-        ),
-      );
-      await openCommunity(
-        tester,
-        FakeFeedRepository(
-          general: [
-            longAuthor,
-            activity(text: 'começou a jogar ${'Nome ' * 12}'),
-          ],
-        ),
-        size: const Size(360, 800),
-        textScale: 2,
-      );
-      expect(tester.takeException(), isNull);
-      expect(find.byIcon(Icons.favorite_border), findsWidgets);
-    });
+    testWidgets(
+      'names and texts long does not cover the actions the 360 px and 200%',
+      (tester) async {
+        final longAuthor = fakePost(
+          id: 'p9',
+          author: const UserSummary(
+            id: 'u-long',
+            username: 'um_username_muito_comprido_mesmo',
+            name: 'Um Nome Extremamente Comprido Para Testar Quebra De Linha',
+          ),
+          content: 'Texto comprido ' * 20,
+          game: fakeGame(
+            name: 'Um jogo com um nome extremamente comprido para testar',
+          ),
+        );
+        await openCommunity(
+          tester,
+          FakeFeedRepository(
+            general: [
+              longAuthor,
+              activity(text: 'começou a jogar ${'Nome ' * 12}'),
+            ],
+          ),
+          size: const Size(360, 800),
+          textScale: 2,
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.byIcon(Icons.favorite_border), findsWidgets);
+      },
+    );
   });
 
-  group('estados vazios', () {
-    testWidgets('Seguindo leva a Explorar na aba Pessoas', (tester) async {
+  group('states empty', () {
+    testWidgets('Following takes the explore in the tab people', (
+      tester,
+    ) async {
       await openCommunity(tester, FakeFeedRepository());
       await tapAndSettle(tester, find.text('Seguindo'));
       expect(find.text('Acompanhe quem joga com você'), findsOneWidget);
@@ -284,7 +288,7 @@ void main() {
       expect(tester.widget<TabBar>(find.byType(TabBar)).controller!.index, 1);
     });
 
-    testWidgets('Geral vazio convida à primeira publicação', (tester) async {
+    testWidgets('empty General invites the first post', (tester) async {
       await openCommunity(tester, FakeFeedRepository());
       expect(find.text('Ainda não há publicações'), findsOneWidget);
       await tapAndSettle(
@@ -298,7 +302,7 @@ void main() {
     });
   });
 
-  group('comentários', () {
+  group('comments', () {
     Comment chain(int levels) {
       Comment build(int i) => fakeComment(
         id: 'c$i',
@@ -329,7 +333,7 @@ void main() {
       await goTo(tester, '/posts/p1');
     }
 
-    testWidgets('o post original aparece inteiro, antes dos comentários', (
+    testWidgets('the post original appears integer, before of the comments', (
       tester,
     ) async {
       await openThread(tester, threadOf(2));
@@ -344,7 +348,7 @@ void main() {
     });
 
     testWidgets(
-      'recua até dois níveis; mais fundo fica alinhado e diz a quem responde',
+      'indents up to two levels; deeper replies align and identify the responds',
       (tester) async {
         await openThread(tester, threadOf(6));
         double left(int i) => tester.getTopLeft(find.text('Nível $i')).dx;
@@ -374,20 +378,21 @@ void main() {
       },
     );
 
-    testWidgets('a legenda indica o autor imediato da resposta funda', (
-      tester,
-    ) async {
-      await openThread(tester, threadOf(4));
-      // Nível 3 responde ao nível 2 (autor beto, par).
-      final legend = find.text('Respondendo a @beto');
-      expect(legend, findsOneWidget);
-      expect(
-        tester.getTopLeft(legend).dy,
-        lessThan(tester.getTopLeft(find.text('Nível 3')).dy),
-      );
-    });
+    testWidgets(
+      'the caption indicates the author immediate of the reply underlies',
+      (tester) async {
+        await openThread(tester, threadOf(4));
+        // Nível 3 responde ao nível 2 (autor beto, par).
+        final legend = find.text('Respondendo a @beto');
+        expect(legend, findsOneWidget);
+        expect(
+          tester.getTopLeft(legend).dy,
+          lessThan(tester.getTopLeft(find.text('Nível 3')).dy),
+        );
+      },
+    );
 
-    testWidgets('a largura do texto não diminui além do segundo recuo', (
+    testWidgets('text width does not shrink beyond the second indent', (
       tester,
     ) async {
       await openThread(tester, threadOf(12), size: const Size(400, 3000));
@@ -397,7 +402,7 @@ void main() {
     });
   });
 
-  group('resposta', () {
+  group('reply', () {
     FakeFeedRepository feed() => FakeFeedRepository()
       ..posts['p1'] = fakePost(id: 'p1', content: 'Post', comments: 1)
       ..commentTrees['p1'] = [
@@ -425,7 +430,7 @@ void main() {
     }
 
     testWidgets(
-      'mostra a pessoa e o trecho do comentário, e "Cancelar resposta"',
+      'shows the person and the comment excerpt, with a "cancel reply" action',
       (tester) async {
         await open(tester, feed());
         final semantics = tester.ensureSemantics();
@@ -454,7 +459,7 @@ void main() {
       },
     );
 
-    testWidgets('cancelar não apaga o que foi digitado', (tester) async {
+    testWidgets('cancel does not delete the that was typed', (tester) async {
       await open(tester, feed());
       final semantics = tester.ensureSemantics();
       await tapAndSettle(
@@ -469,7 +474,7 @@ void main() {
     });
 
     testWidgets(
-      'sucesso limpa o campo, o alvo e atualiza a lista e o contador',
+      'success clears the field, the target and updates the list and the counter',
       (tester) async {
         final f = feed();
         await open(tester, f);
@@ -494,7 +499,7 @@ void main() {
       },
     );
 
-    testWidgets('a 360 px e texto 200% as ações continuam à mão', (
+    testWidgets('at 360 px and 200% text, actions remain within reach', (
       tester,
     ) async {
       await open(tester, feed(), size: const Size(360, 800), textScale: 2);
@@ -518,8 +523,8 @@ void main() {
     });
   });
 
-  group('lógica da árvore', () {
-    test('flattenComments traz profundidade e o comentário respondido, sem cortar nada', () {
+  group('tree logic', () {
+    test('flattenComments brings profundidade and the comment answered, without crop nothing', () {
       final tree = [
         fakeComment(
           id: 'a',

@@ -106,7 +106,7 @@ class DetailShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final wide = MediaQuery.sizeOf(context).width >= Breakpoints.medium;
+    final wide = _usesRail(context);
     final path = GoRouterState.of(context).uri.path;
     // A página tem chave própria: girar ou redimensionar a janela mostra ou esconde o rail sem
     // recriar o histórico dela.
@@ -128,7 +128,8 @@ class DetailShell extends ConsumerWidget {
   }
 }
 
-/// Mesmos cinco destinos em qualquer largura: barra abaixo de 600, rail a partir daí.
+/// Mesmos cinco destinos em qualquer largura: barra abaixo de 600, rail a partir daí, unless
+/// enlarged text needs the extra width of the compact navigation.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -145,11 +146,10 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.sizeOf(context).width;
     final unread = ref.watch(unreadConversationsProvider);
     final label = unread == 0 ? 'Mensagens' : 'Mensagens, $unread não lidas';
 
-    if (width < Breakpoints.medium) {
+    if (!_usesRail(context)) {
       // A conversa aberta ocupa a tela toda: sem a barra, o campo de mensagem fica logo acima
       // do teclado e a lista de mensagens ganha altura.
       final inConversation = GoRouterState.of(context).uri.path
@@ -185,4 +185,12 @@ class AppShell extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// A lateral rail consumes enough horizontal space to make a 600 dp window fragile when users
+/// enlarge text. Keep the compact navigation in that case so the page still has usable width.
+bool _usesRail(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+  return width >= Breakpoints.medium && textScale < 1.5;
 }

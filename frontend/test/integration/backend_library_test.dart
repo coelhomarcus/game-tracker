@@ -54,7 +54,7 @@ void main() {
   });
 
   test(
-    'jogo por igdbId: UUID interno distinto do igdbId, sem favorito',
+    'game by igdbId: UUID internal distinct of the igdbId, without favorite',
     skip: skip,
     () async {
       final game = await games.byIgdbId(900001);
@@ -65,19 +65,12 @@ void main() {
     },
   );
 
-  test(
-    'jogo inexistente na IGDB: erro de domínio, não crash',
-    skip: skip,
-    () async {
-      await expectLater(
-        games.byIgdbId(999999999),
-        throwsA(isA<ApiException>()),
-      );
-    },
-  );
+  test('missing IGDB game: domain error, does not crash', skip: skip, () async {
+    await expectLater(games.byIgdbId(999999999), throwsA(isA<ApiException>()));
+  });
 
   test(
-    'busca: com IGDB devolve resultados reais; sem credenciais, erro claro (nunca lista vazia)',
+    'search: with IGDB returns results real; without credentials, error light (never list empty)',
     skip: skip,
     () async {
       try {
@@ -95,7 +88,7 @@ void main() {
   );
 
   test(
-    'criar dois playthroughs do mesmo jogo, editar, limpar campos e remover um',
+    'create two playthroughs the same game, edit, clear fields and removes the',
     skip: skip,
     () async {
       final first = await library.create(
@@ -166,7 +159,7 @@ void main() {
   );
 
   test(
-    'zero horas é gravado e lido como zero; diferente de sem horas',
+    'zero hours is saved and read the zero; different from missing hours',
     skip: skip,
     () async {
       final entry = await library.create(
@@ -197,7 +190,7 @@ void main() {
   );
 
   test(
-    'editar sem mudar nada não faz requisição e devolve o mesmo registro',
+    'editing without changes makes in the request and returns the same entry',
     skip: skip,
     () async {
       final entry = await library.create(
@@ -210,7 +203,7 @@ void main() {
   );
 
   test(
-    'favoritar e desfavoritar são idempotentes e refletem no jogo',
+    'favorite and unfavorite are idempotent and update the game',
     skip: skip,
     () async {
       final game = await games.byIgdbId(900001);
@@ -222,39 +215,35 @@ void main() {
     },
   );
 
-  test(
-    'estatísticas e jogadores contam o meu playthrough',
-    skip: skip,
-    () async {
-      final game = await games.byIgdbId(900002);
-      final before = await games.stats(game.id);
-      await library.create(
-        900002,
-        const EntryDraft(
-          platform: 'PC',
-          status: GameStatus.playing,
-          hoursPlayed: 3.5,
-        ),
-      );
-      final after = await games.stats(game.id);
-      expect(after.playing, before.playing + 1);
-
-      final players = await games.players(
-        game.id,
+  test('statistics and players count my playthrough', skip: skip, () async {
+    final game = await games.byIgdbId(900002);
+    final before = await games.stats(game.id);
+    await library.create(
+      900002,
+      const EntryDraft(
+        platform: 'PC',
         status: GameStatus.playing,
-        scope: PlayersScope.all,
-      );
-      expect(players.any((p) => p.hoursPlayed == 3.5), isTrue);
-      final following = await games.players(
-        game.id,
-        status: GameStatus.playing,
-        scope: PlayersScope.following,
-      );
-      expect(following, isEmpty, reason: 'não sigo ninguém');
-    },
-  );
+        hoursPlayed: 3.5,
+      ),
+    );
+    final after = await games.stats(game.id);
+    expect(after.playing, before.playing + 1);
 
-  test('registro de outro usuário não pode ser editado', skip: skip, () async {
+    final players = await games.players(
+      game.id,
+      status: GameStatus.playing,
+      scope: PlayersScope.all,
+    );
+    expect(players.any((p) => p.hoursPlayed == 3.5), isTrue);
+    final following = await games.players(
+      game.id,
+      status: GameStatus.playing,
+      scope: PlayersScope.following,
+    );
+    expect(following, isEmpty, reason: 'não sigo ninguém');
+  });
+
+  test('entry of another user cannot ser editado', skip: skip, () async {
     final mine = await library.create(
       900001,
       const EntryDraft(platform: 'PC', status: GameStatus.backlog),

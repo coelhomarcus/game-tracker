@@ -65,8 +65,8 @@ NotificationsData data(ProviderContainer c) =>
     c.read(notificationsControllerProvider).requireValue;
 
 void main() {
-  group('contrato: resposta real do backend', () {
-    test('lista com curtidas, comentário e seguidores', () {
+  group('contract: reply real from the backend', () {
+    test('list with likes, comment and followers', () {
       final parsed = NotificationsData.fromJson(
         fixtureBody('notifications_list') as Map<String, dynamic>,
       );
@@ -92,57 +92,54 @@ void main() {
       expect(parsed.unreadCount, isA<int>());
     });
 
-    test('tipo desconhecido (backend mais novo) é ignorado em vez de quebrar a lista', () {
-      final parsed = NotificationsData.fromJson({
-        'items': [
-          {
-            'id': 'n1',
-            'type': 'repost',
-            'postId': null,
-            'read': false,
-            'createdAt': '2026-06-01T00:00:00.000Z',
-            'actor': {
-              'id': 'u',
-              'username': 'a',
-              'name': null,
-              'avatarUrl': null,
-            },
-          },
-          {
-            'id': 'n2',
-            'type': 'like',
-            'postId': 'p',
-            'read': false,
-            'createdAt': '2026-06-01T00:00:00.000Z',
-            'actor': {
-              'id': 'u',
-              'username': 'a',
-              'name': null,
-              'avatarUrl': null,
-            },
-          },
-        ],
-        'unreadCount': 2,
-      });
-      expect(parsed.items.map((n) => n.id), ['n2']);
-    });
-
     test(
-      'o servidor devolve no máximo 50: com 50 itens avisa que pode haver mais',
+      'unknown type (backend newest) is ignored instead of breaking the list',
       () {
-        final fifty = notificationsOf([
-          for (var i = 0; i < 50; i++) fakeNotification('n$i'),
-        ]);
-        expect(fifty.maybeTruncated, isTrue);
-        expect(
-          notificationsOf([fakeNotification('a')]).maybeTruncated,
-          isFalse,
-        );
+        final parsed = NotificationsData.fromJson({
+          'items': [
+            {
+              'id': 'n1',
+              'type': 'repost',
+              'postId': null,
+              'read': false,
+              'createdAt': '2026-06-01T00:00:00.000Z',
+              'actor': {
+                'id': 'u',
+                'username': 'a',
+                'name': null,
+                'avatarUrl': null,
+              },
+            },
+            {
+              'id': 'n2',
+              'type': 'like',
+              'postId': 'p',
+              'read': false,
+              'createdAt': '2026-06-01T00:00:00.000Z',
+              'actor': {
+                'id': 'u',
+                'username': 'a',
+                'name': null,
+                'avatarUrl': null,
+              },
+            },
+          ],
+          'unreadCount': 2,
+        });
+        expect(parsed.items.map((n) => n.id), ['n2']);
       },
     );
 
+    test('the server returns at most 50: with 50 items warns that can there be more', () {
+      final fifty = notificationsOf([
+        for (var i = 0; i < 50; i++) fakeNotification('n$i'),
+      ]);
+      expect(fifty.maybeTruncated, isTrue);
+      expect(notificationsOf([fakeNotification('a')]).maybeTruncated, isFalse);
+    });
+
     test(
-      'filtros: interações são curtidas e comentários; seguidores só follow',
+      'filters: interactions are likes and comments; followers only follow',
       () {
         expect(
           NotificationFilter.interactions.matches(NotificationType.like),
@@ -168,7 +165,7 @@ void main() {
       },
     );
 
-    test('destino da notificação: só por ids', () {
+    test('destination of the notification: only by ids', () {
       expect(
         notificationRoute(
           fakeNotification('a', type: NotificationType.like, postId: 'p9'),
@@ -387,7 +384,7 @@ void main() {
     });
   });
 
-  group('tela', () {
+  group('screen', () {
     Future<AppHarness> open(
       WidgetTester tester,
       NotificationsData data, {
@@ -413,7 +410,7 @@ void main() {
       ),
     ]);
 
-    testWidgets('o sino mostra a contagem de não lidas e abre a central', (
+    testWidgets('the bell shows the count of unread and opens the center', (
       tester,
     ) async {
       final h = AppHarness(notifications: FakeNotificationsRepository(mixed()));
@@ -423,7 +420,7 @@ void main() {
       expect(find.byTooltip('Marcar todas como lidas'), findsOneWidget);
     });
 
-    testWidgets('mostra o que aconteceu, quem fez e destaca as não lidas', (
+    testWidgets('shows the that happened, who did and highlights the unread', (
       tester,
     ) async {
       await open(tester, mixed());
@@ -438,7 +435,7 @@ void main() {
       );
     });
 
-    testWidgets('filtros: Interações e Seguidores', (tester) async {
+    testWidgets('filters: Interactions and followers', (tester) async {
       await open(tester, mixed());
       await tapAndSettle(tester, find.widgetWithText(FilterChip, 'Interações'));
       expect(find.textContaining('curtiu seu post'), findsOneWidget);
@@ -450,25 +447,30 @@ void main() {
       expect(find.textContaining('curtiu seu post'), findsOneWidget);
     });
 
-    testWidgets('filtro sem resultados é diferente de não ter notificações', (
-      tester,
-    ) async {
-      await open(tester, notificationsOf([fakeNotification('a')]));
-      await tapAndSettle(tester, find.widgetWithText(FilterChip, 'Seguidores'));
-      expect(find.text('Nada em "Seguidores"'), findsOneWidget);
-      expect(find.text('Sem notificações'), findsNothing);
-    });
-
-    testWidgets('sem notificações: estado vazio e sem botão de marcar', (
-      tester,
-    ) async {
-      await open(tester, const NotificationsData(items: [], unreadCount: 0));
-      expect(find.text('Sem notificações'), findsOneWidget);
-      expect(find.byTooltip('Marcar todas como lidas'), findsNothing);
-    });
+    testWidgets(
+      'the filter without results differs from having in the notifications',
+      (tester) async {
+        await open(tester, notificationsOf([fakeNotification('a')]));
+        await tapAndSettle(
+          tester,
+          find.widgetWithText(FilterChip, 'Seguidores'),
+        );
+        expect(find.text('Nada em "Seguidores"'), findsOneWidget);
+        expect(find.text('Sem notificações'), findsNothing);
+      },
+    );
 
     testWidgets(
-      'marcar todas como lidas: some o destaque, o botão e o selo; abrir um item não marca nada',
+      'without notifications: state empty and without button of mark',
+      (tester) async {
+        await open(tester, const NotificationsData(items: [], unreadCount: 0));
+        expect(find.text('Sem notificações'), findsOneWidget);
+        expect(find.byTooltip('Marcar todas como lidas'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'mark all the read: some the highlight, the button and the badge; open the item does not marks nothing',
       (tester) async {
         final repo = FakeNotificationsRepository(mixed());
         final h = await open(tester, mixed(), repo: repo);
@@ -496,7 +498,7 @@ void main() {
       },
     );
 
-    testWidgets('falha ao marcar volta ao estado anterior e avisa', (
+    testWidgets('fails to the mark returns to the state previous and warns', (
       tester,
     ) async {
       final repo = FakeNotificationsRepository(mixed())
@@ -512,7 +514,7 @@ void main() {
       expect(find.byTooltip('Marcar todas como lidas'), findsOneWidget);
     });
 
-    testWidgets('curtida e comentário abrem o post; seguidor abre o perfil', (
+    testWidgets('like and comment open the post; follower opens the profile', (
       tester,
     ) async {
       final h = AppHarness(
@@ -537,7 +539,7 @@ void main() {
       expect(find.text('@cris'), findsOneWidget);
     });
 
-    testWidgets('com 50 itens avisa que mostra só as mais recentes', (
+    testWidgets('with 50 items warns that shows only the more recent', (
       tester,
     ) async {
       await open(
@@ -551,7 +553,7 @@ void main() {
       expect(find.text('Mostrando as 50 mais recentes.'), findsOneWidget);
     });
 
-    testWidgets('erro ao carregar não é lista vazia e permite tentar de novo', (
+    testWidgets('error to the load is not list empty and allows try of new', (
       tester,
     ) async {
       final repo = FakeNotificationsRepository(mixed())
@@ -566,7 +568,9 @@ void main() {
       expect(find.textContaining('curtiu seu post'), findsOneWidget);
     });
 
-    testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+    testWidgets('layout the 360 px with text 200% does not overflows', (
+      tester,
+    ) async {
       final h = AppHarness(notifications: FakeNotificationsRepository(mixed()));
       await h.pump(tester, size: const Size(360, 800), textScale: 2.0);
       await goTo(tester, '/notifications');

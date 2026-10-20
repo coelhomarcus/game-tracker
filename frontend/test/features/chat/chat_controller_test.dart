@@ -114,7 +114,7 @@ Iterable<(String, Map<String, dynamic>)> requests(Env env, String event) =>
     env.transport.requests.where((r) => r.$1 == event);
 
 void main() {
-  group('carregar', () {
+  group('load', () {
     scenario('abre a conversa, resolve a outra pessoa e entra na sala', (
       async,
       env,
@@ -260,7 +260,7 @@ void main() {
     });
   });
 
-  group('envio', () {
+  group('sending', () {
     scenario(
       'a mensagem aparece na hora como pendente e vira enviada com o ACK',
       (async, env) {
@@ -350,7 +350,7 @@ void main() {
     );
   });
 
-  group('envio incerto: ACK perdido', () {
+  group('sending uncertain: ACK lost', () {
     scenario('reenvia com o MESMO clientMessageId e o servidor não duplica', (
       async,
       env,
@@ -466,7 +466,7 @@ void main() {
     });
   });
 
-  group('queda de conexão', () {
+  group('drop of connection', () {
     scenario(
       'mensagem escrita sem conexão fica na fila e sai uma vez quando volta',
       (async, env) {
@@ -620,7 +620,7 @@ void main() {
     );
   });
 
-  group('receber', () {
+  group('receive', () {
     scenario('mensagem da outra pessoa entra na lista e na conversa da lista', (
       async,
       env,
@@ -645,7 +645,7 @@ void main() {
     });
   });
 
-  group('leitura', () {
+  group('reading', () {
     scenario('conversa invisível não é marcada como lida', (async, env) {
       env.open();
       env.server.incoming('oi');
@@ -731,7 +731,7 @@ void main() {
     );
   });
 
-  group('digitação', () {
+  group('typing', () {
     scenario(
       'avisa uma vez a cada 2 s enquanto escreve e para quando fica 3 s parado',
       (async, env) {
@@ -876,7 +876,7 @@ void main() {
     });
   });
 
-  group('presença', () {
+  group('presence', () {
     scenario('o snapshot inicial diz se a outra pessoa está online', (
       async,
       env,
@@ -932,7 +932,7 @@ void main() {
     });
   });
 
-  group('ciclo de vida', () {
+  group('cycle of life', () {
     scenario('fechar a conversa sai da sala e avisa que parou de digitar', (
       async,
       env,

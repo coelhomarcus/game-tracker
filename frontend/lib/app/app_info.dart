@@ -1,2 +1,2 @@
-/// Versão exibida em Configurações. Deve acompanhar a de `pubspec.yaml` (um teste confere).
-const appVersion = '1.0.0';
+/// Version displayed in Settings. Release builds override it with APP_VERSION.
+const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');

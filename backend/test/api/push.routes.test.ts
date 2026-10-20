@@ -12,7 +12,7 @@ import { startApi, type TestApi } from '../helpers/server';
 const valid = (token: string) => ({ provider: 'fcm', platform: 'android', token });
 const stamp = randomUUID().slice(0, 8);
 
-describe('push: instalações', () => {
+describe('push: installations', () => {
   let api: TestApi;
   let a: TestUser;
   let b: TestUser;
@@ -28,18 +28,18 @@ describe('push: instalações', () => {
   after(() => api.close());
   afterEach(() => setPushProvider(null));
 
-  it('registrar é idempotente (204 nas duas vezes)', async () => {
+  it('registration is idempotent (204 in the twice)', async () => {
     const id = randomUUID();
     assert.equal((await put(a.accessToken, id, valid(`tok-${stamp}-1`))).status, 204);
     assert.equal((await put(a.accessToken, id, valid(`tok-${stamp}-1`))).status, 204);
   });
 
-  it('token FCM longo (4096) é aceito; 4097 é recusado', async () => {
+  it('token FCM long (4096) is accepted; 4097 is rejected', async () => {
     assert.equal((await put(a.accessToken, randomUUID(), valid('x'.repeat(4096)))).status, 204);
     assert.equal((await put(a.accessToken, randomUUID(), valid('y'.repeat(4097)))).status, 400);
   });
 
-  it('validações: id não UUID, provedor, plataforma, token vazio', async () => {
+  it('validation: non-UUID id, provider, platform, empty token', async () => {
     assert.equal((await put(a.accessToken, 'nao-uuid', valid('t'))).status, 400);
     assert.equal((await put(a.accessToken, randomUUID(), { ...valid('t'), provider: 'apns' })).status, 400);
     assert.equal((await put(a.accessToken, randomUUID(), { ...valid('t'), platform: 'windows' })).status, 400);
@@ -47,23 +47,23 @@ describe('push: instalações', () => {
     assert.equal((await put(a.accessToken, randomUUID(), {})).status, 400);
   });
 
-  it('sem autenticação é 401', async () => {
+  it('without authentication: 401', async () => {
     assert.equal((await put(null, randomUUID(), valid('t'))).status, 401);
     assert.equal((await del(null, randomUUID())).status, 401);
   });
 
-  it('trocar de conta no mesmo aparelho: a instalação muda de dono sem erro', async () => {
+  it('switching accounts the same device: the installation changes owner without error', async () => {
     const id = randomUUID();
     assert.equal((await put(a.accessToken, id, valid(`tok-${stamp}-shared`))).status, 204);
     assert.equal((await put(b.accessToken, id, valid(`tok-${stamp}-shared`))).status, 204);
   });
 
-  it('mesmo token em outra instalação não gera conflito (o token muda de dono)', async () => {
+  it('the same token on another installation does not cause the conflict (the token changes owner)', async () => {
     assert.equal((await put(a.accessToken, randomUUID(), valid(`tok-${stamp}-same`))).status, 204);
     assert.equal((await put(b.accessToken, randomUUID(), valid(`tok-${stamp}-same`))).status, 204);
   });
 
-  it('revogar: 204, idempotente, e de outra pessoa é 204 sem efeito', async () => {
+  it('revoke: 204, idempotent, and from another user it is 204 without effect', async () => {
     const id = randomUUID();
     await put(a.accessToken, id, valid(`tok-${stamp}-rev`));
     assert.equal((await del(b.accessToken, id)).status, 204, 'b: no-op');
@@ -72,16 +72,16 @@ describe('push: instalações', () => {
     assert.equal((await del(a.accessToken, randomUUID())).status, 204, 'inexistente');
   });
 
-  it('revogar com id inválido é 400', async () => {
+  it('revoking with an invalid id: 400', async () => {
     assert.equal((await del(a.accessToken, 'xxx')).status, 400);
   });
 
-  it('só o provedor fcm existe: expo (e o endpoint antigo de token) foram removidos', async () => {
+  it('only the provider fcm exists: expo (and the endpoint old of token) were removed', async () => {
     assert.equal((await put(a.accessToken, randomUUID(), { ...valid('t'), provider: 'expo' })).status, 400);
     assert.equal((await api.http('POST', '/users/me/push-token', a.accessToken, { token: 'x' })).status, 404);
   });
 
-  describe('payload enviado ao app', () => {
+  describe('payload sent to the app', () => {
     const captured: PushPayload[] = [];
     const capture = (): PushProvider => ({
       name: 'fcm',
@@ -100,7 +100,7 @@ describe('push: instalações', () => {
       return captured[0]!;
     }
 
-    it('curtida, comentário e seguidor levam só tipo e ids no `data`, e texto genérico', async () => {
+    it('like, comment, and follow carry only type and IDs in `date`, plus generic text', async () => {
       setPushProvider(capture());
       const recipient = await registerUser(api.http, 'pr');
       const actor = await registerUser(api.http, 'pq');
@@ -129,7 +129,7 @@ describe('push: instalações', () => {
       }
     });
 
-    it('o fluxo social continua funcionando com instalações FCM e FCM desligado', async () => {
+    it('the social flow continues working with FCM installations and FCM disabled', async () => {
       setPushProvider(null);
       const x = await registerUser(api.http, 'sx');
       const y = await registerUser(api.http, 'sy');

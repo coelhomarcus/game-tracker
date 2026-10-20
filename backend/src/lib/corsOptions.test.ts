@@ -28,39 +28,39 @@ async function request(origins: string | undefined, origin?: string, method = 'G
 }
 
 describe('parseCorsOrigins', () => {
-  it('vazio, ausente ou * liberam tudo', () => {
+  it('empty, missing or * allow everything', () => {
     assert.equal(parseCorsOrigins(undefined), '*');
     assert.equal(parseCorsOrigins(''), '*');
     assert.equal(parseCorsOrigins('  , '), '*');
     assert.equal(parseCorsOrigins('https://a.test,*'), '*');
   });
-  it('lista: apara espaços e a barra final', () => {
+  it('list: trims spaces and the trailing slash', () => {
     assert.deepEqual(parseCorsOrigins(' https://a.test/ , https://b.test'), ['https://a.test', 'https://b.test']);
   });
 });
 
 describe('CORS', () => {
-  it('sem configuração mantém o comportamento aberto', async () => {
+  it('without configuration keeps the behavior open', async () => {
     assert.equal((await request(undefined, 'https://qualquer.test')).allow, '*');
   });
-  it('origem listada é aceita e ecoada', async () => {
+  it('listed origin is accepted and echoed', async () => {
     const r = await request('https://app.test', 'https://app.test');
     assert.equal(r.status, 200);
     assert.equal(r.allow, 'https://app.test');
   });
-  it('origem não listada não recebe o cabeçalho (o navegador bloqueia a leitura)', async () => {
+  it('origin does not listed does not receive the header (the browser blocks the reading)', async () => {
     const r = await request('https://app.test', 'https://evil.test');
     assert.equal(r.allow, null);
   });
-  it('preflight de origem não listada também não é autorizado', async () => {
+  it('preflight from an unlisted origin is not authorized', async () => {
     const r = await request('https://app.test', 'https://evil.test', 'OPTIONS');
     assert.equal(r.allow, null);
   });
-  it('sem Origin (app nativo) continua funcionando', async () => {
+  it('without Origin (app native) continues working', async () => {
     const r = await request('https://app.test');
     assert.equal(r.status, 200);
   });
-  it('subdomínio ou prefixo parecido não passa', async () => {
+  it('the subdomain or similar prefix does not pass', async () => {
     assert.equal((await request('https://app.test', 'https://app.test.evil.test')).allow, null);
     assert.equal((await request('https://app.test', 'http://app.test')).allow, null);
   });

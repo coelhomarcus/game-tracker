@@ -42,15 +42,15 @@ Future<void> select(WidgetTester tester, String label) =>
     tapAndSettle(tester, find.text(label).last);
 
 void main() {
-  group('voltar em link direto (sem pilha)', () {
+  group('return in link direct (without the stack)', () {
     for (final (path, fallback, label) in [
-      ('/games/900001', '/library', 'jogo → Biblioteca'),
-      ('/posts/p1', '/community', 'post → Comunidade'),
-      ('/me/edit', '/me', 'edição → Perfil'),
-      ('/settings', '/me', 'configurações → Perfil'),
-      ('/messages/$convId', '/messages', 'conversa → Mensagens'),
-      ('/posts/new', '/community', 'novo post → Comunidade'),
-      ('/games/900001/playthroughs/new', '/games/900001', 'registro → jogo'),
+      ('/games/900001', '/library', 'game → Library'),
+      ('/posts/p1', '/community', 'post → Community'),
+      ('/me/edit', '/me', 'edit profile → Profile'),
+      ('/settings', '/me', 'settings → Profile'),
+      ('/messages/$convId', '/messages', 'conversation → Messages'),
+      ('/posts/new', '/community', 'new post → Community'),
+      ('/games/900001/playthroughs/new', '/games/900001', 'entry → game'),
     ]) {
       testWidgets(label, (tester) async {
         await harness().pump(tester);
@@ -67,34 +67,33 @@ void main() {
       });
     }
 
-    testWidgets(
-      'formulário com alteração pergunta antes de sair do link direto',
-      (tester) async {
-        await harness().pump(tester);
-        await goTo(tester, '/posts/new');
-        await tester.enterText(find.byType(TextField).first, 'rascunho');
-        await tester.pumpAndSettle();
+    testWidgets('form with change asks before leave of the link direct', (
+      tester,
+    ) async {
+      await harness().pump(tester);
+      await goTo(tester, '/posts/new');
+      await tester.enterText(find.byType(TextField).first, 'rascunho');
+      await tester.pumpAndSettle();
 
-        await tapAndSettle(tester, find.byType(BackButton));
-        expect(find.text('Descartar publicação?'), findsOneWidget);
-        expect(location(tester), '/posts/new');
+      await tapAndSettle(tester, find.byType(BackButton));
+      expect(find.text('Descartar publicação?'), findsOneWidget);
+      expect(location(tester), '/posts/new');
 
-        await tapAndSettle(tester, find.text('Continuar editando'));
-        expect(location(tester), '/posts/new');
-        expect(find.text('rascunho'), findsOneWidget);
+      await tapAndSettle(tester, find.text('Continuar editando'));
+      expect(location(tester), '/posts/new');
+      expect(find.text('rascunho'), findsOneWidget);
 
-        await tapAndSettle(tester, find.byType(BackButton));
-        await tapAndSettle(tester, find.text('Descartar'));
-        expect(location(tester), '/community');
-      },
-    );
+      await tapAndSettle(tester, find.byType(BackButton));
+      await tapAndSettle(tester, find.text('Descartar'));
+      expect(location(tester), '/community');
+    });
 
     for (final (path, fallback) in [
       ('/posts/nao-existe', '/community'),
       ('/users/nao-existe', '/community'),
       ('/messages/nao-existe', '/messages'),
     ]) {
-      testWidgets('$path inexistente: erro com retry e saída', (tester) async {
+      testWidgets('$path not found: error with retry and exit', (tester) async {
         await harness().pump(tester);
         await goTo(tester, path);
         expect(find.text('Tentar de novo'), findsOneWidget);
@@ -104,12 +103,12 @@ void main() {
     }
 
     for (final (name, path, enter) in [
-      ('registro', '/games/900001/playthroughs/new', 'hours'),
-      ('publicação', '/posts/new', 'text'),
-      ('edição de perfil', '/me/edit', 'bio'),
+      ('entry', '/games/900001/playthroughs/new', 'hours'),
+      ('post', '/posts/new', 'text'),
+      ('profile edit', '/me/edit', 'bio'),
     ]) {
       testWidgets(
-        'com pilha, o voltar da barra também pergunta antes de descartar ($name)',
+        'with the stack, returning through the bar also asks before discarding ($name)',
         (tester) async {
           await harness().pump(tester, size: const Size(400, 2000));
           // Aberto por navegação normal: há uma tela embaixo (pilha).
@@ -138,7 +137,7 @@ void main() {
       );
     }
 
-    testWidgets('com pilha, voltar desfaz o push', (tester) async {
+    testWidgets('with the stack, return undoes the push', (tester) async {
       await harness().pump(tester);
       await openLibraryGame(tester, 'Jogo Fixture Um');
       expect(location(tester), '/games/900001');
@@ -146,37 +145,39 @@ void main() {
       expect(location(tester), '/library');
     });
 
-    testWidgets('jogo com endereço inválido mostra saída, não tela em branco', (
-      tester,
-    ) async {
-      await harness().pump(tester);
-      await goTo(tester, '/games/abc');
-      expect(find.text('Jogo não encontrado'), findsOneWidget);
-      await tapAndSettle(
-        tester,
-        find.widgetWithText(FilledButton, 'Ir para a Biblioteca'),
-      );
+    testWidgets(
+      'game with an invalid address shows the useful exit state, not the blank screen',
+      (tester) async {
+        await harness().pump(tester);
+        await goTo(tester, '/games/abc');
+        expect(find.text('Jogo não encontrado'), findsOneWidget);
+        await tapAndSettle(
+          tester,
+          find.widgetWithText(FilledButton, 'Ir para a Biblioteca'),
+        );
+        expect(location(tester), '/library');
+      },
+    );
+  });
+
+  testWidgets(
+    'link direct without the session: enters, falls in the destination and returns to the app',
+    (tester) async {
+      await AppHarness(signedIn: false).pump(tester);
+      await goTo(tester, '/games/900001');
+      expect(location(tester), '/login');
+
+      await tester.enterText(find.byType(TextFormField).first, 'ana');
+      await tester.enterText(find.byType(TextFormField).last, 'senha');
+      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Entrar'));
+      expect(location(tester), '/games/900001');
+
+      await tapAndSettle(tester, find.byType(BackButton));
       expect(location(tester), '/library');
-    });
-  });
+    },
+  );
 
-  testWidgets('link direto sem sessão: entra, cai no destino e volta ao app', (
-    tester,
-  ) async {
-    await AppHarness(signedIn: false).pump(tester);
-    await goTo(tester, '/games/900001');
-    expect(location(tester), '/login');
-
-    await tester.enterText(find.byType(TextFormField).first, 'ana');
-    await tester.enterText(find.byType(TextFormField).last, 'senha');
-    await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Entrar'));
-    expect(location(tester), '/games/900001');
-
-    await tapAndSettle(tester, find.byType(BackButton));
-    expect(location(tester), '/library');
-  });
-
-  group('ação principal', () {
+  group('action main', () {
     const actions = {
       'Biblioteca': 'Adicionar jogo',
       'Comunidade': 'Publicar',
@@ -184,7 +185,7 @@ void main() {
     };
 
     for (final entry in actions.entries) {
-      testWidgets('${entry.key}: FAB em janela estreita, nunca os dois', (
+      testWidgets('${entry.key}: FAB in window narrow, never the two', (
         tester,
       ) async {
         await harness().pump(tester, size: const Size(390, 800));
@@ -203,7 +204,7 @@ void main() {
         );
       });
 
-      testWidgets('${entry.key}: botão no cabeçalho em janela larga', (
+      testWidgets('${entry.key}: button in the header in window wide', (
         tester,
       ) async {
         await harness().pump(tester, size: const Size(900, 800));
@@ -223,7 +224,9 @@ void main() {
       });
     }
 
-    testWidgets('o corte é 600 dp, o mesmo da navegação', (tester) async {
+    testWidgets('the breakpoint is 600 dp, the same of the navigation', (
+      tester,
+    ) async {
       await harness().pump(tester, size: const Size(599, 800));
       expect(find.byType(FloatingActionButton), findsOneWidget);
       expect(find.byType(NavigationBar), findsOneWidget);
@@ -232,7 +235,7 @@ void main() {
       expect(find.byType(NavigationRail), findsOneWidget);
     });
 
-    testWidgets('o botão do cabeçalho executa a ação', (tester) async {
+    testWidgets('the button of the header executes the action', (tester) async {
       await harness().pump(tester, size: const Size(900, 800));
       await select(tester, 'Comunidade');
       await tapAndSettle(
@@ -246,18 +249,16 @@ void main() {
     });
   });
 
-  group('cabeçalhos dos destinos', () {
+  group('headers of the destinations', () {
     for (final label in ['Biblioteca', 'Explorar', 'Comunidade', 'Perfil']) {
-      testWidgets('$label tem o sino de notificações', (tester) async {
+      testWidgets('$label has the bell of notifications', (tester) async {
         await harness().pump(tester, size: const Size(390, 800));
         await select(tester, label);
         expect(find.byType(NotificationsBell), findsOneWidget);
       });
     }
 
-    testWidgets('Perfil tem engrenagem; Mensagens tem cabeçalho próprio', (
-      tester,
-    ) async {
+    testWidgets('profile has gear; messages has header own', (tester) async {
       await harness().pump(tester, size: const Size(390, 800));
       await select(tester, 'Perfil');
       expect(find.byTooltip('Configurações'), findsOneWidget);
@@ -267,8 +268,8 @@ void main() {
     });
   });
 
-  group('rail e troca de destino', () {
-    testWidgets('rail expandido só a partir de 1240 dp', (tester) async {
+  group('rail and switches of destination', () {
+    testWidgets('rail expanded only the from of 1240 dp', (tester) async {
       await harness().pump(tester, size: const Size(1239, 800));
       expect(
         tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
@@ -281,7 +282,7 @@ void main() {
       );
     });
 
-    testWidgets('redimensionar mantém o destino selecionado', (tester) async {
+    testWidgets('resize keeps the destination selected', (tester) async {
       await harness().pump(tester, size: const Size(400, 800));
       await select(tester, 'Comunidade');
       expect(
@@ -300,18 +301,21 @@ void main() {
       expect(location(tester), '/community');
     });
 
-    testWidgets('tocar no destino ativo não apaga o filtro da Biblioteca', (
+    testWidgets(
+      'tap in the destination active does not delete the filter from the Library',
+      (tester) async {
+        await harness().pump(tester, size: const Size(400, 800));
+        await chooseStatus(tester, 'Jogando (1)');
+        expect(find.text('Jogo Fixture Um'), findsNothing);
+        await select(tester, 'Biblioteca');
+        expect(find.text('Jogo Fixture Um'), findsNothing);
+        expect(find.text('Jogo Fixture Dois'), findsWidgets);
+      },
+    );
+
+    testWidgets('tap in the destination active returns to the root his', (
       tester,
     ) async {
-      await harness().pump(tester, size: const Size(400, 800));
-      await chooseStatus(tester, 'Jogando (1)');
-      expect(find.text('Jogo Fixture Um'), findsNothing);
-      await select(tester, 'Biblioteca');
-      expect(find.text('Jogo Fixture Um'), findsNothing);
-      expect(find.text('Jogo Fixture Dois'), findsWidgets);
-    });
-
-    testWidgets('tocar no destino ativo volta à raiz dele', (tester) async {
       await harness().pump(tester, size: const Size(400, 800));
       await select(tester, 'Perfil');
       await tapAndSettle(tester, find.byTooltip('Configurações'));

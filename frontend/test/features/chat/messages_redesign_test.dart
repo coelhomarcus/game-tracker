@@ -72,8 +72,8 @@ Finder get search => find.widgetWithText(TextField, 'Buscar conversas');
 Finder get composer => find.widgetWithText(TextField, 'Mensagem');
 
 void main() {
-  group('lista: busca e filtro', () {
-    testWidgets('busca por nome ou username, sem caixa nem acentos', (
+  group('list: search and filter', () {
+    testWidgets('search by name or username, without box or accents', (
       tester,
     ) async {
       await openList(tester);
@@ -92,14 +92,14 @@ void main() {
       }
     });
 
-    testWidgets('não busca no texto das mensagens', (tester) async {
+    testWidgets('does not search in the text of the messages', (tester) async {
       await openList(tester);
       await tester.enterText(search, 'combinado');
       await tester.pumpAndSettle();
       expect(find.text('Nenhuma conversa encontrada'), findsOneWidget);
     });
 
-    testWidgets('sem resultado: oferece limpar a busca', (tester) async {
+    testWidgets('without result: offers clear the search', (tester) async {
       await openList(tester);
       await tester.enterText(search, 'zzz');
       await tester.pumpAndSettle();
@@ -113,7 +113,9 @@ void main() {
       expect(find.text('Cris Souza'), findsOneWidget);
     });
 
-    testWidgets('chips contam conversas; "Não lidas" filtra', (tester) async {
+    testWidgets('chips count conversations; "does not read" filters', (
+      tester,
+    ) async {
       await openList(tester);
       expect(find.text('Todas (3)'), findsOneWidget);
       expect(find.text('Não lidas (1)'), findsOneWidget);
@@ -128,7 +130,7 @@ void main() {
     });
 
     testWidgets(
-      'busca e filtro combinam; "Não lidas" sem nenhuma mostra o vazio',
+      'search and filter match; "does not read" without in the shows the empty',
       (tester) async {
         await openList(tester);
         await tapAndSettle(
@@ -151,7 +153,7 @@ void main() {
       },
     );
 
-    testWidgets('a ordem da lista é a do controlador (mais recente primeiro)', (
+    testWidgets('list order matches the controller (more recent first)', (
       tester,
     ) async {
       await openList(tester);
@@ -167,22 +169,23 @@ void main() {
       );
     });
 
-    testWidgets('busca e filtro sobrevivem à troca de aba e abrir conversa', (
-      tester,
-    ) async {
-      await openList(tester);
-      await tester.enterText(search, 'cris');
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Biblioteca').last);
-      await tapAndSettle(tester, find.text('Mensagens').last);
-      expect(tester.widget<TextField>(search).controller!.text, 'cris');
-      await tapAndSettle(tester, find.text('Cris Souza'));
-      await tapAndSettle(tester, find.byType(BackButton));
-      expect(tester.widget<TextField>(search).controller!.text, 'cris');
-      expect(find.text('beto'), findsNothing);
-    });
+    testWidgets(
+      'search and filter survive to the switches of tab and open conversation',
+      (tester) async {
+        await openList(tester);
+        await tester.enterText(search, 'cris');
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Biblioteca').last);
+        await tapAndSettle(tester, find.text('Mensagens').last);
+        expect(tester.widget<TextField>(search).controller!.text, 'cris');
+        await tapAndSettle(tester, find.text('Cris Souza'));
+        await tapAndSettle(tester, find.byType(BackButton));
+        expect(tester.widget<TextField>(search).controller!.text, 'cris');
+        expect(find.text('beto'), findsNothing);
+      },
+    );
 
-    testWidgets('descartados ao sair da conta', (tester) async {
+    testWidgets('discarded when leaving of the account', (tester) async {
       await openList(tester);
       await tester.enterText(search, 'cris');
       await tapAndSettle(
@@ -207,7 +210,7 @@ void main() {
     });
 
     testWidgets(
-      'a linha mostra até duas linhas da última mensagem, "Você:" e o ponto de não lida',
+      'row shows up to two lines of the latest message, "You:" and the dot of unread',
       (tester) async {
         final h = harness();
         h.chat.list = [
@@ -227,20 +230,21 @@ void main() {
       },
     );
 
-    testWidgets('sem conversas: convite a começar uma, sem busca nem filtros', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      h.chat.list = [];
-      await openList(tester, h: h);
-      expect(find.text('Nenhuma conversa ainda'), findsOneWidget);
-      expect(search, findsNothing);
-    });
+    testWidgets(
+      'without conversations: invitation the start the, without search or filters',
+      (tester) async {
+        final h = AppHarness();
+        h.chat.list = [];
+        await openList(tester, h: h);
+        expect(find.text('Nenhuma conversa ainda'), findsOneWidget);
+        expect(search, findsNothing);
+      },
+    );
   });
 
-  group('conversa pela rota', () {
+  group('conversation through the route', () {
     testWidgets(
-      'no celular a conversa ocupa a tela toda, sem a barra inferior',
+      'in the phone the conversation occupies the screen whole, without the slash lower',
       (tester) async {
         final h = harness();
         await h.pump(tester);
@@ -254,7 +258,7 @@ void main() {
       },
     );
 
-    testWidgets('tocar numa conversa abre a rota dela', (tester) async {
+    testWidgets('tap a conversation opens the route her', (tester) async {
       await openList(tester);
       await tapAndSettle(tester, find.text('Cris Souza'));
       expect(uri(tester), '/messages/conv-2');
@@ -262,7 +266,7 @@ void main() {
     });
 
     testWidgets(
-      'lado a lado: a rota decide a conversa e o rail continua à vista',
+      'side the side: the route decides the conversation and the rail continues to the view',
       (tester) async {
         final h = harness();
         await h.pump(tester, size: const Size(1100, 800));
@@ -278,24 +282,25 @@ void main() {
       },
     );
 
-    testWidgets('lado a lado: trocar de conversa muda a rota e o painel', (
-      tester,
-    ) async {
-      final h = harness();
-      await h.pump(tester, size: const Size(1100, 800));
-      await tapAndSettle(tester, find.text('Mensagens').last);
-      expect(find.text('Escolha uma conversa'), findsOneWidget);
+    testWidgets(
+      'side the side: switch of conversation changes the route and the panel',
+      (tester) async {
+        final h = harness();
+        await h.pump(tester, size: const Size(1100, 800));
+        await tapAndSettle(tester, find.text('Mensagens').last);
+        expect(find.text('Escolha uma conversa'), findsOneWidget);
 
-      await tapAndSettle(tester, find.text('Cris Souza'));
-      expect(uri(tester), '/messages/conv-2');
-      expect(find.text('oi de conv-2'), findsOneWidget);
-      await tapAndSettle(tester, find.text('João Pêra'));
-      expect(uri(tester), '/messages/conv-3');
-      expect(find.text('oi de conv-3'), findsOneWidget);
-      expect(find.text('oi de conv-2'), findsNothing);
-    });
+        await tapAndSettle(tester, find.text('Cris Souza'));
+        expect(uri(tester), '/messages/conv-2');
+        expect(find.text('oi de conv-2'), findsOneWidget);
+        await tapAndSettle(tester, find.text('João Pêra'));
+        expect(uri(tester), '/messages/conv-3');
+        expect(find.text('oi de conv-3'), findsOneWidget);
+        expect(find.text('oi de conv-2'), findsNothing);
+      },
+    );
 
-    testWidgets('a conversa selecionada fica destacada na lista', (
+    testWidgets('the conversation selected stays highlighted in the list', (
       tester,
     ) async {
       final h = harness();
@@ -310,7 +315,7 @@ void main() {
     });
 
     testWidgets(
-      'redimensionar mantém a mesma conversa, o rascunho e uma sala só',
+      'resize keeps the same conversation, the draft and the room only',
       (tester) async {
         final h = harness();
         await h.pump(tester, size: const Size(400, 900));
@@ -349,23 +354,24 @@ void main() {
       },
     );
 
-    testWidgets('só uma conversa fica montada por vez ao lado da lista', (
-      tester,
-    ) async {
-      final h = harness();
-      await h.pump(tester, size: const Size(1100, 800));
-      await goTo(tester, '/messages/conv-2');
-      await tapAndSettle(tester, find.text('João Pêra'));
-      expect(
-        find.byType(TextField).evaluate().where((e) {
-          final f = e.widget as TextField;
-          return f.decoration?.hintText == 'Mensagem';
-        }),
-        hasLength(1),
-      );
-    });
+    testWidgets(
+      'only the conversation stays mounted by time to the side from the list',
+      (tester) async {
+        final h = harness();
+        await h.pump(tester, size: const Size(1100, 800));
+        await goTo(tester, '/messages/conv-2');
+        await tapAndSettle(tester, find.text('João Pêra'));
+        expect(
+          find.byType(TextField).evaluate().where((e) {
+            final f = e.widget as TextField;
+            return f.decoration?.hintText == 'Mensagem';
+          }),
+          hasLength(1),
+        );
+      },
+    );
 
-    testWidgets('o corte do layout lado a lado é 760 dp de espaço útil', (
+    testWidgets('side-by-side layout breakpoint is 760 dp of space useful', (
       tester,
     ) async {
       final h = harness();
@@ -390,20 +396,21 @@ void main() {
       expect(composer, findsOneWidget);
     });
 
-    testWidgets('link direto sem sessão: entra e cai na conversa', (
-      tester,
-    ) async {
-      final h = AppHarness(signedIn: false);
-      await h.pump(tester);
-      await goTo(tester, '/messages/$convId');
-      expect(uri(tester).startsWith('/login'), isTrue);
-      await tester.enterText(find.byType(TextFormField).first, 'ana');
-      await tester.enterText(find.byType(TextFormField).last, 'senha');
-      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Entrar'));
-      expect(uri(tester), '/messages/$convId');
-    });
+    testWidgets(
+      'link direct without the session: enters and lands on the conversation',
+      (tester) async {
+        final h = AppHarness(signedIn: false);
+        await h.pump(tester);
+        await goTo(tester, '/messages/$convId');
+        expect(uri(tester).startsWith('/login'), isTrue);
+        await tester.enterText(find.byType(TextFormField).first, 'ana');
+        await tester.enterText(find.byType(TextFormField).last, 'senha');
+        await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Entrar'));
+        expect(uri(tester), '/messages/$convId');
+      },
+    );
 
-    testWidgets('conversa inexistente: erro com saída para a lista', (
+    testWidgets('missing conversation: error with the way out to the list', (
       tester,
     ) async {
       final h = harness();
@@ -415,7 +422,9 @@ void main() {
       expect(uri(tester), '/messages');
     });
 
-    testWidgets('"Nova conversa" lado a lado abre pela rota', (tester) async {
+    testWidgets('"new conversation" side the side opens through the route', (
+      tester,
+    ) async {
       final h = harness();
       h.profiles.searchResult = [
         fakePerson(id: 'u-beto', username: 'beto', name: 'Beto'),
@@ -439,7 +448,7 @@ void main() {
     });
 
     testWidgets(
-      'o botão Mensagem no perfil abre a conversa e voltar leva à lista',
+      'the button message in the profile opens the conversation and return takes to the list',
       (tester) async {
         final h = harness();
         h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
@@ -456,7 +465,7 @@ void main() {
     );
   });
 
-  group('conversa: bolhas e composer', () {
+  group('conversation: bubbles and composer', () {
     // A coluna da conversa: a janela menos o rail, os divisores e, lado a lado, a lista de 320.
     for (final (width, column) in [
       (1700.0, 1700.0 - 80 - 1 - 320 - 1),
@@ -464,7 +473,7 @@ void main() {
       (400.0, 400.0),
     ]) {
       testWidgets(
-        'as bolhas têm no máximo 560 dp ou 80% da coluna (janela ${width.toInt()})',
+        'bubbles are at most 560 dp or 80% of the column (window ${width.toInt()})',
         (tester) async {
           final h = harness();
           h.chat.history[convId] = [
@@ -489,7 +498,7 @@ void main() {
     }
 
     testWidgets(
-      'as minhas usam o container primário; as recebidas, a superfície',
+      'own messages use the primary container; received messages use the surface',
       (tester) async {
         final h = harness();
         h.chat.history[convId] = [
@@ -513,7 +522,7 @@ void main() {
       },
     );
 
-    testWidgets('Enter insere uma linha; Ctrl+Enter e Cmd+Enter enviam', (
+    testWidgets('Enter inserts the line; Ctrl+Enter and Cmd+Enter send', (
       tester,
     ) async {
       final h = harness();
@@ -548,7 +557,9 @@ void main() {
       ]);
     });
 
-    testWidgets('Ctrl+Enter com o campo vazio não envia', (tester) async {
+    testWidgets('Ctrl+Enter with the field empty does not send', (
+      tester,
+    ) async {
       final h = harness();
       await h.pump(tester, size: const Size(1100, 800));
       await goTo(tester, '/messages/$convId');
@@ -561,7 +572,7 @@ void main() {
       expect(h.chatServer.sends, isEmpty);
     });
 
-    testWidgets('o botão de enviar continua acessível', (tester) async {
+    testWidgets('the button of send continues accessible', (tester) async {
       final h = harness();
       await h.pump(tester);
       await goTo(tester, '/messages/$convId');
@@ -572,7 +583,7 @@ void main() {
     });
   });
 
-  group('conversa: rolagem com mensagens novas', () {
+  group('conversation: scrolling with messages new', () {
     AppHarness longChat() {
       final h = harness();
       h.chat.pageSize = 200;
@@ -594,7 +605,7 @@ void main() {
     }
 
     testWidgets(
-      'lendo o histórico: a nova não arrasta, mostra "Novas mensagens" e nada pula',
+      'reading the history: the new does not drags, shows "new messages" and nothing skips',
       (tester) async {
         final h = longChat();
         await h.pump(tester, size: const Size(400, 700));
@@ -623,7 +634,7 @@ void main() {
       },
     );
 
-    testWidgets('rolar até o fim por conta própria esconde o botão', (
+    testWidgets('scroll to the end by account own where the button', (
       tester,
     ) async {
       final h = longChat();
@@ -639,7 +650,9 @@ void main() {
       expect(find.text('nova'), findsOneWidget);
     });
 
-    testWidgets('perto do fim: acompanha a chegada, sem botão', (tester) async {
+    testWidgets('near of the end: follows the arrival, without button', (
+      tester,
+    ) async {
       final h = longChat();
       await h.pump(tester, size: const Size(400, 700));
       await goTo(tester, '/messages/$convId');
@@ -649,23 +662,22 @@ void main() {
       expect(find.text('Novas mensagens'), findsNothing);
     });
 
-    testWidgets(
-      'enviar a própria mensagem leva ao fim, mesmo lendo o histórico',
-      (tester) async {
-        final h = longChat();
-        await h.pump(tester, size: const Size(400, 700));
-        await goTo(tester, '/messages/$convId');
-        await scrollUp(tester);
-        await tester.enterText(composer, 'minha nova');
-        await tester.pumpAndSettle();
-        await tapAndSettle(tester, find.widgetWithIcon(IconButton, Icons.send));
-        expect(find.text('minha nova'), findsOneWidget);
-        expect(find.text('Novas mensagens'), findsNothing);
-      },
-    );
+    testWidgets('send the own message opens end, same reading the history', (
+      tester,
+    ) async {
+      final h = longChat();
+      await h.pump(tester, size: const Size(400, 700));
+      await goTo(tester, '/messages/$convId');
+      await scrollUp(tester);
+      await tester.enterText(composer, 'minha nova');
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, find.widgetWithIcon(IconButton, Icons.send));
+      expect(find.text('minha nova'), findsOneWidget);
+      expect(find.text('Novas mensagens'), findsNothing);
+    });
 
     testWidgets(
-      'carregar histórico antigo não mostra o botão nem move o que se lê',
+      'loading old history does not show the button or move the view when reading',
       (tester) async {
         final h = harness();
         h.chat.pageSize = 20;
@@ -689,7 +701,7 @@ void main() {
     );
 
     testWidgets(
-      'mensagem repetida na reconexão não duplica nem mostra o botão',
+      'repeated message after reconnection does not duplicate or show the button',
       (tester) async {
         final h = longChat();
         await h.pump(tester, size: const Size(400, 700));
@@ -709,7 +721,7 @@ void main() {
       (const Size(1440, 900), 1.0),
     ]) {
       testWidgets(
-        '${size.width.toInt()} px, texto $scale×: lista e conversa sem overflow',
+        '${size.width.toInt()} px, text $scale×: list and conversation without overflow',
         (tester) async {
           final h = harness();
           await h.pump(tester, size: size, textScale: scale);

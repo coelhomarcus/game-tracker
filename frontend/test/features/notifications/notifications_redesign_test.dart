@@ -32,7 +32,7 @@ Future<AppHarness> openCenter(
 }
 
 void main() {
-  group('central', () {
+  group('center', () {
     final items = [
       fakeNotification('n1'),
       fakeNotification('n2', type: NotificationType.comment, actor: ana),
@@ -40,7 +40,7 @@ void main() {
     ];
 
     testWidgets(
-      'linhas consistentes: avatar, ação, tempo e indicador de não lida',
+      'lines consistent: avatar, action, time and indicator of unread',
       (tester) async {
         await openCenter(
           tester,
@@ -58,7 +58,7 @@ void main() {
       },
     );
 
-    testWidgets('a não lida é lida como "Não lida"', (tester) async {
+    testWidgets('the unread item is read the "Unread"', (tester) async {
       final semantics = tester.ensureSemantics();
       await openCenter(
         tester,
@@ -75,7 +75,7 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('coluna de leitura de no máximo 680 dp', (tester) async {
+    testWidgets('column of reading of at most 680 dp', (tester) async {
       await openCenter(
         tester,
         FakeNotificationsRepository(notificationsOf(items)),
@@ -86,7 +86,7 @@ void main() {
     });
 
     testWidgets(
-      'os filtros quebram de linha com texto grande, sem rolar para o lado',
+      'the filters break of line with text large, without scroll for the side',
       (tester) async {
         await openCenter(
           tester,
@@ -113,7 +113,7 @@ void main() {
     );
 
     testWidgets(
-      '"Marcar todas como lidas" continua global e tocar num item não marca nada',
+      'the global "mark all as read" action continues working and tapping an item does not mark anything',
       (tester) async {
         final repo = FakeNotificationsRepository(notificationsOf(items));
         await openCenter(tester, repo);
@@ -123,7 +123,7 @@ void main() {
       },
     );
 
-    testWidgets('50 itens: o rodapé esclarece que são as 50 mais recentes', (
+    testWidgets('50 items: the footer explains that these are the 50 newest', (
       tester,
     ) async {
       final fifty = [for (var i = 0; i < 50; i++) fakeNotification('n$i')];
@@ -135,18 +135,19 @@ void main() {
       expect(find.text('Mostrando as 50 mais recentes.'), findsOneWidget);
     });
 
-    testWidgets('com menos de 50, não há rodapé nem paginação fingida', (
-      tester,
-    ) async {
-      await openCenter(
-        tester,
-        FakeNotificationsRepository(notificationsOf(items)),
-      );
-      expect(find.textContaining('mais recentes'), findsNothing);
-    });
+    testWidgets(
+      'with fewer than 50, there is in the footer or fake pagination',
+      (tester) async {
+        await openCenter(
+          tester,
+          FakeNotificationsRepository(notificationsOf(items)),
+        );
+        expect(find.textContaining('mais recentes'), findsNothing);
+      },
+    );
 
     testWidgets(
-      'o selo do sino segue o contador do servidor, não as linhas visíveis',
+      'the bell badge follows the server counter, not the visible rows',
       (tester) async {
         // 3 linhas visíveis, mas o servidor conta 7 não lidas no total.
         final repo = FakeNotificationsRepository(
@@ -163,36 +164,37 @@ void main() {
     );
   });
 
-  group('destino removido', () {
-    testWidgets('curtida num post apagado: explica e volta para a central', (
-      tester,
-    ) async {
-      final feed = FakeFeedRepository()
-        ..postError = const ApiException(
-          404,
-          'not_found',
-          'Post não encontrado',
+  group('destination removed', () {
+    testWidgets(
+      'like number post deleted: explains and returns for the center',
+      (tester) async {
+        final feed = FakeFeedRepository()
+          ..postError = const ApiException(
+            404,
+            'not_found',
+            'Post não encontrado',
+          );
+        final repo = FakeNotificationsRepository(
+          notificationsOf([fakeNotification('n1')]),
         );
-      final repo = FakeNotificationsRepository(
-        notificationsOf([fakeNotification('n1')]),
-      );
-      final h = AppHarness(feed: feed, notifications: repo);
-      await openCenter(tester, repo, harness: h);
-      await tapAndSettle(tester, find.textContaining('curtiu seu post'));
-      expect(uri(tester), '/posts/p1');
-      expect(find.text('Este post não está mais disponível'), findsOneWidget);
-      expect(find.text('Tentar de novo'), findsNothing);
+        final h = AppHarness(feed: feed, notifications: repo);
+        await openCenter(tester, repo, harness: h);
+        await tapAndSettle(tester, find.textContaining('curtiu seu post'));
+        expect(uri(tester), '/posts/p1');
+        expect(find.text('Este post não está mais disponível'), findsOneWidget);
+        expect(find.text('Tentar de novo'), findsNothing);
 
-      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Voltar'));
-      expect(
-        uri(tester),
-        '/notifications',
-        reason: 'volta ao ponto de partida',
-      );
-      expect(find.textContaining('curtiu seu post'), findsOneWidget);
-    });
+        await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Voltar'));
+        expect(
+          uri(tester),
+          '/notifications',
+          reason: 'volta ao ponto de partida',
+        );
+        expect(find.textContaining('curtiu seu post'), findsOneWidget);
+      },
+    );
 
-    testWidgets('novo seguidor com a conta removida: mesmo tratamento', (
+    testWidgets('new follower with the account removed: same handling', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -215,8 +217,8 @@ void main() {
     });
   });
 
-  group('telas auxiliares', () {
-    testWidgets('página não encontrada: explica e leva à Biblioteca', (
+  group('screens auxiliary', () {
+    testWidgets('page does not found: explains and takes to the Library', (
       tester,
     ) async {
       final h = AppHarness();
@@ -233,7 +235,7 @@ void main() {
     });
 
     testWidgets(
-      'restauração sem conexão: estado com as duas saídas, sem estourar a 200%',
+      'restoration without the connection: state with both exits, without overflow the 200%',
       (tester) async {
         final auth = FakeAuthRepository()
           ..restoreResult = const RestoreUnavailable();
@@ -251,7 +253,7 @@ void main() {
       ('/register', 'Criar conta'),
     ]) {
       testWidgets(
-        '$path a 360 px e 200%: título, campos e ação visíveis, sem overflow',
+        '$path the 360 px and 200%: title, fields, and action visible, without overflow',
         (tester) async {
           final h = AppHarness(signedIn: false);
           await h.pump(tester, size: const Size(360, 640), textScale: 2);
@@ -266,16 +268,15 @@ void main() {
         },
       );
 
-      testWidgets(
-        '$path em tela larga fica numa coluna estreita e centralizada',
-        (tester) async {
-          final h = AppHarness(signedIn: false);
-          await h.pump(tester, size: const Size(1440, 900));
-          await goTo(tester, path);
-          final width = tester.getSize(find.byType(TextFormField).first).width;
-          expect(width, lessThanOrEqualTo(420));
-        },
-      );
+      testWidgets('$path in screen wide stays a column narrow and centered', (
+        tester,
+      ) async {
+        final h = AppHarness(signedIn: false);
+        await h.pump(tester, size: const Size(1440, 900));
+        await goTo(tester, path);
+        final width = tester.getSize(find.byType(TextFormField).first).width;
+        expect(width, lessThanOrEqualTo(420));
+      });
     }
   });
 }

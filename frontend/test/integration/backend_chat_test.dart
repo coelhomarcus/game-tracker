@@ -126,7 +126,7 @@ void main() {
       : null;
 
   test(
-    'conectar com token inválido: o servidor recusa e a conexão renova a sessão e reconecta',
+    'connect with token invalid: the server rejects and the connection refreshes the session and reconnects',
     skip: skip,
     () async {
       final a = await signUp('cr');
@@ -155,7 +155,7 @@ void main() {
   );
 
   test(
-    'sem token a conexão é recusada com erro de autenticação',
+    'without the token, the connection is rejected with an authentication error',
     skip: skip,
     () async {
       final transport = SocketIoTransport(url: backend);
@@ -168,7 +168,7 @@ void main() {
   );
 
   test(
-    'envio com clientMessageId: ACK, evento no destinatário e histórico, sem duplicar no reenvio',
+    'sending with clientMessageId: ACK, recipient event and history without duplicates on retry',
     skip: skip,
     () async {
       final (a, b, convId) = await pair();
@@ -210,7 +210,7 @@ void main() {
   );
 
   test(
-    'digitação e presença chegam ao outro lado; snapshot correto',
+    'typing and presence arrive to the another side; snapshot correct',
     skip: skip,
     () async {
       final (a, b, convId) = await pair();
@@ -250,7 +250,7 @@ void main() {
   );
 
   test(
-    'queda e reconexão automática: reentra na sala e recebe de novo; o que passou está no histórico',
+    'drop and automatic reconnection: rejoins the room and receives again; the missed message is in history',
     skip: skip,
     () async {
       final (a, b, convId) = await pair();
@@ -309,7 +309,7 @@ void main() {
   );
 
   test(
-    'queda sem interrupção: reconecta imediatamente e continua recebendo',
+    'short drop: reconnects immediately and keeps receiving',
     skip: skip,
     () async {
       final (a, b, convId) = await pair();
@@ -335,39 +335,33 @@ void main() {
     },
   );
 
-  test(
-    'o servidor sobrevive a ids inválidos nos eventos do socket',
-    skip: skip,
-    () async {
-      final (a, b, convId) = await pair();
-      final bad = await a.transport.request('conversation:join', {
-        'conversationId': 'isto-nao-e-uuid',
-      });
-      expect(bad['error'], isNotNull);
-      final badSend = await a.transport.request('message:send', {
-        'conversationId': 'xxx',
-        'content': 'oi',
-      });
-      expect(badSend['error'], isNotNull);
-      final badCid = await a.transport.request('message:send', {
-        'conversationId': convId,
-        'content': 'oi',
-        'clientMessageId': 'nao-uuid',
-      });
-      expect(badCid['error'], isNotNull);
-      a.transport.send('typing:start', {'conversationId': 'lixo'});
+  test('server survives invalid ids in socket events', skip: skip, () async {
+    final (a, b, convId) = await pair();
+    final bad = await a.transport.request('conversation:join', {
+      'conversationId': 'isto-nao-e-uuid',
+    });
+    expect(bad['error'], isNotNull);
+    final badSend = await a.transport.request('message:send', {
+      'conversationId': 'xxx',
+      'content': 'oi',
+    });
+    expect(badSend['error'], isNotNull);
+    final badCid = await a.transport.request('message:send', {
+      'conversationId': convId,
+      'content': 'oi',
+      'clientMessageId': 'nao-uuid',
+    });
+    expect(badCid['error'], isNotNull);
+    a.transport.send('typing:start', {'conversationId': 'lixo'});
 
-      final health = await Dio().get<Map<String, dynamic>>(
-        '$backend/api/health',
-      );
-      expect(health.data!['status'], 'ok');
-      await a.close();
-      await b.close();
-    },
-  );
+    final health = await Dio().get<Map<String, dynamic>>('$backend/api/health');
+    expect(health.data!['status'], 'ok');
+    await a.close();
+    await b.close();
+  });
 
   test(
-    'histórico paginado por cursor, mensagens com e sem clientMessageId, e leitura',
+    'history paginated by cursor, messages with and without clientMessageId, and reading',
     skip: skip,
     () async {
       final (a, b, convId) = await pair();
@@ -404,7 +398,7 @@ void main() {
   );
 
   test(
-    'a mesma conversa pedida ao mesmo tempo por ambos devolve um só id',
+    'the same conversation requested at the same time by both returns the single one id',
     skip: skip,
     () async {
       final a = await signUp('cx');
