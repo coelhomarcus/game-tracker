@@ -1,0 +1,102 @@
+import { fireEvent, screen } from '@testing-library/react-native';
+import { renderRouter } from 'expo-router/testing-library';
+
+import { useSession } from '@/features/auth';
+
+jest.mock('@/features/auth', () => {
+  const { create } = jest.requireActual('zustand');
+  return {
+    ...jest.requireActual('@/features/auth'),
+    useSession: create(() => ({ status: 'restoring', user: null, bootstrap: jest.fn(), signOut: jest.fn() })),
+  };
+});
+
+type Status = 'restoring' | 'signedOut' | 'signedIn' | 'unreachable';
+
+const bootstrap = jest.fn();
+const signOut = jest.fn();
+
+function setStatus(status: Status) {
+  useSession.setState({ status, user: null, bootstrap, signOut });
+}
+
+function renderApp(initialUrl: string) {
+  return renderRouter('./src/app', { initialUrl });
+}
+
+beforeEach(() => {
+  bootstrap.mockReset();
+  signOut.mockReset();
+});
+
+test('signed out lands on login', async () => {
+  setStatus('signedOut');
+  await renderApp('/library');
+  expect(await screen.findByText('E-mail ou username')).toBeOnTheScreen();
+});
+
+// The tab bar renders buttons labelled "<name>, tab, <n> of <total>".
+const tabButtons = () => screen.findAllByRole('button', { name: /, tab, [0-9] of 5$/ });
+
+test('signed in shows the five tabs in order', async () => {
+  setStatus('signedIn');
+  await renderApp('/');
+  const buttons = await tabButtons();
+  expect(buttons.map((button) => String(button.props.accessibilityLabel).split(',')[0])).toEqual([
+    'Início',
+    'Biblioteca',
+    'Explorar',
+    'Mensagens',
+    'Perfil',
+  ]);
+});
+
+test('signed in cannot open login', async () => {
+  setStatus('signedIn');
+  await renderApp('/login');
+  expect(await screen.findByRole('button', { name: /^Início, tab/, selected: true })).toBeOnTheScreen();
+});
+
+test('restoring shows a spinner and runs bootstrap once', async () => {
+  setStatus('restoring');
+  await renderApp('/');
+  expect(await screen.findByLabelText('Carregando')).toBeOnTheScreen();
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+});
+
+test('unreachable offers retry and sign out', async () => {
+  setStatus('unreachable');
+  await renderApp('/');
+  expect(await screen.findByText('Não foi possível conectar')).toBeOnTheScreen();
+  expect(screen.getByText('Sua sessão está guardada. Verifique a conexão e tente de novo.')).toBeOnTheScreen();
+  bootstrap.mockClear();
+
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+
+  await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
+  expect(signOut).toHaveBeenCalledTimes(1);
+});
+
+test('bell opens notifications', async () => {
+  setStatus('signedIn');
+  await renderApp('/');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Notificações' }));
+  expect(await screen.findByText('Notificações')).toBeOnTheScreen();
+});
+
+test('signing out from the profile returns to login', async () => {
+  setStatus('signedIn');
+  signOut.mockImplementation(async () => setStatus('signedOut'));
+  await renderApp('/profile');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Sair da conta' }));
+  expect(signOut).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText('E-mail ou username')).toBeOnTheScreen();
+});
+
+test('profile placeholder signs out', async () => {
+  setStatus('signedIn');
+  await renderApp('/profile');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Sair da conta' }));
+  expect(signOut).toHaveBeenCalledTimes(1);
+});
