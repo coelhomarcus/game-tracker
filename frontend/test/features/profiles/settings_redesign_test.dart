@@ -44,8 +44,8 @@ ThemeMode appThemeMode(WidgetTester tester) =>
     ThemeMode.system;
 
 void main() {
-  group('estrutura', () {
-    testWidgets('as seções, na ordem do plano', (tester) async {
+  group('structure', () {
+    testWidgets('sections, in the planned order', (tester) async {
       await open(tester);
       final order = [
         for (final t in [
@@ -61,7 +61,7 @@ void main() {
       expect(order.toSet(), hasLength(5));
     });
 
-    testWidgets('coluna de leitura de no máximo 680 dp', (tester) async {
+    testWidgets('column of reading of at most 680 dp', (tester) async {
       await open(tester, size: const Size(1440, 3000));
       final width = tester.getSize(find.byType(RadioGroup<LibrarySort>)).width;
       expect(width, lessThanOrEqualTo(680));
@@ -72,26 +72,27 @@ void main() {
       );
     });
 
-    testWidgets('Sobre: nome e versão, sem links nem ações inexistentes', (
-      tester,
-    ) async {
-      await open(tester);
-      expect(find.text('GameTracker'), findsOneWidget);
-      expect(find.text('Versão $appVersion'), findsOneWidget);
-      for (final t in [
-        'Termos',
-        'Privacidade',
-        'Exportar',
-        'Excluir conta',
-        'Apagar conta',
-      ]) {
-        expect(find.textContaining(t), findsNothing, reason: t);
-      }
-    });
+    testWidgets(
+      'about: name and version, without links or nonexistent actions',
+      (tester) async {
+        await open(tester);
+        expect(find.text('GameTracker'), findsOneWidget);
+        expect(find.text('Versão $appVersion'), findsOneWidget);
+        for (final t in [
+          'Termos',
+          'Privacidade',
+          'Exportar',
+          'Excluir conta',
+          'Apagar conta',
+        ]) {
+          expect(find.textContaining(t), findsNothing, reason: t);
+        }
+      },
+    );
   });
 
-  group('aparência', () {
-    testWidgets('três opções com amostra; a escolhida fica marcada', (
+  group('appearance', () {
+    testWidgets('three options with the preview; the chosen one is marked', (
       tester,
     ) async {
       await open(tester);
@@ -106,7 +107,7 @@ void main() {
       expect(find.text('Preferência deste aparelho.'), findsOneWidget);
     });
 
-    testWidgets('trocar aplica na hora, persiste e move a marca', (
+    testWidgets('switch applies immediately, persists and move the marks', (
       tester,
     ) async {
       final h = await open(tester);
@@ -132,7 +133,7 @@ void main() {
     });
 
     testWidgets(
-      'cada opção é um item de grupo exclusivo com seleção anunciada',
+      'each option is an exclusive group item with announced selection',
       (tester) async {
         final semantics = tester.ensureSemantics();
         await open(tester, prefs: {'theme.mode': 'dark'});
@@ -153,7 +154,7 @@ void main() {
       },
     );
 
-    testWidgets('as opções têm alvo de pelo menos 48 dp', (tester) async {
+    testWidgets('options have the target of at least 48 dp', (tester) async {
       await open(tester);
       for (final t in ['Sistema', 'Claro', 'Escuro']) {
         final size = tester.getSize(
@@ -165,42 +166,41 @@ void main() {
     });
   });
 
-  group('biblioteca', () {
-    testWidgets(
-      'grade/lista e ordenação são as preferências da própria Biblioteca',
-      (tester) async {
-        final h = await open(
-          tester,
-          prefs: {'library.grid': true, 'library.sort': 'recent'},
-        );
-        expect(
-          tester
-              .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
-              .selected,
-          {true},
-        );
-        await tapAndSettle(tester, find.text('Lista'));
-        await tapAndSettle(tester, find.text('Nome A–Z'));
+  group('library', () {
+    testWidgets("grid/list and sorting are the user's Library preferences", (
+      tester,
+    ) async {
+      final h = await open(
+        tester,
+        prefs: {'library.grid': true, 'library.sort': 'recent'},
+      );
+      expect(
+        tester
+            .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+            .selected,
+        {true},
+      );
+      await tapAndSettle(tester, find.text('Lista'));
+      await tapAndSettle(tester, find.text('Nome A–Z'));
 
-        // A Biblioteca mostra o que foi escolhido aqui (mesmos providers, nada duplicado).
-        await goTo(tester, '/library');
-        expect(find.byType(GameListRow), findsWidgets, reason: 'lista');
-        expect(find.byTooltip('Ordenar por Nome A–Z'), findsOneWidget);
-        expect(h.library.listCalls, greaterThan(0));
+      // A Biblioteca mostra o que foi escolhido aqui (mesmos providers, nada duplicado).
+      await goTo(tester, '/library');
+      expect(find.byType(GameListRow), findsWidgets, reason: 'lista');
+      expect(find.byTooltip('Ordenar por Nome A–Z'), findsOneWidget);
+      expect(h.library.listCalls, greaterThan(0));
 
-        // E o contrário: mudar na Biblioteca reflete em Configurações.
-        await tapAndSettle(tester, find.byTooltip('Mostrar como grade'));
-        await goTo(tester, '/settings');
-        expect(
-          tester
-              .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
-              .selected,
-          {true},
-        );
-      },
-    );
+      // E o contrário: mudar na Biblioteca reflete em Configurações.
+      await tapAndSettle(tester, find.byTooltip('Mostrar como grade'));
+      await goTo(tester, '/settings');
+      expect(
+        tester
+            .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+            .selected,
+        {true},
+      );
+    });
 
-    testWidgets('a ordenação lista as quatro opções, com a atual marcada', (
+    testWidgets('sorting lists the four options, with the current marked', (
       tester,
     ) async {
       await open(tester, prefs: {'library.sort': 'most_played'});
@@ -219,9 +219,9 @@ void main() {
     });
   });
 
-  group('notificações', () {
+  group('notifications', () {
     testWidgets(
-      'sem adaptador: explica o que existe e não oferece um interruptor inoperante',
+      'without adapter: explains the that exists and does not offers the switch inoperative',
       (tester) async {
         await open(tester);
         expect(
@@ -236,7 +236,7 @@ void main() {
       },
     );
 
-    testWidgets('"Abrir central de notificações" abre a central', (
+    testWidgets('"open center of notifications" opens the center', (
       tester,
     ) async {
       await open(tester);
@@ -246,18 +246,21 @@ void main() {
     });
   });
 
-  group('conta', () {
-    testWidgets('mostra nome, handle e e-mail; Editar perfil abre a edição', (
+  group('account', () {
+    testWidgets(
+      'shows name, handle and and-mail; edit profile opens the editing',
+      (tester) async {
+        await open(tester);
+        expect(find.text('ANA'), findsWidgets);
+        expect(find.text('@ana · ana@example.test'), findsOneWidget);
+        await tapAndSettle(tester, find.text('Editar perfil'));
+        expect(uri(tester), '/me/edit');
+      },
+    );
+
+    testWidgets('without the conversation draft, leaving is immediate', (
       tester,
     ) async {
-      await open(tester);
-      expect(find.text('ANA'), findsWidgets);
-      expect(find.text('@ana · ana@example.test'), findsOneWidget);
-      await tapAndSettle(tester, find.text('Editar perfil'));
-      expect(uri(tester), '/me/edit');
-    });
-
-    testWidgets('sem rascunho de conversa, sair é direto', (tester) async {
       final auth = FakeAuthRepository();
       final h = AppHarness(
         auth: auth,
@@ -275,7 +278,7 @@ void main() {
       expect(find.text('Entrar'), findsWidgets);
     });
 
-    testWidgets('com mensagem escrita e não enviada, pergunta antes de sair', (
+    testWidgets('with message written and does not send, asks before leave', (
       tester,
     ) async {
       final auth = FakeAuthRepository();
@@ -324,7 +327,7 @@ void main() {
       (const Size(390, 844), 1.0),
       (const Size(1440, 900), 1.0),
     ]) {
-      testWidgets('${size.width.toInt()} px, texto $scale×: sem overflow', (
+      testWidgets('${size.width.toInt()} px, text $scale×: without overflow', (
         tester,
       ) async {
         await open(tester, size: size, textScale: scale);

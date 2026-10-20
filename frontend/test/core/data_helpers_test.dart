@@ -6,7 +6,7 @@ import 'package:gametracker/core/network/image_url.dart';
 
 void main() {
   group('DateOnly', () {
-    test('instante UTC à meia-noite mantém o dia, em qualquer fuso', () {
+    test('instant UTC to the half-night keeps the day, in any timezone', () {
       final d = DateOnly.parseApi('2026-01-05T00:00:00.000Z');
       expect((d.year, d.month, d.day), (2026, 1, 5));
       // O caminho ingênuo mostraria 04/01 em fusos a oeste de UTC.
@@ -20,42 +20,39 @@ void main() {
       }
     });
 
-    test('aceita YYYY-MM-DD e formata para API e tela', () {
+    test('accepts YYYY-MM-DD and formats for API and screen', () {
       final d = DateOnly.parseApi('2026-03-09');
       expect(d.toApi(), '2026-03-09');
       expect(d.format(), '09/03/2026');
     });
 
-    test('data do picker local vira o mesmo dia civil', () {
+    test('date of the picker local becomes the same day civil', () {
       expect(
         DateOnly.fromLocal(DateTime(2026, 12, 31, 23, 59)).toApi(),
         '2026-12-31',
       );
     });
 
-    test(
-      'daysThrough conta as duas pontas, inclusive na virada de ano e bissexto',
-      () {
-        expect(
-          const DateOnly(2026, 1, 1).daysThrough(const DateOnly(2026, 1, 1)),
-          1,
-        );
-        expect(
-          const DateOnly(2026, 1, 1).daysThrough(const DateOnly(2026, 1, 3)),
-          3,
-        );
-        expect(
-          const DateOnly(2025, 12, 31).daysThrough(const DateOnly(2026, 1, 1)),
-          2,
-        );
-        expect(
-          const DateOnly(2024, 2, 28).daysThrough(const DateOnly(2024, 3, 1)),
-          3,
-        );
-      },
-    );
+    test('daysThrough account the two ends, including in the turned of year and leap', () {
+      expect(
+        const DateOnly(2026, 1, 1).daysThrough(const DateOnly(2026, 1, 1)),
+        1,
+      );
+      expect(
+        const DateOnly(2026, 1, 1).daysThrough(const DateOnly(2026, 1, 3)),
+        3,
+      );
+      expect(
+        const DateOnly(2025, 12, 31).daysThrough(const DateOnly(2026, 1, 1)),
+        2,
+      );
+      expect(
+        const DateOnly(2024, 2, 28).daysThrough(const DateOnly(2024, 3, 1)),
+        3,
+      );
+    });
 
-    test('ordenação e igualdade', () {
+    test('ordering and equality', () {
       expect(
         const DateOnly(2026, 1, 2).isAfter(const DateOnly(2026, 1, 1)),
         isTrue,
@@ -64,32 +61,32 @@ void main() {
     });
   });
 
-  group('horas', () {
-    test('aceita vírgula e ponto', () {
+  group('hours', () {
+    test('accepts comma and dot', () {
       expect(parseHours('12'), 12.0);
       expect(parseHours('12,5'), 12.5);
       expect(parseHours('12.5'), 12.5);
       expect(parseHours(' 0 '), 0.0, reason: 'zero é valor, não ausência');
     });
 
-    test('rejeita lixo e vazio', () {
+    test('rejects trash and empty', () {
       for (final bad in ['', '  ', 'abc', '1,2,3', '-3', '1e3', ',5', '12,']) {
         expect(parseHours(bad), isNull, reason: bad);
       }
     });
 
-    test('normaliza para uma casa', () {
+    test('normalizes for the home', () {
       expect(parseHours('12,34'), 12.3);
       expect(parseHours('12,35'), 12.4);
     });
 
-    test('formata com vírgula e prefill sem zero à toa', () {
+    test('formats with comma and prefill without zero to the left', () {
       expect(formatHours(20), '20,0');
       expect(hoursInputText(20), '20');
       expect(hoursInputText(12.5), '12,5');
     });
 
-    test('teto plausível: 24 h por dia de calendário', () {
+    test('plausible ceiling: 24 hours per calendar day', () {
       const today = DateOnly(2026, 6, 10);
       expect(maxPlausibleHours(null, null, today: today), maxHoursPlayed);
       expect(
@@ -114,7 +111,7 @@ void main() {
       );
     });
 
-    test('início depois de hoje não bloqueia (a data é que está errada)', () {
+    test('start after today does not blocks (the date is that is wrong)', () {
       expect(
         maxPlausibleHours(
           const DateOnly(2026, 7, 1),
@@ -127,7 +124,7 @@ void main() {
   });
 
   group('Patch', () {
-    test('diff: manter, limpar, substituir', () {
+    test('diff: keep, clear, replace', () {
       expect(Patch<int>.diff(5, 5), isA<Keep<int>>());
       expect(Patch<int>.diff(null, null), isA<Keep<int>>());
       expect(Patch<int>.diff(5, null), isA<Clear<int>>());
@@ -135,7 +132,7 @@ void main() {
       expect((Patch<int>.diff(5, 7) as Replace<int>).value, 7);
     });
 
-    test('só entra no JSON o que mudou; limpar vira null', () {
+    test('only enters in the JSON the that changed; clear becomes null', () {
       final body = <String, Object?>{};
       const Keep<int>().putInto(body, 'a', (v) => v);
       const Clear<int>().putInto(body, 'b', (v) => v);
@@ -144,13 +141,13 @@ void main() {
       expect(body.containsKey('a'), isFalse);
     });
 
-    test('zero horas é valor distinto de limpar', () {
+    test('zero hours is value distinct of clear', () {
       expect(Patch<double>.diff(5.0, 0.0), isA<Replace<double>>());
     });
   });
 
   group('ImageUrls', () {
-    test('reescreve o host das rotas de imagem do backend', () {
+    test('rewrites the host of the routes of image from the backend', () {
       final url = ImageUrls.resolve(
         'http://localhost:3100/api/images/cover?url=https%3A%2F%2Fx.test%2Fa.jpg',
         baseUrl: 'http://10.0.2.2:3100',
@@ -161,7 +158,7 @@ void main() {
       );
     });
 
-    test('uploads também; URLs externas passam intactas', () {
+    test('uploads also; URLs external remain unchanged', () {
       expect(
         ImageUrls.resolve(
           'http://localhost:3100/uploads/a.jpg',
@@ -178,7 +175,7 @@ void main() {
       );
     });
 
-    test('nulo e vazio', () {
+    test('null and empty', () {
       expect(ImageUrls.resolve(null), isNull);
       expect(ImageUrls.resolve(''), isNull);
     });

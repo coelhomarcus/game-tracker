@@ -57,7 +57,7 @@ void main() {
       : null;
 
   test(
-    'post sem vínculo: cria, lê pelo id e aparece no Geral do autor e no Seguindo de quem o segue',
+    "post without the link: creates, reads by id, and appears in the author's General and in the follower's Following feeds",
     skip: skip,
     () async {
       final a = await signUp('fa');
@@ -94,7 +94,7 @@ void main() {
   );
 
   test(
-    'posts por jogo: só os daquele jogo, pelo UUID, paginados sem repetir',
+    'posts by game: only the that game, through the UUID, paginated without repeat',
     skip: skip,
     () async {
       final a = await signUp('fg');
@@ -137,22 +137,18 @@ void main() {
     },
   );
 
-  test(
-    'posts por jogo: UUID inexistente devolve lista vazia',
-    skip: skip,
-    () async {
-      final a = await signUp('fi');
-      await expectLater(
-        a.feed
-            .gamePosts('00000000-0000-0000-0000-000000000000')
-            .then((p) => p.items),
-        completion(isEmpty),
-      );
-    },
-  );
+  test('posts by game: UUID missing returns list empty', skip: skip, () async {
+    final a = await signUp('fi');
+    await expectLater(
+      a.feed
+          .gamePosts('00000000-0000-0000-0000-000000000000')
+          .then((p) => p.items),
+      completion(isEmpty),
+    );
+  });
 
   test(
-    'post vinculado a um jogo (sem registro) e a um registro',
+    'post linked the the game (without entry) and the one entry',
     skip: skip,
     () async {
       final a = await signUp('fc');
@@ -184,7 +180,7 @@ void main() {
   );
 
   test(
-    'registro de outro usuário não pode ser usado em um post',
+    'entry of another user cannot ser used in the post',
     skip: skip,
     () async {
       final a = await signUp('fd');
@@ -201,7 +197,7 @@ void main() {
   );
 
   test(
-    'curtir e descurtir são idempotentes e refletem em likedByMe e likeCount',
+    'like and unlike are idempotent and update likedByMe and likeCount',
     skip: skip,
     () async {
       final a = await signUp('ff');
@@ -226,7 +222,7 @@ void main() {
   );
 
   test(
-    'comentários: árvore, respostas profundas, curtidas e contador do post',
+    'comments: tree, deep replies, likes, and post counter',
     skip: skip,
     () async {
       final a = await signUp('fh');
@@ -266,7 +262,7 @@ void main() {
   );
 
   test(
-    'paginação por cursor: mais de uma página, sem duplicar nem perder posts',
+    'cursor pagination: more pages, without duplicates or lost posts',
     skip: skip,
     () async {
       final a = await signUp('fj');
@@ -300,7 +296,7 @@ void main() {
   );
 
   test(
-    'atividade automática guarda o status do momento e sobrevive à exclusão do registro',
+    'automatic activity stores the status at the time and survives entry deletion',
     skip: skip,
     () async {
       final a = await signUp('fl');
@@ -349,7 +345,7 @@ void main() {
   );
 
   test(
-    'post inexistente e texto acima do limite viram erros de domínio',
+    'missing post and over-limit text become domain errors',
     skip: skip,
     () async {
       final a = await signUp('fm');

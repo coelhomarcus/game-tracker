@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Gera o APK de release assinado e o artefato web, apontando para a API de produção.
+# Gera o APK de release assinado, apontando para a API de produção.
 #   API_URL=https://api.exemplo.com tool/build_release.sh
 # Falha se a API não for HTTPS, se faltar android/key.properties ou se o APK sair assinado com
-# a chave de debug. A URL da API é pública; senhas e chaves NUNCA entram em --dart-define.
+# a chave de debug. A URL da API e a versão são públicas; senhas e chaves NUNCA entram em --dart-define.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,8 +16,14 @@ case "$API_URL" in
 esac
 
 flutter pub get
-flutter build apk --release --dart-define=API_URL="$API_URL" -PrequireReleaseSigning=true
-flutter build web --release --dart-define=API_URL="$API_URL"
+BUILD_ARGS=(--release --dart-define=API_URL="$API_URL" -PrequireReleaseSigning=true)
+if [ -n "${APP_VERSION:-}" ]; then
+  BUILD_ARGS+=(--build-name="$APP_VERSION" --dart-define=APP_VERSION="$APP_VERSION")
+fi
+if [ -n "${BUILD_NUMBER:-}" ]; then
+  BUILD_ARGS+=(--build-number="$BUILD_NUMBER")
+fi
+flutter build apk "${BUILD_ARGS[@]}"
 
 APK=build/app/outputs/flutter-apk/app-release.apk
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"

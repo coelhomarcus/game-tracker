@@ -33,7 +33,7 @@ List<String> names(LibraryOverview o) => [
 
 void main() {
   group('foldText', () {
-    test('ignora caixa, acentos e espaços repetidos', () {
+    test('ignores case, accents, and repeated spaces', () {
       expect(foldText('  Pokémon   Ônix '), 'pokemon onix');
       expect(foldText('ÁÉÍÓÚ àèìòù ãõ ç ñ'), 'aeiou aeiou ao c n');
       expect(foldText('Straße'), 'strasse');
@@ -41,14 +41,14 @@ void main() {
     });
   });
 
-  group('agrupamento', () {
+  group('grouping', () {
     final replays = [
       entry('a', 1, 'Hades', status: GameStatus.completed, created: 1),
       entry('b', 1, 'Hades', status: GameStatus.playing, created: 3),
       entry('c', 2, 'Celeste', created: 2),
     ];
 
-    test('um grupo por jogo, preservando todos os registros', () {
+    test('the group by game, preserving all the entries', () {
       final o = buildLibraryOverview(replays);
       expect(o.groups, hasLength(2));
       final hades = o.groups.firstWhere((g) => g.game.name == 'Hades');
@@ -57,7 +57,7 @@ void main() {
       expect(hades.hasReplays, isTrue);
     });
 
-    test('registros do mesmo jogo na mesma plataforma continuam separados', () {
+    test('entries the same game the same platform continue separated', () {
       final o = buildLibraryOverview([
         entry('x', 1, 'Hades', platform: 'PC', created: 1),
         entry('y', 1, 'Hades', platform: 'PC', created: 2),
@@ -67,7 +67,7 @@ void main() {
       expect(o.summary.games, 1);
     });
 
-    test('ordem dos registros: mais novo primeiro, desempate pelo id', () {
+    test('order of the entries: newest first, tie-break through the id', () {
       final o = buildLibraryOverview([
         entry('a', 1, 'Hades', created: 5),
         entry('c', 1, 'Hades', created: 5),
@@ -80,26 +80,29 @@ void main() {
       );
     });
 
-    test('resumo conta jogos únicos, registros e jogos em andamento', () {
-      final o = buildLibraryOverview([
-        ...replays,
-        entry('d', 3, 'Doom', status: GameStatus.playing, created: 4),
-        entry('e', 3, 'Doom', status: GameStatus.playing, created: 5),
-      ]);
-      expect(o.summary.games, 3);
-      expect(o.summary.records, 5);
-      expect(o.summary.playingGames, 2, reason: 'Doom conta uma vez');
-    });
+    test(
+      'summary counts unique games, entries, and currently playing games',
+      () {
+        final o = buildLibraryOverview([
+          ...replays,
+          entry('d', 3, 'Doom', status: GameStatus.playing, created: 4),
+          entry('e', 3, 'Doom', status: GameStatus.playing, created: 5),
+        ]);
+        expect(o.summary.games, 3);
+        expect(o.summary.records, 5);
+        expect(o.summary.playingGames, 2, reason: 'Doom conta uma vez');
+      },
+    );
   });
 
-  group('status e plataforma no mesmo registro', () {
+  group('status and platform the same entry', () {
     // Concluído no PC + jogando no PS5: não pode aparecer em "jogando / PC".
     final mixed = [
       entry('a', 1, 'Hades', status: GameStatus.completed, platform: 'PC'),
       entry('b', 1, 'Hades', status: GameStatus.playing, platform: 'PS5'),
     ];
 
-    test('jogando + PC não encontra o jogo', () {
+    test('playing + PC does not finds the game', () {
       final o = buildLibraryOverview(
         mixed,
         filter: const LibraryFilter(
@@ -110,7 +113,7 @@ void main() {
       expect(o.groups, isEmpty);
     });
 
-    test('jogando + PS5 encontra só o registro do PS5', () {
+    test('playing + PS5 finds only the entry of the PS5', () {
       final o = buildLibraryOverview(
         mixed,
         filter: const LibraryFilter(
@@ -124,7 +127,7 @@ void main() {
       expect(g.recordsLabel, '1 de 2 registros');
     });
 
-    test('só plataforma: o jogo aparece com o registro dela', () {
+    test('only platform: the game appears with the entry her', () {
       final o = buildLibraryOverview(
         mixed,
         filter: const LibraryFilter(platformKey: 'pc'),
@@ -132,7 +135,7 @@ void main() {
       expect([for (final e in o.groups.single.entries) e.id], ['a']);
     });
 
-    test('a plataforma é comparada pelo texto normalizado', () {
+    test('platform is compared using normalized text', () {
       final o = buildLibraryOverview([
         entry('a', 1, 'Hades', platform: 'PlayStation 5'),
         entry('b', 2, 'Celeste', platform: 'playstation  5'),
@@ -146,7 +149,7 @@ void main() {
       expect(filtered.groups, hasLength(2));
     });
 
-    test('rótulos de status do cartão', () {
+    test('card status labels', () {
       final all = buildLibraryOverview(mixed).groups.single;
       expect(all.mixedStatus, isTrue);
       expect(all.singleStatus, isNull);
@@ -167,21 +170,21 @@ void main() {
     });
   });
 
-  group('busca', () {
+  group('search', () {
     final games = [
       entry('a', 1, 'Pokémon Ônix'),
       entry('b', 2, 'Celeste'),
       entry('c', 3, 'Hollow Knight'),
     ];
 
-    test('sem diferença de caixa nem de acentos', () {
+    test('without differences in case or accents', () {
       for (final q in ['pokemon', 'POKÉMON', 'onix', 'ÔNIX', 'mon on']) {
         final o = buildLibraryOverview(games, filter: LibraryFilter(query: q));
         expect(names(o), ['Pokémon Ônix'], reason: q);
       }
     });
 
-    test('só considera o título, não a plataforma', () {
+    test('only considers the title, does not the platform', () {
       expect(
         names(
           buildLibraryOverview(games, filter: const LibraryFilter(query: 'pc')),
@@ -190,7 +193,7 @@ void main() {
       );
     });
 
-    test('consulta só de espaços não filtra', () {
+    test('whitespace-only query does not filter', () {
       final o = buildLibraryOverview(
         games,
         filter: const LibraryFilter(query: '   '),
@@ -200,7 +203,7 @@ void main() {
     });
   });
 
-  group('contagens dos chips', () {
+  group('counts of the chips', () {
     final data = [
       entry('a', 1, 'Hades', status: GameStatus.completed, platform: 'PC'),
       entry('b', 1, 'Hades', status: GameStatus.playing, platform: 'PS5'),
@@ -208,7 +211,7 @@ void main() {
       entry('d', 3, 'Doom', status: GameStatus.backlog, platform: 'PC'),
     ];
 
-    test('contam jogos distintos; um jogo em dois status entra nos dois', () {
+    test('count games distinct; the game in two status enters in the two', () {
       final o = buildLibraryOverview(data);
       expect(o.totalGames, 3);
       expect(o.statusCounts[GameStatus.completed], 2);
@@ -219,29 +222,32 @@ void main() {
       expect(sum, 4, reason: 'a soma passa do total de jogos (3)');
     });
 
-    test('seguem a busca e a plataforma, mas não o status escolhido', () {
-      final pc = buildLibraryOverview(
-        data,
-        filter: const LibraryFilter(
-          platformKey: 'pc',
-          status: GameStatus.dropped,
-        ),
-      );
-      expect(pc.groups, isEmpty);
-      expect(pc.totalGames, 3);
-      expect(pc.statusCounts[GameStatus.playing], 0, reason: 'o PS5 saiu');
-      expect(pc.statusCounts[GameStatus.completed], 2);
+    test(
+      'follow the search and the platform, but does not the status chosen',
+      () {
+        final pc = buildLibraryOverview(
+          data,
+          filter: const LibraryFilter(
+            platformKey: 'pc',
+            status: GameStatus.dropped,
+          ),
+        );
+        expect(pc.groups, isEmpty);
+        expect(pc.totalGames, 3);
+        expect(pc.statusCounts[GameStatus.playing], 0, reason: 'o PS5 saiu');
+        expect(pc.statusCounts[GameStatus.completed], 2);
 
-      final search = buildLibraryOverview(
-        data,
-        filter: const LibraryFilter(query: 'hades'),
-      );
-      expect(search.totalGames, 1);
-      expect(search.statusCounts[GameStatus.completed], 1);
-      expect(search.statusCounts[GameStatus.playing], 1);
-    });
+        final search = buildLibraryOverview(
+          data,
+          filter: const LibraryFilter(query: 'hades'),
+        );
+        expect(search.totalGames, 1);
+        expect(search.statusCounts[GameStatus.completed], 1);
+        expect(search.statusCounts[GameStatus.playing], 1);
+      },
+    );
 
-    test('o resumo geral ignora os filtros', () {
+    test('the summary general ignores the filters', () {
       final o = buildLibraryOverview(
         data,
         filter: const LibraryFilter(query: 'celeste'),
@@ -251,9 +257,9 @@ void main() {
     });
   });
 
-  group('Jogando agora', () {
+  group('currently playing', () {
     test(
-      'um jogo por vez, pelo registro jogando mais recente, no máximo 6',
+      'the game by time, through the entry playing more recent, at most 6',
       () {
         final entries = [
           for (var i = 0; i < 8; i++)
@@ -293,7 +299,7 @@ void main() {
       },
     );
 
-    test('um jogo com dois registros jogando aparece uma vez', () {
+    test('the game with two entries playing appears the time', () {
       final shelf = buildLibraryOverview([
         entry('a', 1, 'Doom', status: GameStatus.playing, created: 1),
         entry('b', 1, 'Doom', status: GameStatus.playing, created: 2),
@@ -302,19 +308,19 @@ void main() {
       expect(shelf.single.entries, hasLength(2));
     });
 
-    test('vazia sem nada em andamento', () {
+    test('empty without nothing in progress', () {
       expect(buildLibraryOverview([entry('a', 1, 'Hades')]).shelf, isEmpty);
     });
   });
 
-  group('ordenação', () {
+  group('ordering', () {
     LibraryOverview sorted(
       List<GameEntry> e,
       LibrarySort s, [
       LibraryFilter f = const LibraryFilter(),
     ]) => buildLibraryOverview(e, sort: s, filter: f);
 
-    test('recentes: maior createdAt do grupo; mais tempo: menor', () {
+    test('recent: larger createdAt of the group; more time: smaller', () {
       final data = [
         entry('a', 1, 'Antigo', created: 1),
         entry('b', 2, 'Replay', created: 2),
@@ -333,7 +339,7 @@ void main() {
       ]);
     });
 
-    test('Nome A–Z ignora acentos e caixa', () {
+    test('name A–Z ignores accents and case', () {
       final data = [
         entry('a', 1, 'zelda'),
         entry('b', 2, 'Ápice'),
@@ -346,35 +352,38 @@ void main() {
       ]);
     });
 
-    test('mais horas: soma dos registros; sem horas por último; zero antes de ausência', () {
-      final data = [
-        entry('a', 1, 'Sem horas'),
-        entry('b', 2, 'Zero', hours: 0),
-        entry('c', 3, 'Soma', hours: 4),
-        entry('d', 3, 'Soma', hours: 6),
-        entry('e', 4, 'Dez', hours: 10),
-        entry('f', 5, 'Cinco', hours: 5),
-        entry('g', 5, 'Cinco'),
-      ];
-      expect(names(sorted(data, LibrarySort.mostPlayed)), [
-        'Dez',
-        'Soma',
-        'Cinco',
-        'Zero',
-        'Sem horas',
-      ]);
-      final soma = sorted(
-        data,
-        LibrarySort.mostPlayed,
-      ).groups.firstWhere((g) => g.game.name == 'Soma');
-      expect(soma.knownHours, 10);
-      expect(
-        sorted(data, LibrarySort.mostPlayed).groups.last.knownHours,
-        isNull,
-      );
-    });
+    test(
+      'most hours: sum entries; missing hours last; zero before missing',
+      () {
+        final data = [
+          entry('a', 1, 'Sem horas'),
+          entry('b', 2, 'Zero', hours: 0),
+          entry('c', 3, 'Soma', hours: 4),
+          entry('d', 3, 'Soma', hours: 6),
+          entry('e', 4, 'Dez', hours: 10),
+          entry('f', 5, 'Cinco', hours: 5),
+          entry('g', 5, 'Cinco'),
+        ];
+        expect(names(sorted(data, LibrarySort.mostPlayed)), [
+          'Dez',
+          'Soma',
+          'Cinco',
+          'Zero',
+          'Sem horas',
+        ]);
+        final soma = sorted(
+          data,
+          LibrarySort.mostPlayed,
+        ).groups.firstWhere((g) => g.game.name == 'Soma');
+        expect(soma.knownHours, 10);
+        expect(
+          sorted(data, LibrarySort.mostPlayed).groups.last.knownHours,
+          isNull,
+        );
+      },
+    );
 
-    test('a chave usa só os registros que passaram pelos filtros', () {
+    test('the key uses only the entries that passed by filters', () {
       final data = [
         entry('a', 1, 'Alfa', status: GameStatus.completed, hours: 100),
         entry('b', 1, 'Alfa', status: GameStatus.playing, hours: 1),
@@ -394,7 +403,7 @@ void main() {
       );
     });
 
-    test('empate: título e depois id do jogo, resultado estável', () {
+    test('tie: game title then id, stable result', () {
       final data = [
         entry('b', 2, 'Igual', created: 1),
         entry('a', 1, 'Igual', created: 1),
@@ -414,13 +423,13 @@ void main() {
     });
   });
 
-  group('horas conhecidas', () {
-    test('null não vira zero', () {
+  group('hours known', () {
+    test('null does not becomes zero', () {
       final g = buildLibraryOverview([entry('a', 1, 'Hades')]).groups.single;
       expect(g.knownHours, isNull);
     });
 
-    test('zero é um valor conhecido', () {
+    test('zero is the known value', () {
       final g = buildLibraryOverview([
         entry('a', 1, 'Hades', hours: 0),
         entry('b', 1, 'Hades'),
@@ -429,7 +438,7 @@ void main() {
     });
   });
 
-  test('plataformas do grupo: distintas, na ordem dos registros', () {
+  test('platforms of the group: distinct, in the order of the entries', () {
     final g = buildLibraryOverview([
       entry('a', 1, 'Hades', platform: 'PC', created: 3),
       entry('b', 1, 'Hades', platform: 'PS5', created: 2),
@@ -438,7 +447,7 @@ void main() {
     expect(g.platforms, ['PC', 'PS5']);
   });
 
-  test('coleção vazia', () {
+  test('empty collection', () {
     final o = buildLibraryOverview(const []);
     expect(o.groups, isEmpty);
     expect(o.shelf, isEmpty);

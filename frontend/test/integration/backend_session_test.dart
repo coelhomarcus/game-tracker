@@ -38,7 +38,7 @@ void main() {
 
   String suffix() => DateTime.now().microsecondsSinceEpoch.toRadixString(36);
 
-  test('cadastro, login e erros do envelope real', skip: skip, () async {
+  test('signup, login and errors of the envelope real', skip: skip, () async {
     final s = suffix();
     final user = await repo.register(
       name: 'Integração',
@@ -72,7 +72,7 @@ void main() {
   });
 
   test(
-    'vários 401 simultâneos: um refresh, todas as chamadas dão certo',
+    'multiple simultaneous 401 responses: one refresh, all calls succeed',
     skip: skip,
     () async {
       final s = suffix();
@@ -112,7 +112,7 @@ void main() {
   );
 
   test(
-    'restauração: sessão válida, depois logout revoga no servidor',
+    'restoration: valid session, then logout revokes it on the server',
     skip: skip,
     () async {
       final s = suffix();
@@ -155,7 +155,7 @@ void main() {
   );
 
   test(
-    'refresh token revogado: restore devolve SignedOut e limpa o armazenamento',
+    'refresh token revoked: restore returns SignedOut and clears the storage',
     skip: skip,
     () async {
       final s = suffix();
@@ -175,7 +175,7 @@ void main() {
   );
 
   test(
-    'servidor inalcançável: restauração indisponível preserva o token',
+    'unreachable server: unavailable restoration preserves the token',
     skip: skip,
     () async {
       final dead = AuthApi(createAuthDio(baseUrl: 'http://127.0.0.1:1/api'));

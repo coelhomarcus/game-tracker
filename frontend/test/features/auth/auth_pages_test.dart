@@ -24,7 +24,7 @@ Future<void> tapFinder(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
-  testWidgets('sessão restaurada abre direto na Biblioteca', (tester) async {
+  testWidgets('session restored opens direct in the Library', (tester) async {
     await pumpApp(
       tester,
       FakeAuthRepository()..restoreResult = Restored(fakeUser()),
@@ -33,30 +33,28 @@ void main() {
     expect(find.text('Entrar'), findsNothing);
   });
 
-  testWidgets(
-    'credenciais erradas mostram erro e preservam o que foi digitado',
-    (tester) async {
-      final repo = FakeAuthRepository()
-        ..loginError = const ApiException(
-          401,
-          'invalid_credentials',
-          'Credenciais inválidas',
-        );
-      await pumpApp(tester, repo);
-      await tester.enterText(find.byType(TextFormField).first, 'ana');
-      await tester.enterText(find.byType(TextFormField).last, 'senha-errada');
-      await tapText(tester, 'Entrar');
-
-      expect(
-        find.text('E-mail, username ou senha incorretos.'),
-        findsOneWidget,
+  testWidgets('credentials wrong show error and preserve the that was typed', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository()
+      ..loginError = const ApiException(
+        401,
+        'invalid_credentials',
+        'Credenciais inválidas',
       );
-      expect(find.text('ana'), findsOneWidget);
-      expect(find.text('Biblioteca'), findsNothing);
-    },
-  );
+    await pumpApp(tester, repo);
+    await tester.enterText(find.byType(TextFormField).first, 'ana');
+    await tester.enterText(find.byType(TextFormField).last, 'senha-errada');
+    await tapText(tester, 'Entrar');
 
-  testWidgets('sem rede mostra mensagem de conexão', (tester) async {
+    expect(find.text('E-mail, username ou senha incorretos.'), findsOneWidget);
+    expect(find.text('ana'), findsOneWidget);
+    expect(find.text('Biblioteca'), findsNothing);
+  });
+
+  testWidgets('without the network connection shows message of connection', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository()..loginError = const NetworkException();
     await pumpApp(tester, repo);
     await tester.enterText(find.byType(TextFormField).first, 'ana');
@@ -65,9 +63,7 @@ void main() {
     expect(find.textContaining('Sem conexão'), findsOneWidget);
   });
 
-  testWidgets('toque duplo em Entrar envia uma única requisição', (
-    tester,
-  ) async {
+  testWidgets('double-tapping Login sends one request', (tester) async {
     final repo = FakeAuthRepository()..loginGate = Completer<void>();
     await pumpApp(tester, repo);
     await tester.enterText(find.byType(TextFormField).first, 'ana');
@@ -85,7 +81,7 @@ void main() {
     expect(find.text('Biblioteca'), findsWidgets);
   });
 
-  testWidgets('cadastro valida os limites do backend', (tester) async {
+  testWidgets('signup validates the limits from the backend', (tester) async {
     await pumpApp(tester, FakeAuthRepository());
     await tapFinder(tester, find.widgetWithText(TextButton, 'Criar conta'));
     expect(find.text('Leva menos de um minuto.'), findsOneWidget);
@@ -105,7 +101,7 @@ void main() {
     expect(find.text('Use apenas letras, números e _'), findsOneWidget);
   });
 
-  testWidgets('cadastro com username repetido mostra conflito', (tester) async {
+  testWidgets('signup with username repeated shows conflict', (tester) async {
     final repo = FakeAuthRepository()
       ..registerError = const ApiException(
         409,
@@ -123,22 +119,23 @@ void main() {
     expect(find.text('Username ou e-mail já cadastrado.'), findsOneWidget);
   });
 
-  testWidgets('sem conexão ao restaurar: tela de nova tentativa, sem logout', (
-    tester,
-  ) async {
-    final repo = FakeAuthRepository()
-      ..restoreResult = const RestoreUnavailable();
-    await pumpApp(tester, repo);
-    expect(find.text('Não foi possível conectar'), findsOneWidget);
-    expect(find.text('Entrar'), findsNothing);
+  testWidgets(
+    'without the connection to the restore: screen of new attempt, without logout',
+    (tester) async {
+      final repo = FakeAuthRepository()
+        ..restoreResult = const RestoreUnavailable();
+      await pumpApp(tester, repo);
+      expect(find.text('Não foi possível conectar'), findsOneWidget);
+      expect(find.text('Entrar'), findsNothing);
 
-    repo.restoreResult = Restored(fakeUser());
-    await tapText(tester, 'Tentar novamente');
-    expect(find.text('Biblioteca'), findsWidgets);
-    expect(repo.logoutCalls, 0);
-  });
+      repo.restoreResult = Restored(fakeUser());
+      await tapText(tester, 'Tentar novamente');
+      expect(find.text('Biblioteca'), findsWidgets);
+      expect(repo.logoutCalls, 0);
+    },
+  );
 
-  testWidgets('sair pelas configurações volta ao login', (tester) async {
+  testWidgets('leave by settings returns to the login', (tester) async {
     final repo = FakeAuthRepository()..restoreResult = Restored(fakeUser());
     await pumpApp(tester, repo);
     await tapText(tester, 'Perfil');

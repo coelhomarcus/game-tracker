@@ -15,7 +15,7 @@ void main() {
       : null;
 
   test(
-    '500 registros: todos voltam, sem repetir, com horas e notas intactas',
+    '500 entries: all return, without repeat, with hours and notes unchanged',
     skip: skip,
     timeout: const Timeout(Duration(minutes: 3)),
     () async {
@@ -64,7 +64,7 @@ void main() {
   );
 
   test(
-    '1000 mensagens: histórico paginado completo, em ordem e sem repetição',
+    '1000 messages: complete paginated history, ordered without repetition',
     skip: skip,
     timeout: const Timeout(Duration(minutes: 5)),
     () async {

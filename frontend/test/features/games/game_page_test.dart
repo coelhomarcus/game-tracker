@@ -44,7 +44,9 @@ Future<void> openGame(
 }
 
 void main() {
-  testWidgets('abre pelo igdbId da rota e mostra o jogo', (tester) async {
+  testWidgets('opens through the igdbId of the route and shows the game', (
+    tester,
+  ) async {
     await openGame(tester, harness());
     expect(find.text('Jogo Fixture Um'), findsWidgets);
     expect(find.text('Sinopse de teste.'), findsOneWidget);
@@ -56,7 +58,9 @@ void main() {
     );
   });
 
-  testWidgets('jogo sem sinopse nem screenshots não quebra', (tester) async {
+  testWidgets('game without summary or screenshots does not crash', (
+    tester,
+  ) async {
     final games = FakeGamesRepository(
       games: {
         900002: const Game(
@@ -74,7 +78,7 @@ void main() {
     expect(find.text('Screenshots'), findsNothing);
   });
 
-  testWidgets('jogo inexistente mostra erro com saída', (tester) async {
+  testWidgets('game missing shows error with exit', (tester) async {
     final games = FakeGamesRepository()
       ..gameError = const ApiException(404, 'not_found', 'Jogo não encontrado');
     await openGame(tester, harness(games: games));
@@ -82,28 +86,29 @@ void main() {
     expect(find.text('Tentar de novo'), findsOneWidget);
   });
 
-  testWidgets('favoritar muda o ícone na hora; falha desfaz e avisa', (
-    tester,
-  ) async {
-    final games = FakeGamesRepository();
-    final h = harness(games: games);
-    await openGame(tester, h);
+  testWidgets(
+    'favorite changes the icon immediately; failure reverts it and warns',
+    (tester) async {
+      final games = FakeGamesRepository();
+      final h = harness(games: games);
+      await openGame(tester, h);
 
-    await tapAndSettle(tester, find.byTooltip('Favoritar'));
-    expect(find.byTooltip('Remover dos favoritos'), findsOneWidget);
-    expect(games.favoriteCalls.single, ('g-900001', true));
+      await tapAndSettle(tester, find.byTooltip('Favoritar'));
+      expect(find.byTooltip('Remover dos favoritos'), findsOneWidget);
+      expect(games.favoriteCalls.single, ('g-900001', true));
 
-    games.favoriteError = const NetworkException();
-    await tapAndSettle(tester, find.byTooltip('Remover dos favoritos'));
-    expect(
-      find.byTooltip('Remover dos favoritos'),
-      findsOneWidget,
-      reason: 'desfez para o estado anterior',
-    );
-    expect(find.textContaining('Sem conexão'), findsOneWidget);
-  });
+      games.favoriteError = const NetworkException();
+      await tapAndSettle(tester, find.byTooltip('Remover dos favoritos'));
+      expect(
+        find.byTooltip('Remover dos favoritos'),
+        findsOneWidget,
+        reason: 'desfez para o estado anterior',
+      );
+      expect(find.textContaining('Sem conexão'), findsOneWidget);
+    },
+  );
 
-  testWidgets('Meu progresso lista os dois playthroughs com horas e nota', (
+  testWidgets('my progress lists the two playthroughs with hours and notes', (
     tester,
   ) async {
     await openGame(tester, harness());
@@ -115,16 +120,14 @@ void main() {
     expect(find.text('Novo registro (replay)'), findsOneWidget);
   });
 
-  testWidgets('sem registros: convida a criar o primeiro', (tester) async {
+  testWidgets('without entries: invites the create the first', (tester) async {
     await openGame(tester, harness(library: FakeLibraryRepository()));
     await tapAndSettle(tester, find.text('Meu progresso'));
     expect(find.text('Você ainda não registrou este jogo'), findsOneWidget);
     expect(find.text('Novo registro'), findsWidgets);
   });
 
-  testWidgets('Comunidade: estatísticas de playthroughs e jogadores', (
-    tester,
-  ) async {
+  testWidgets('community: playthrough and player statistics', (tester) async {
     final games = FakeGamesRepository()
       ..playersResult = [
         const GamePlayer(
@@ -148,7 +151,7 @@ void main() {
     ('320 px com texto 200%', 320.0, 2.0),
   ]) {
     testWidgets(
-      'Comunidade: os contadores quebram de linha sem cobrir o que vem depois ($name)',
+      'community: the counters break of line without cover the that comes after ($name)',
       (tester) async {
         final games = FakeGamesRepository()
           ..playersResult = [
@@ -216,7 +219,7 @@ void main() {
     );
   }
 
-  testWidgets('Comunidade: ninguém seguido jogando mostra mensagem própria', (
+  testWidgets('community: nobody followed playing shows message own', (
     tester,
   ) async {
     await openGame(tester, harness());
@@ -226,7 +229,7 @@ void main() {
     expect(find.text('Ninguém que você segue está jogando.'), findsOneWidget);
   });
 
-  testWidgets('Comunidade: falha das estatísticas não derruba as outras abas', (
+  testWidgets('community: statistics failure does not crash the other tabs', (
     tester,
   ) async {
     final games = FakeGamesRepository();
@@ -239,7 +242,7 @@ void main() {
     expect(find.text('Sinopse de teste.'), findsOneWidget);
   });
 
-  testWidgets('screenshots abrem na imagem tocada, navegam e fecham', (
+  testWidgets('screenshots open in the image tapped, navigate and close', (
     tester,
   ) async {
     final games = FakeGamesRepository(

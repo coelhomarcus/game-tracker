@@ -51,7 +51,7 @@ Future<AppHarness> openEdit(
 }
 
 void main() {
-  testWidgets('abre com os valores atuais', (tester) async {
+  testWidgets('opens with the values current', (tester) async {
     await openEdit(tester);
     expect(
       tester.widget<TextFormField>(nameField).controller!.text,
@@ -66,7 +66,7 @@ void main() {
     expect(find.text('Salvas no botão Salvar alterações.'), findsOneWidget);
   });
 
-  testWidgets('bio com contador de 280 e botão "Salvar alterações"', (
+  testWidgets('bio with a 280-character counter and a "save changes" button', (
     tester,
   ) async {
     await openEdit(tester);
@@ -85,8 +85,10 @@ void main() {
     );
   });
 
-  group('textos', () {
-    testWidgets('salva só o que mudou e volta ao perfil', (tester) async {
+  group('texts', () {
+    testWidgets('saves only the that changed and returns to the profile', (
+      tester,
+    ) async {
       final h = await openEdit(tester);
       await tester.enterText(bioField, 'Bio nova');
       await tester.pumpAndSettle();
@@ -95,7 +97,7 @@ void main() {
       expect(profileEditButton, findsOneWidget, reason: 'de volta ao perfil');
     });
 
-    testWidgets('apagar a bio envia string vazia (limpa)', (tester) async {
+    testWidgets('delete the bio sends string empty (clears)', (tester) async {
       final h = await openEdit(tester);
       await tester.enterText(bioField, '');
       await tester.pumpAndSettle();
@@ -103,7 +105,7 @@ void main() {
       expect(h.profiles.updates.single.toJson(), {'bio': ''});
     });
 
-    testWidgets('sem alterações não faz requisição', (tester) async {
+    testWidgets('without changes does not make the request', (tester) async {
       final h = await openEdit(tester);
       await tapAndSettle(tester, save);
       expect(h.profiles.updates, isEmpty);
@@ -111,7 +113,7 @@ void main() {
     });
 
     testWidgets(
-      'a identidade nova aparece no perfil, na sessão e nos posts carregados',
+      'the identity new appears in the profile, in the session and in the posts loaded',
       (tester) async {
         final auth = FakeAuthRepository();
         final feed = FakeFeedRepository(
@@ -172,40 +174,43 @@ void main() {
       },
     );
 
-    testWidgets('username repetido (409) marca o campo e preserva o resto', (
+    testWidgets(
+      'username repeated (409) marks the field and preserves the rest',
+      (tester) async {
+        final profiles = FakeProfilesRepository()
+          ..updateError = const ApiException(
+            409,
+            'conflict',
+            'Username já está em uso',
+          );
+        final h = await openEdit(tester, profiles: profiles);
+        await tester.enterText(usernameField, 'beto');
+        await tester.enterText(bioField, 'Bio que não pode sumir');
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, save);
+
+        expect(find.text('Esse username já está em uso'), findsOneWidget);
+        expect(
+          find.text('Bio que não pode sumir'),
+          findsOneWidget,
+          reason: 'o resto do formulário continua',
+        );
+        expect(h.profiles.updates, isEmpty);
+
+        await tester.enterText(usernameField, 'beto2');
+        profiles.updateError = null;
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, save);
+        expect(h.profiles.updates.single.toJson(), {
+          'username': 'beto2',
+          'bio': 'Bio que não pode sumir',
+        });
+      },
+    );
+
+    testWidgets('generic failure shows the warning and preserves everything', (
       tester,
     ) async {
-      final profiles = FakeProfilesRepository()
-        ..updateError = const ApiException(
-          409,
-          'conflict',
-          'Username já está em uso',
-        );
-      final h = await openEdit(tester, profiles: profiles);
-      await tester.enterText(usernameField, 'beto');
-      await tester.enterText(bioField, 'Bio que não pode sumir');
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, save);
-
-      expect(find.text('Esse username já está em uso'), findsOneWidget);
-      expect(
-        find.text('Bio que não pode sumir'),
-        findsOneWidget,
-        reason: 'o resto do formulário continua',
-      );
-      expect(h.profiles.updates, isEmpty);
-
-      await tester.enterText(usernameField, 'beto2');
-      profiles.updateError = null;
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, save);
-      expect(h.profiles.updates.single.toJson(), {
-        'username': 'beto2',
-        'bio': 'Bio que não pode sumir',
-      });
-    });
-
-    testWidgets('falha genérica mostra aviso e preserva tudo', (tester) async {
       final profiles = FakeProfilesRepository()
         ..updateError = const NetworkException();
       await openEdit(tester, profiles: profiles);
@@ -217,7 +222,7 @@ void main() {
       expect(profileEditButton, findsNothing, reason: 'continua na edição');
     });
 
-    testWidgets('valida nome vazio e username curto ou inválido', (
+    testWidgets('validates name empty and username short or invalid', (
       tester,
     ) async {
       final h = await openEdit(tester);
@@ -232,42 +237,43 @@ void main() {
       expect(h.profiles.updates, isEmpty);
     });
 
-    testWidgets('sair com alterações explica o que se perde e o que não', (
-      tester,
-    ) async {
-      final h = AppHarness(
-        auth: FakeAuthRepository()..restoreResult = Restored(_me),
-        profiles: FakeProfilesRepository()
-          ..profiles['u1'] = fakeProfile(
-            id: 'u1',
-            username: 'ana',
-            name: 'Ana Silva',
-          ),
-      );
-      await h.pump(tester);
-      await tapAndSettle(tester, find.text('Perfil').last);
-      await tapAndSettle(tester, profileEditButton);
-      await tester.enterText(bioField, 'rascunho');
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.text('Descartar alterações?'), findsOneWidget);
-      expect(
-        find.textContaining('Fotos que você já enviou continuam salvas'),
-        findsOneWidget,
-      );
-      await tapAndSettle(tester, find.text('Continuar editando'));
-      expect(find.text('rascunho'), findsOneWidget);
+    testWidgets(
+      'leave with changes explains the that if loses and the that does not',
+      (tester) async {
+        final h = AppHarness(
+          auth: FakeAuthRepository()..restoreResult = Restored(_me),
+          profiles: FakeProfilesRepository()
+            ..profiles['u1'] = fakeProfile(
+              id: 'u1',
+              username: 'ana',
+              name: 'Ana Silva',
+            ),
+        );
+        await h.pump(tester);
+        await tapAndSettle(tester, find.text('Perfil').last);
+        await tapAndSettle(tester, profileEditButton);
+        await tester.enterText(bioField, 'rascunho');
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Descartar alterações?'), findsOneWidget);
+        expect(
+          find.textContaining('Fotos que você já enviou continuam salvas'),
+          findsOneWidget,
+        );
+        await tapAndSettle(tester, find.text('Continuar editando'));
+        expect(find.text('rascunho'), findsOneWidget);
 
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Descartar'));
-      expect(profileEditButton, findsOneWidget, reason: 'voltou ao perfil');
-    });
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Descartar'));
+        expect(profileEditButton, findsOneWidget, reason: 'voltou ao perfil');
+      },
+    );
   });
 
-  group('foto e capa', () {
-    testWidgets('escolher a foto mostra a prévia, envia e avisa', (
+  group('photo and cover', () {
+    testWidgets('choosing the photo shows the preview, sends it, and warns', (
       tester,
     ) async {
       final picker = FakeImagePicker()..next = fakeImage();
@@ -296,7 +302,7 @@ void main() {
       );
     });
 
-    testWidgets('escolher a capa usa o campo da capa', (tester) async {
+    testWidgets('choose the cover uses the field of the cover', (tester) async {
       final picker = FakeImagePicker()
         ..next = fakeImage(name: 'capa.jpg', mime: 'image/jpeg');
       final h = await openEdit(tester, picker: picker);
@@ -306,7 +312,7 @@ void main() {
       expect(find.text('Capa atualizada'), findsOneWidget);
     });
 
-    testWidgets('mostra o progresso enquanto envia e bloqueia novo envio', (
+    testWidgets('shows the progress while sends and blocks new sending', (
       tester,
     ) async {
       final gate = Completer<void>();
@@ -335,7 +341,7 @@ void main() {
       expect(find.byType(LinearProgressIndicator), findsNothing);
     });
 
-    testWidgets('salvar enquanto uma imagem envia é recusado com aviso', (
+    testWidgets('save while the image sends is rejected with warning', (
       tester,
     ) async {
       final gate = Completer<void>();
@@ -354,9 +360,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('arquivo acima de 8 MB é recusado antes de enviar', (
-      tester,
-    ) async {
+    testWidgets('file above of 8 MB is rejected before send', (tester) async {
       final picker = FakeImagePicker()
         ..next = fakeImage(size: PickedImage.maxBytes + 1);
       final h = await openEdit(tester, picker: picker);
@@ -380,30 +384,33 @@ void main() {
       );
     });
 
-    group('recorte', () {
-      testWidgets('o editor recebe a imagem e o tipo; o envio usa o recorte', (
+    group('crop', () {
+      testWidgets(
+        'the editor receives the image and the type; the sending uses the crop',
+        (tester) async {
+          final original = fakeImage(name: 'original.png');
+          final cropped = fakeImage(name: 'avatar.jpg', mime: 'image/jpeg');
+          final cropper = FakeImageCropper()..result = cropped;
+          final h = await openEdit(
+            tester,
+            picker: FakeImagePicker()..next = original,
+            cropper: cropper,
+          );
+          await tapAndSettle(tester, find.text('Alterar foto'));
+
+          expect(cropper.calls.single, (original, ProfileImageKind.avatar));
+          expect(h.profiles.uploads.single.$1, ProfileImageKind.avatar);
+          expect(
+            h.profiles.uploads.single.$2,
+            same(cropped),
+            reason: 'o servidor recebe o arquivo recortado, não o original',
+          );
+        },
+      );
+
+      testWidgets('the cover opens the editor in the mode cover', (
         tester,
       ) async {
-        final original = fakeImage(name: 'original.png');
-        final cropped = fakeImage(name: 'avatar.jpg', mime: 'image/jpeg');
-        final cropper = FakeImageCropper()..result = cropped;
-        final h = await openEdit(
-          tester,
-          picker: FakeImagePicker()..next = original,
-          cropper: cropper,
-        );
-        await tapAndSettle(tester, find.text('Alterar foto'));
-
-        expect(cropper.calls.single, (original, ProfileImageKind.avatar));
-        expect(h.profiles.uploads.single.$1, ProfileImageKind.avatar);
-        expect(
-          h.profiles.uploads.single.$2,
-          same(cropped),
-          reason: 'o servidor recebe o arquivo recortado, não o original',
-        );
-      });
-
-      testWidgets('a capa abre o editor no modo capa', (tester) async {
         final cropper = FakeImageCropper();
         await openEdit(
           tester,
@@ -414,7 +421,7 @@ void main() {
         expect(cropper.calls.single.$2, ProfileImageKind.banner);
       });
 
-      testWidgets('cancelar o recorte não envia nem altera a foto', (
+      testWidgets('cancel the crop does not send or changes the photo', (
         tester,
       ) async {
         final cropper = FakeImageCropper()..cancel = true;
@@ -432,7 +439,7 @@ void main() {
         expect(find.byType(LinearProgressIndicator), findsNothing);
       });
 
-      testWidgets('cancelar a galeria nem abre o editor', (tester) async {
+      testWidgets('cancel the gallery or opens the editor', (tester) async {
         final cropper = FakeImageCropper();
         await openEdit(
           tester,
@@ -443,7 +450,7 @@ void main() {
         expect(cropper.calls, isEmpty);
       });
 
-      testWidgets('falha no envio reenvia os mesmos bytes recortados', (
+      testWidgets('fails in the sending resends the same bytes cropped', (
         tester,
       ) async {
         final cropped = fakeImage(name: 'avatar.jpg', mime: 'image/jpeg');
@@ -466,14 +473,14 @@ void main() {
       });
     });
 
-    testWidgets('fotos e informações são seções separadas', (tester) async {
+    testWidgets('photos and information are separate sections', (tester) async {
       await openEdit(tester);
       expect(find.text('Fotos'), findsOneWidget);
       expect(find.text('Informações'), findsOneWidget);
     });
 
     testWidgets(
-      'falha no envio mostra o motivo e tenta de novo sem reabrir a galeria',
+      'fails in the sending shows the reason and tries of new without reopen the gallery',
       (tester) async {
         final picker = FakeImagePicker()..next = fakeImage();
         final profiles = FakeProfilesRepository()
@@ -495,16 +502,19 @@ void main() {
       },
     );
 
-    testWidgets('sem conexão no envio usa a mensagem de rede', (tester) async {
-      final picker = FakeImagePicker()..next = fakeImage();
-      final profiles = FakeProfilesRepository()
-        ..uploadError = const NetworkException();
-      await openEdit(tester, picker: picker, profiles: profiles);
-      await tapAndSettle(tester, find.text('Alterar foto'));
-      expect(find.textContaining('Sem conexão'), findsOneWidget);
-    });
+    testWidgets(
+      'without the connection in the sending uses the message of network',
+      (tester) async {
+        final picker = FakeImagePicker()..next = fakeImage();
+        final profiles = FakeProfilesRepository()
+          ..uploadError = const NetworkException();
+        await openEdit(tester, picker: picker, profiles: profiles);
+        await tapAndSettle(tester, find.text('Alterar foto'));
+        expect(find.textContaining('Sem conexão'), findsOneWidget);
+      },
+    );
 
-    testWidgets('cancelar a galeria não faz nada', (tester) async {
+    testWidgets('cancel the gallery does not does nothing', (tester) async {
       final picker = FakeImagePicker()..next = null;
       final h = await openEdit(tester, picker: picker);
       await tapAndSettle(tester, find.text('Alterar foto'));
@@ -513,7 +523,7 @@ void main() {
       expect(find.byType(LinearProgressIndicator), findsNothing);
     });
 
-    testWidgets('permissão negada vira aviso claro', (tester) async {
+    testWidgets('denied permission becomes the clear warning', (tester) async {
       final picker = FakeImagePicker()
         ..error = const ImagePickException(
           'Sem permissão para acessar as fotos. Libere o acesso nas configurações do aparelho.',
@@ -526,31 +536,34 @@ void main() {
       );
     });
 
-    testWidgets('foto já enviada continua salva mesmo descartando os textos', (
-      tester,
-    ) async {
-      final picker = FakeImagePicker()..next = fakeImage();
-      final h = await openEdit(tester, picker: picker);
-      await tapAndSettle(tester, find.text('Alterar foto'));
-      await tester.enterText(bioField, 'descartar isto');
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Descartar'));
-      expect(
-        h.profiles.uploads,
-        hasLength(1),
-        reason: 'o envio já tinha sido feito',
-      );
-      expect(
-        h.profiles.updates,
-        isEmpty,
-        reason: 'só os textos foram descartados',
-      );
-    });
+    testWidgets(
+      'photo already sent continues saves same discarding the texts',
+      (tester) async {
+        final picker = FakeImagePicker()..next = fakeImage();
+        final h = await openEdit(tester, picker: picker);
+        await tapAndSettle(tester, find.text('Alterar foto'));
+        await tester.enterText(bioField, 'descartar isto');
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Descartar'));
+        expect(
+          h.profiles.uploads,
+          hasLength(1),
+          reason: 'o envio já tinha sido feito',
+        );
+        expect(
+          h.profiles.updates,
+          isEmpty,
+          reason: 'só os textos foram descartados',
+        );
+      },
+    );
   });
 
-  testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px with text 200% does not overflows', (
+    tester,
+  ) async {
     final a = FakeAuthRepository()..restoreResult = Restored(_me);
     final p = FakeProfilesRepository()
       ..profiles['u1'] = fakeProfile(

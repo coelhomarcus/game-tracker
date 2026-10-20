@@ -25,14 +25,16 @@ AppHarness signedIn() => AppHarness(
 );
 
 void main() {
-  testWidgets('sem sessão, o app abre no login', (tester) async {
+  testWidgets('without the session, the app opens in the login', (
+    tester,
+  ) async {
     await AppHarness(signedIn: false).pump(tester, size: const Size(360, 800));
     expect(find.text('GameTracker'), findsOneWidget);
     expect(find.text('Entrar'), findsWidgets);
   });
 
   for (final w in [360.0, 599.0]) {
-    testWidgets('largura $w usa NavigationBar', (tester) async {
+    testWidgets('width $w uses NavigationBar', (tester) async {
       await signedIn().pump(tester, size: Size(w, 800));
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
@@ -40,7 +42,7 @@ void main() {
   }
 
   for (final w in [600.0, 840.0, 1280.0]) {
-    testWidgets('largura $w usa NavigationRail com os mesmos 5 destinos', (
+    testWidgets('width $w uses NavigationRail with the same 5 destinations', (
       tester,
     ) async {
       await signedIn().pump(tester, size: Size(w, 800));
@@ -58,33 +60,36 @@ void main() {
     });
   }
 
-  testWidgets('navega entre destinos e preserva o filtro da Biblioteca', (
-    tester,
-  ) async {
-    await signedIn().pump(tester, size: const Size(400, 800));
-    await chooseStatus(tester, 'Jogando (1)');
-    expect(find.textContaining('Jogo Fixture Dois'), findsWidgets);
-    expect(find.text('Jogo Fixture Um'), findsNothing);
+  testWidgets(
+    'navigates between destinations and preserves the filter from the Library',
+    (tester) async {
+      await signedIn().pump(tester, size: const Size(400, 800));
+      await chooseStatus(tester, 'Jogando (1)');
+      expect(find.textContaining('Jogo Fixture Dois'), findsWidgets);
+      expect(find.text('Jogo Fixture Um'), findsNothing);
 
-    await tapAndSettle(tester, find.text('Mensagens').last);
-    expect(find.text('beto'), findsOneWidget);
+      await tapAndSettle(tester, find.text('Mensagens').last);
+      expect(find.text('beto'), findsOneWidget);
 
-    await tapAndSettle(tester, find.text('Biblioteca').last);
-    expect(
-      find.text('Jogo Fixture Um'),
-      findsNothing,
-      reason: 'estado do destino preservado',
-    );
-  });
+      await tapAndSettle(tester, find.text('Biblioteca').last);
+      expect(
+        find.text('Jogo Fixture Um'),
+        findsNothing,
+        reason: 'estado do destino preservado',
+      );
+    },
+  );
 
-  testWidgets('rota inexistente mostra saída útil', (tester) async {
+  testWidgets('unknown route shows the useful exit state', (tester) async {
     await signedIn().pump(tester, size: const Size(400, 800));
     tester.element(find.byType(NavigationBar)).go('/nada');
     await tester.pumpAndSettle();
     expect(find.text('Página não encontrada.'), findsOneWidget);
   });
 
-  testWidgets('texto a 200% não gera overflow na Biblioteca', (tester) async {
+  testWidgets('text the 200% does not generate overflow in the Library', (
+    tester,
+  ) async {
     await signedIn().pump(tester, size: const Size(360, 800), textScale: 2.0);
     expect(tester.takeException(), isNull);
     // A 200% a lista assume (a grade de capas deixa de ser legível) e começa abaixo do resumo,
@@ -98,7 +103,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  group('rail nas páginas de detalhe', () {
+  group('rail in the pages of detail', () {
     for (final path in [
       '/games/900001',
       '/games/900001/playthroughs/new',
@@ -106,14 +111,16 @@ void main() {
       '/settings',
       '/notifications',
     ]) {
-      testWidgets('$path mantém o rail a 1280 e não duplica', (tester) async {
+      testWidgets('$path keeps the rail the 1280 and does not duplicates', (
+        tester,
+      ) async {
         await signedIn().pump(tester, size: const Size(1280, 900));
         await goTo(tester, path);
         expect(find.byType(NavigationRail), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
 
-      testWidgets('$path não mostra rail nem barra a 400', (tester) async {
+      testWidgets('$path does not show rail or slash the 400', (tester) async {
         await signedIn().pump(tester, size: const Size(400, 900));
         await goTo(tester, path);
         expect(find.byType(NavigationRail), findsNothing);
@@ -121,7 +128,7 @@ void main() {
       });
     }
 
-    testWidgets('o rail leva ao destino escolhido a partir do detalhe', (
+    testWidgets('the rail opens destination chosen the from of the detail', (
       tester,
     ) async {
       await signedIn().pump(tester, size: const Size(1280, 900));
@@ -138,22 +145,23 @@ void main() {
       expect(find.byType(NavigationRail), findsOneWidget);
     });
 
-    testWidgets('voltar do detalhe devolve o destino com o filtro intacto', (
-      tester,
-    ) async {
-      await signedIn().pump(tester, size: const Size(1280, 900));
-      await chooseStatus(tester, 'Jogando (1)');
-      await openLibraryGame(
-        tester,
-        'Jogo Fixture Dois com um nome bem comprido para testar quebra',
-      );
-      expect(find.byType(NavigationRail), findsOneWidget);
-      await tapAndSettle(tester, find.byType(BackButton));
-      expect(find.text('Jogo Fixture Um'), findsNothing);
-      expect(find.byType(NavigationRail), findsOneWidget);
-    });
+    testWidgets(
+      'return of the detail returns the destination with the filter intact',
+      (tester) async {
+        await signedIn().pump(tester, size: const Size(1280, 900));
+        await chooseStatus(tester, 'Jogando (1)');
+        await openLibraryGame(
+          tester,
+          'Jogo Fixture Dois com um nome bem comprido para testar quebra',
+        );
+        expect(find.byType(NavigationRail), findsOneWidget);
+        await tapAndSettle(tester, find.byType(BackButton));
+        expect(find.text('Jogo Fixture Um'), findsNothing);
+        expect(find.byType(NavigationRail), findsOneWidget);
+      },
+    );
 
-    testWidgets('redimensionar no detalhe não perde a página aberta', (
+    testWidgets('resize in the detail does not loses the page open', (
       tester,
     ) async {
       await signedIn().pump(tester, size: const Size(1280, 900));
@@ -168,7 +176,7 @@ void main() {
     });
   });
 
-  testWidgets('títulos dos destinos começam na mesma margem do conteúdo', (
+  testWidgets('destination titles start at the same content margin', (
     tester,
   ) async {
     await signedIn().pump(tester, size: const Size(1280, 900));

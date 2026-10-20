@@ -155,8 +155,8 @@ Future<void> _pump(
 void main() {
   setUpAll(loadGoldenFonts);
 
-  group('tema', () {
-    test('superfícies são neutras e mantêm o violeta como ação', () {
+  group('theme', () {
+    test('surfaces are neutral and keep the purple the action', () {
       final light = AppTheme.light().colorScheme;
       final dark = AppTheme.dark().colorScheme;
       expect(light.primary, isNot(light.surface));
@@ -167,7 +167,7 @@ void main() {
       expect(dark.surfaceContainerLow, const Color(0xFF1A191E));
     });
 
-    test('papéis tipográficos seguem tamanho/altura de linha do plano', () {
+    test('roles typographic follow size/height of line of the scale', () {
       for (final theme in [AppTheme.light(), AppTheme.dark()]) {
         final t = theme.textTheme;
         expect(
@@ -185,7 +185,7 @@ void main() {
       }
     });
 
-    test('barra de navegação e abas cabem em 360 dp (achado da inspeção no Chrome)', () {
+    test('slash of navigation and tabs fit in 360 dp (finding of the inspection in the Chrome)', () {
       // Em 360 dp cada um dos 5 destinos tem 72 dp: com 12 sp "Comunidade" quebrava no meio da
       // palavra; as 3 abas do jogo cortavam "Meu progresso" com o recuo padrão de 16 dp.
       for (final theme in [AppTheme.light(), AppTheme.dark()]) {
@@ -205,7 +205,7 @@ void main() {
     });
 
     test(
-      'as duas variações nascem da mesma semente e mantêm as cores de status',
+      'the two variants originate the same seed and keep the colors of status',
       () {
         expect(AppTheme.light().colorScheme.primary, isNot(equals(null)));
         expect(AppTheme.light().extension<DomainColors>(), DomainColors.light);
@@ -219,35 +219,32 @@ void main() {
   });
 
   group('PageContainer', () {
-    test('margem de 16 em tela estreita e 24 em larga', () {
+    test('margin of 16 in screen narrow and 24 in wide', () {
       expect(PageContainer.gutterFor(359), Space.lg);
       expect(PageContainer.gutterFor(599), Space.lg);
       expect(PageContainer.gutterFor(600), Space.xl);
     });
 
-    test(
-      'centraliza o conteúdo na largura máxima sem encolher abaixo da margem',
-      () {
-        expect(
-          PageContainer.insetsFor(390, PageWidth.reading),
-          const EdgeInsets.symmetric(horizontal: 16),
-        );
-        expect(
-          PageContainer.insetsFor(700, PageWidth.reading),
-          const EdgeInsets.symmetric(horizontal: 24),
-        );
-        expect(
-          PageContainer.insetsFor(1440, PageWidth.reading),
-          const EdgeInsets.symmetric(horizontal: 380),
-        );
-        expect(
-          PageContainer.insetsFor(1440, PageWidth.wide),
-          const EdgeInsets.symmetric(horizontal: 120),
-        );
-      },
-    );
+    test('centers the content in the width maximum without shrink below of the margin', () {
+      expect(
+        PageContainer.insetsFor(390, PageWidth.reading),
+        const EdgeInsets.symmetric(horizontal: 16),
+      );
+      expect(
+        PageContainer.insetsFor(700, PageWidth.reading),
+        const EdgeInsets.symmetric(horizontal: 24),
+      );
+      expect(
+        PageContainer.insetsFor(1440, PageWidth.reading),
+        const EdgeInsets.symmetric(horizontal: 380),
+      );
+      expect(
+        PageContainer.insetsFor(1440, PageWidth.wide),
+        const EdgeInsets.symmetric(horizontal: 120),
+      );
+    });
 
-    testWidgets('limita a largura do conteúdo', (tester) async {
+    testWidgets('limits the width of the content', (tester) async {
       await _pump(
         tester,
         const Scaffold(
@@ -262,7 +259,7 @@ void main() {
   });
 
   group('GameCard', () {
-    testWidgets('colunas: mínimos adaptativos com 12 dp de espaço', (
+    testWidgets('columns: minimum adaptive with 12 dp of space', (
       tester,
     ) async {
       expect(GameGridGeometry.columnsFor(328), 2);
@@ -271,38 +268,39 @@ void main() {
       expect(GameGridGeometry.columnsFor(1200), 6);
     });
 
-    testWidgets('o rótulo de acessibilidade reúne título, status e legenda', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      await _pump(
-        tester,
-        Scaffold(
-          body: SizedBox(
-            width: 160,
-            height: 330,
-            child: GameCard.collection(
-              title: 'Hades',
-              status: GameStatus.playing,
-              caption: '2 registros',
-              onTap: () {},
+    testWidgets(
+      'the label of accessibility combines title, status and caption',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await _pump(
+          tester,
+          Scaffold(
+            body: SizedBox(
+              width: 160,
+              height: 330,
+              child: GameCard.collection(
+                title: 'Hades',
+                status: GameStatus.playing,
+                caption: '2 registros',
+                onTap: () {},
+              ),
             ),
           ),
-        ),
-      );
-      expect(
-        tester.getSemantics(find.byType(InkWell)),
-        matchesSemantics(
-          label: 'Hades, Jogando, 2 registros',
-          isButton: true,
-          hasTapAction: true,
-          isFocusable: true,
-        ),
-      );
-      handle.dispose();
-    });
+        );
+        expect(
+          tester.getSemantics(find.byType(InkWell)),
+          matchesSemantics(
+            label: 'Hades, Jogando, 2 registros',
+            isButton: true,
+            hasTapAction: true,
+            isFocusable: true,
+          ),
+        );
+        handle.dispose();
+      },
+    );
 
-    testWidgets('geometria reserva capa, duas linhas, status e legenda', (
+    testWidgets('geometry reserves cover, two lines, status and caption', (
       tester,
     ) async {
       late GameGridGeometry geometry;
@@ -327,39 +325,40 @@ void main() {
       );
     });
 
-    testWidgets('catálogo separa abrir do CTA e mantém nome e plataforma', (
-      tester,
-    ) async {
-      var opened = 0, added = 0;
-      await _pump(
-        tester,
-        Scaffold(
-          body: Builder(
-            builder: (context) => SizedBox(
-              width: 180,
-              height: GameGridGeometry.catalogCardExtentFor(context, 180),
-              child: GameCard.catalog(
-                title: 'Celeste',
-                caption: 'PC · Switch',
-                onTap: () => opened++,
-                action: FilledButton(
-                  onPressed: () => added++,
-                  child: const Text('Adicionar'),
+    testWidgets(
+      'catalog separates open of the CTA and keeps name and platform',
+      (tester) async {
+        var opened = 0, added = 0;
+        await _pump(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (context) => SizedBox(
+                width: 180,
+                height: GameGridGeometry.catalogCardExtentFor(context, 180),
+                child: GameCard.catalog(
+                  title: 'Celeste',
+                  caption: 'PC · Switch',
+                  onTap: () => opened++,
+                  action: FilledButton(
+                    onPressed: () => added++,
+                    child: const Text('Adicionar'),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      expect(find.text('Celeste'), findsWidgets);
-      expect(find.text('PC · Switch'), findsOneWidget);
-      await tester.tap(find.text('Adicionar'));
-      expect((opened, added), (0, 1));
-      await tester.tap(find.text('Celeste').last);
-      expect((opened, added), (1, 1));
-    });
+        );
+        expect(find.text('Celeste'), findsWidgets);
+        expect(find.text('PC · Switch'), findsOneWidget);
+        await tester.tap(find.text('Adicionar'));
+        expect((opened, added), (0, 1));
+        await tester.tap(find.text('Celeste').last);
+        expect((opened, added), (1, 1));
+      },
+    );
 
-    testWidgets('toque abre e o foco do teclado ganha contorno', (
+    testWidgets('tap opens and the focus of the keyboard wins outline', (
       tester,
     ) async {
       var taps = 0;
@@ -390,7 +389,9 @@ void main() {
       expect(taps, 1);
     });
 
-    testWidgets('o overlay recebe o toque sem abrir o jogo', (tester) async {
+    testWidgets('the overlay receives the tap without open the game', (
+      tester,
+    ) async {
       var opened = 0, menu = 0;
       await _pump(
         tester,
@@ -413,7 +414,7 @@ void main() {
       expect((opened, menu), (0, 1));
     });
 
-    testWidgets('título longo ocupa no máximo duas linhas', (tester) async {
+    testWidgets('title long occupies at most two lines', (tester) async {
       await _pump(
         tester,
         const Scaffold(
@@ -439,7 +440,7 @@ void main() {
   });
 
   group('FilterToolbar', () {
-    testWidgets('digitar e limpar a busca avisa quem usa', (tester) async {
+    testWidgets('type and clear the search warns who uses', (tester) async {
       final queries = <String>[];
       await _pump(
         tester,
@@ -454,7 +455,9 @@ void main() {
       expect(find.byTooltip('Limpar busca'), findsNothing);
     });
 
-    testWidgets('a consulta mudada de fora atualiza o campo', (tester) async {
+    testWidgets('the query changed of outside updates the field', (
+      tester,
+    ) async {
       Widget build(String q) => Scaffold(
         body: FilterToolbar(query: q, onQueryChanged: (_) {}),
       );
@@ -464,7 +467,7 @@ void main() {
       expect(find.text('zelda'), findsNothing);
     });
 
-    testWidgets('"Limpar" só existe com filtro ativo', (tester) async {
+    testWidgets('"clear" only exists with filter active', (tester) async {
       await _pump(tester, const _Gallery());
       expect(find.text('Limpar'), findsNothing);
       await _pump(tester, _Gallery(onClear: () {}));
@@ -473,7 +476,7 @@ void main() {
   });
 
   group('SectionHeader', () {
-    testWidgets('é um cabeçalho e a ação dispara', (tester) async {
+    testWidgets('is the header and the action triggers', (tester) async {
       final handle = tester.ensureSemantics();
       var taps = 0;
       await _pump(
@@ -499,7 +502,7 @@ void main() {
 
   group('ContentSkeleton', () {
     for (final grid in [false, true]) {
-      testWidgets('${grid ? 'grade' : 'lista'} cabe a 360 dp e texto 200%', (
+      testWidgets('${grid ? 'grid' : 'list'} fits the 360 dp and text 200%', (
         tester,
       ) async {
         final handle = tester.ensureSemantics();
@@ -520,8 +523,8 @@ void main() {
     }
   });
 
-  group('movimento', () {
-    testWidgets('sem animação quando o sistema pede', (tester) async {
+  group('movement', () {
+    testWidgets('without animation when the system requests', (tester) async {
       late Duration normal, reduced;
       await tester.pumpWidget(
         MediaQuery(
@@ -549,7 +552,7 @@ void main() {
     });
   });
 
-  group('composição da fundação', () {
+  group('composition of the foundation', () {
     for (final brightness in Brightness.values) {
       final name = brightness.name;
 
@@ -558,7 +561,7 @@ void main() {
         (const Size(390, 900), 1.0),
         (const Size(1440, 900), 1.0),
       ]) {
-        testWidgets('$name · ${size.width.toInt()} px · texto $scale×', (
+        testWidgets('$name · ${size.width.toInt()} px · text $scale×', (
           tester,
         ) async {
           await _pump(
@@ -572,7 +575,7 @@ void main() {
         });
       }
 
-      testWidgets('$name · diretrizes de acessibilidade', (tester) async {
+      testWidgets('$name · guidelines of accessibility', (tester) async {
         final handle = tester.ensureSemantics();
         await _pump(tester, _Gallery(onClear: () {}), brightness: brightness);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));

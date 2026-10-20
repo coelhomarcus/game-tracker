@@ -45,7 +45,7 @@ void run(void Function(FakeAsync async, Harness h) body, {Harness? harness}) {
 }
 
 void main() {
-  test('conecta com o token atual e avisa que sincronizou', () {
+  test('connects with the token current and warns that synced', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -59,7 +59,7 @@ void main() {
     });
   });
 
-  test('iniciar duas vezes não abre duas conexões', () {
+  test('starting twice does not open two connections', () {
     run((async, h) {
       h.connection.start();
       h.connection.start();
@@ -68,23 +68,20 @@ void main() {
     });
   });
 
-  test(
-    'servidor recusa o token: renova a sessão e reconecta com o token novo',
-    () {
-      run((async, h) {
-        h.transport.outcomes.add(const ConnectAuthError());
-        h.connection.start();
-        async.flushMicrotasks();
-        expect(h.refreshCalls, [
-          'token-0',
-        ], reason: 'a renovação recebe o token que foi recusado');
-        expect(h.transport.connectTokens, ['token-0', 'novo-1']);
-        expect(h.connection.state.isConnected, isTrue);
-      });
-    },
-  );
+  test('server rejects the token: refreshes the session and reconnects with the token new', () {
+    run((async, h) {
+      h.transport.outcomes.add(const ConnectAuthError());
+      h.connection.start();
+      async.flushMicrotasks();
+      expect(h.refreshCalls, [
+        'token-0',
+      ], reason: 'a renovação recebe o token que foi recusado');
+      expect(h.transport.connectTokens, ['token-0', 'novo-1']);
+      expect(h.connection.state.isConnected, isTrue);
+    });
+  });
 
-  test('sessão encerrada ao renovar: para de vez, sem insistir', () {
+  test('session closed to the refresh: for of time, without insist', () {
     run((async, h) {
       final harness = Harness(refreshResult: TokenRefresh.sessionEnded);
       harness.transport.defaultOutcome = const ConnectAuthError();
@@ -96,7 +93,7 @@ void main() {
     });
   });
 
-  test('renovar a cada tentativa não vira um laço apertado: depois de 2 vai ao backoff', () {
+  test('renewing each attempt does not create the tight loop: after two attempts, use backoff', () {
     run((async, h) {
       h.transport.defaultOutcome = const ConnectAuthError();
       h.connection.start();
@@ -107,7 +104,7 @@ void main() {
     });
   });
 
-  test('falha de rede: espera com backoff crescente e reconecta', () {
+  test('fails of network: waits with backoff increasing and reconnects', () {
     run((async, h) {
       h.transport.outcomes.addAll([const ConnectFail(), const ConnectFail()]);
       h.connection.start();
@@ -143,7 +140,7 @@ void main() {
     });
   });
 
-  test('queda depois de conectado: reconecta na hora, sem backoff', () {
+  test('drop after connected: reconnects immediately, without backoff', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -159,30 +156,27 @@ void main() {
     });
   });
 
-  test(
-    'entra nas salas desejadas e reentra em todas depois de cada reconexão',
-    () {
-      run((async, h) {
-        h.connection.start();
-        async.flushMicrotasks();
-        unawaited(h.connection.joinRoom('c1'));
-        unawaited(h.connection.joinRoom('c2'));
-        async.flushMicrotasks();
-        expect(h.transport.joins, ['c1', 'c2']);
+  test('joins desired rooms and rejoins all after each reconnection', () {
+    run((async, h) {
+      h.connection.start();
+      async.flushMicrotasks();
+      unawaited(h.connection.joinRoom('c1'));
+      unawaited(h.connection.joinRoom('c2'));
+      async.flushMicrotasks();
+      expect(h.transport.joins, ['c1', 'c2']);
 
-        h.transport.drop();
-        async.flushMicrotasks();
-        expect(h.transport.joins, [
-          'c1',
-          'c2',
-          'c1',
-          'c2',
-        ], reason: 'o servidor esquece as salas ao reconectar');
-      });
-    },
-  );
+      h.transport.drop();
+      async.flushMicrotasks();
+      expect(h.transport.joins, [
+        'c1',
+        'c2',
+        'c1',
+        'c2',
+      ], reason: 'o servidor esquece as salas ao reconectar');
+    });
+  });
 
-  test('sala pedida sem conexão é entrada quando a conexão volta', () {
+  test('requested room without the connection is joined when the connection returns', () {
     run((async, h) {
       h.transport.outcomes.add(const ConnectFail());
       h.connection.start();
@@ -198,7 +192,7 @@ void main() {
     });
   });
 
-  test('sala recusada pelo servidor deixa de ser desejada', () {
+  test('room rejected through the server leaves of ser desired', () {
     run((async, h) {
       h.transport.rejectedRooms.add('c1');
       h.connection.start();
@@ -216,7 +210,7 @@ void main() {
     });
   });
 
-  test('sair da sala avisa o servidor e não reentra depois', () {
+  test('leave of the room warns the server and does not rejoins after', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -231,7 +225,7 @@ void main() {
     });
   });
 
-  test('ACK de entrada que não chega na reconexão derruba a conexão e tenta de novo', () {
+  test('join ACK lost during reconnection does not crash the connection and retries', () {
     run((async, h) {
       var joinCalls = 0;
       h.transport.onRequest = (event, payload) {
@@ -257,7 +251,7 @@ void main() {
     });
   });
 
-  test('reconnectNow encurta a espera do backoff', () {
+  test('reconnectNow shortens the waits of the backoff', () {
     run((async, h) {
       h.transport.outcomes.add(const ConnectFail());
       h.connection.start();
@@ -271,7 +265,7 @@ void main() {
     });
   });
 
-  test('reconnectNow com a conexão parada recomeça', () {
+  test('reconnectNow restarts the stopped connection', () {
     run((async, h) {
       h.connection.reconnectNow();
       async.flushMicrotasks();
@@ -279,7 +273,7 @@ void main() {
     });
   });
 
-  test('stop fecha o socket, esquece as salas e para de tentar', () {
+  test('stop closes the socket, forgets the rooms and for of try', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -301,7 +295,7 @@ void main() {
     });
   });
 
-  test('stop durante o backoff cancela a próxima tentativa', () {
+  test('stop during backoff cancels the next attempt', () {
     run((async, h) {
       h.transport.defaultOutcome = const ConnectFail();
       h.connection.start();
@@ -312,7 +306,7 @@ void main() {
     });
   });
 
-  test('sem token (sessão acabou): para sem tentar conectar', () {
+  test('without token (session ended): for without try connect', () {
     run((async, h) {
       h.token = null;
       h.connection.start();
@@ -322,7 +316,7 @@ void main() {
     });
   });
 
-  test('verify: conexão que responde segue como está', () {
+  test('verify: connection responds according to its state', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -334,7 +328,7 @@ void main() {
     });
   });
 
-  test('verify: conexão morta em silêncio é derrubada e refeita', () {
+  test('verify: silent dead connection is closed and recreated', () {
     run((async, h) {
       h.connection.start();
       async.flushMicrotasks();
@@ -350,7 +344,7 @@ void main() {
     });
   });
 
-  test('verify sem conexão apenas reconecta', () {
+  test('verify without the connection only reconnects', () {
     run((async, h) {
       h.transport.outcomes.add(const ConnectFail());
       h.connection.start();

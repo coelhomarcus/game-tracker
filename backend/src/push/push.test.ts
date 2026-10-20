@@ -24,7 +24,7 @@ describe('FcmProvider', () => {
     },
   });
 
-  it('envia o texto, os dados e prioridade alta', async () => {
+  it('sends the text, the date and priority high', async () => {
     const spy: { sent?: FcmMessage[] } = {};
     const results = await new FcmProvider(messaging([{ success: true }], spy)).send(['t1'], payload);
     assert.deepEqual(results, [{ token: 't1', outcome: 'ok' }]);
@@ -33,7 +33,7 @@ describe('FcmProvider', () => {
     assert.equal(spy.sent![0]!.android?.priority, 'high');
   });
 
-  it('token não registrado ou inválido vira "invalid"; erro transitório vira "failed"', async () => {
+  it('unregistered or invalid token becomes "invalid"; transient error becomes "failed"', async () => {
     const results = await new FcmProvider(
       messaging([
         { success: false, error: { code: 'messaging/registration-token-not-registered' } },
@@ -44,13 +44,13 @@ describe('FcmProvider', () => {
     assert.deepEqual(results.map((r) => r.outcome), ['invalid', 'invalid', 'failed']);
   });
 
-  it('sem credenciais fica desligado e não envia', async () => {
+  it('without credentials stays disabled and does not send', async () => {
     const provider = new FcmProvider(null);
     assert.equal(provider.enabled, false);
     assert.deepEqual(await provider.send(['t'], payload), []);
   });
 
-  it('exceção do cliente não lança', async () => {
+  it('client exception does not throw', async () => {
     const provider = new FcmProvider({
       async sendEach() {
         throw new Error('rede');
@@ -59,7 +59,7 @@ describe('FcmProvider', () => {
     assert.deepEqual(await provider.send(['t'], payload), [{ token: 't', outcome: 'failed' }]);
   });
 
-  it('createFcmProviderFromEnv: sem variável ou com JSON inválido, desligado e sem lançar', async () => {
+  it('createFcmProviderFromEnv: without the variable or with invalid JSON, disabled without throwing', async () => {
     assert.equal((await createFcmProviderFromEnv({})).enabled, false);
     assert.equal((await createFcmProviderFromEnv({ FCM_SERVICE_ACCOUNT_JSON: 'isto não é json' })).enabled, false);
   });
@@ -79,7 +79,7 @@ class FakeProvider implements PushProvider {
   }
 }
 
-describe('sendPushToUser + instalações (banco de teste)', () => {
+describe('sendPushToUser + installations (test database)', () => {
   const createdUsers: string[] = [];
   const stamp = Date.now().toString(36);
   let n = 0;
@@ -103,7 +103,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     return fcm;
   }
 
-  it('envia para todos os aparelhos ativos do usuário, sem repetir token', async () => {
+  it('sends for all the devices active of the user, without repeat token', async () => {
     const fcm = fake();
     const user = await newUser();
     await installations.register(user, uuid(), { provider: 'fcm', platform: 'android', token: `fcm-${stamp}-1` });
@@ -112,7 +112,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, [[`fcm-${stamp}-1`, `fcm-${stamp}-2`]]);
   });
 
-  it('provedor desligado é ignorado sem erro', async () => {
+  it('disabled provider is ignored without error', async () => {
     const fcm = fake(false);
     const user = await newUser();
     await installations.register(user, uuid(), { provider: 'fcm', platform: 'android', token: `fcm-off-${stamp}` });
@@ -120,7 +120,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, []);
   });
 
-  it('token que o provedor diz inválido é desativado e não é usado de novo', async () => {
+  it('token reported invalid by provider is disabled and not used again', async () => {
     const fcm = fake();
     const user = await newUser();
     const id = uuid();
@@ -137,7 +137,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, [[`fcm-live-${stamp}`]], 'só o token válido');
   });
 
-  it('falha transitória não desativa o token', async () => {
+  it('transient failure does not disable the token', async () => {
     const fcm = fake();
     const user = await newUser();
     const id = uuid();
@@ -148,7 +148,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.equal(row?.active, true);
   });
 
-  it('um provedor que lança não derruba quem chamou', async () => {
+  it('the provider that throws does not crash the caller', async () => {
     const fcm = fake();
     fcm.throws = true;
     const user = await newUser();
@@ -156,7 +156,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     await assert.doesNotReject(sendPushToUser(user, payload));
   });
 
-  it('não envia para instalações inativas nem de outros usuários', async () => {
+  it('does not send to inactive installations or other users', async () => {
     const fcm = fake();
     const a = await newUser();
     const b = await newUser();
@@ -170,7 +170,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, [[`fcm-b-${stamp}`]]);
   });
 
-  it('trocar de conta no mesmo aparelho: a instalação passa para a conta nova', async () => {
+  it('switching accounts on the same device: the installation moves to the new account', async () => {
     const fcm = fake();
     const a = await newUser();
     const b = await newUser();
@@ -184,7 +184,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, [[`fcm-shared-${stamp}`]]);
   });
 
-  it('o mesmo token em outra instalação tira o token da antiga (um dono só)', async () => {
+  it('the same token in another installation removes it from the old one (single owner)', async () => {
     const fcm = fake();
     const a = await newUser();
     const b = await newUser();
@@ -196,7 +196,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.equal(fcm.calls.length, 1);
   });
 
-  it('registrar de novo atualiza o token (rotação) e reativa', async () => {
+  it('registering again updates the token (rotation) and reactivates it', async () => {
     const fcm = fake();
     const user = await newUser();
     const id = uuid();
@@ -207,7 +207,7 @@ describe('sendPushToUser + instalações (banco de teste)', () => {
     assert.deepEqual(fcm.calls, [[`fcm-new-${stamp}`]]);
   });
 
-  it('revogar só vale para o dono; de outra pessoa é um no-op silencioso', async () => {
+  it('revocation only applies to the owner; another user gets the silent in the-operation', async () => {
     const fcm = fake();
     const a = await newUser();
     const b = await newUser();

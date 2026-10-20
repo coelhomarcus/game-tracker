@@ -82,7 +82,7 @@ void main() {
       ...extra,
     };
 
-    test('curtida e comentário abrem o post; seguidor abre o perfil; mensagem abre a conversa', () {
+    test('like and comment open the post; follower opens the profile; message opens the conversation', () {
       expect(
         resolvePushRoute(d({'type': 'like', 'postId': _post}), userId: 'u1'),
         '/posts/$_post',
@@ -107,57 +107,54 @@ void main() {
       );
     });
 
-    test('push de outra conta ou sem sessão não abre nada', () {
-      final data = d({'type': 'like', 'postId': _post});
-      expect(resolvePushRoute(data, userId: 'u2'), isNull);
-      expect(resolvePushRoute(data, userId: null), isNull);
-      expect(
-        resolvePushRoute({'type': 'like', 'postId': _post}, userId: 'u1'),
-        isNull,
-      );
-    });
-
     test(
-      'id inválido nunca vira caminho: cai na central (ou nada, para mensagem)',
+      'push from another account or without the session does not opens nothing',
       () {
-        for (final bad in [
-          '../admin',
-          '$_post/../x',
-          'abc',
-          '',
-          '$_post?x=1',
-          'https://evil.test',
-        ]) {
-          expect(
-            resolvePushRoute(d({'type': 'like', 'postId': bad}), userId: 'u1'),
-            '/notifications',
-            reason: bad,
-          );
-          expect(
-            resolvePushRoute(
-              d({'type': 'follow', 'actorId': bad}),
-              userId: 'u1',
-            ),
-            '/notifications',
-            reason: bad,
-          );
-          expect(
-            resolvePushRoute(
-              d({'type': 'message', 'conversationId': bad}),
-              userId: 'u1',
-            ),
-            isNull,
-            reason: bad,
-          );
-        }
+        final data = d({'type': 'like', 'postId': _post});
+        expect(resolvePushRoute(data, userId: 'u2'), isNull);
+        expect(resolvePushRoute(data, userId: null), isNull);
         expect(
-          resolvePushRoute(d({'type': 'like'}), userId: 'u1'),
-          '/notifications',
+          resolvePushRoute({'type': 'like', 'postId': _post}, userId: 'u1'),
+          isNull,
         );
       },
     );
 
-    test('tipo desconhecido (backend mais novo) é ignorado', () {
+    test('id invalid never becomes path: lands on the center (or nothing, for message)', () {
+      for (final bad in [
+        '../admin',
+        '$_post/../x',
+        'abc',
+        '',
+        '$_post?x=1',
+        'https://evil.test',
+      ]) {
+        expect(
+          resolvePushRoute(d({'type': 'like', 'postId': bad}), userId: 'u1'),
+          '/notifications',
+          reason: bad,
+        );
+        expect(
+          resolvePushRoute(d({'type': 'follow', 'actorId': bad}), userId: 'u1'),
+          '/notifications',
+          reason: bad,
+        );
+        expect(
+          resolvePushRoute(
+            d({'type': 'message', 'conversationId': bad}),
+            userId: 'u1',
+          ),
+          isNull,
+          reason: bad,
+        );
+      }
+      expect(
+        resolvePushRoute(d({'type': 'like'}), userId: 'u1'),
+        '/notifications',
+      );
+    });
+
+    test('unknown type (backend newest) is ignored', () {
       expect(
         resolvePushRoute(d({'type': 'repost', 'postId': _post}), userId: 'u1'),
         isNull,
@@ -165,7 +162,7 @@ void main() {
       expect(resolvePushRoute(d({}), userId: 'u1'), isNull);
     });
 
-    test('o payload real do backend (contrato) é compreendido', () {
+    test('the payload real from the backend (contract) is understood', () {
       final body = fixtureBody('push_payloads')! as Map<String, dynamic>;
       for (final entry in body.entries) {
         final data = (entry.value as Map<String, dynamic>).map(
@@ -180,45 +177,48 @@ void main() {
     });
   });
 
-  group('registro', () {
-    test('com permissão concedida registra o aparelho e fica ativo', () async {
-      final r = await rig();
-      expect(r.status, PushStatus.on);
-      expect(r.push.registered.length, 1);
-      final reg = r.push.registered.single;
-      expect(reg.provider, 'fcm');
-      expect(reg.platform, 'android');
-      expect(reg.token, 'fcm-token-1');
-      expect(reg.installationId, matches(RegExp(r'^[0-9a-f-]{36}$')));
-    });
-
-    test('sem sessão não registra; registra ao entrar', () async {
-      final r = await rig(signedIn: false);
-      expect(r.push.registered, isEmpty);
-      r.auth.nextUser = fakeUser();
-      await r.container
-          .read(sessionControllerProvider.notifier)
-          .login('ana', 'senha');
-      await r.settle();
-      expect(r.push.registered.length, 1);
-      expect(r.status, PushStatus.on);
-    });
-
+  group('entry', () {
     test(
-      'permissão ainda não pedida: não registra nem pergunta sozinho',
+      'with permission granted registers the device and stays active',
       () async {
-        final r = await rig(
-          platform: FakePushPlatform(
-            currentPermission: PushPermission.notDetermined,
-          ),
-        );
-        expect(r.status, PushStatus.off);
-        expect(r.platform.permissionRequests, 0);
-        expect(r.push.registered, isEmpty);
+        final r = await rig();
+        expect(r.status, PushStatus.on);
+        expect(r.push.registered.length, 1);
+        final reg = r.push.registered.single;
+        expect(reg.provider, 'fcm');
+        expect(reg.platform, 'android');
+        expect(reg.token, 'fcm-token-1');
+        expect(reg.installationId, matches(RegExp(r'^[0-9a-f-]{36}$')));
       },
     );
 
-    test('enable() pede permissão e registra', () async {
+    test(
+      'without the session does not registers; registers to the enter',
+      () async {
+        final r = await rig(signedIn: false);
+        expect(r.push.registered, isEmpty);
+        r.auth.nextUser = fakeUser();
+        await r.container
+            .read(sessionControllerProvider.notifier)
+            .login('ana', 'senha');
+        await r.settle();
+        expect(r.push.registered.length, 1);
+        expect(r.status, PushStatus.on);
+      },
+    );
+
+    test('permission still does not requested: does not registers or asks on its own', () async {
+      final r = await rig(
+        platform: FakePushPlatform(
+          currentPermission: PushPermission.notDetermined,
+        ),
+      );
+      expect(r.status, PushStatus.off);
+      expect(r.platform.permissionRequests, 0);
+      expect(r.push.registered, isEmpty);
+    });
+
+    test('enable() requests permission and registers', () async {
       final r = await rig(
         platform: FakePushPlatform(
           currentPermission: PushPermission.notDetermined,
@@ -231,7 +231,7 @@ void main() {
     });
 
     test(
-      'usuário recusa no diálogo: fica negado e nada é registrado',
+      'user rejects in the dialog: stays denied and nothing is registrado',
       () async {
         final platform = FakePushPlatform(
           currentPermission: PushPermission.notDetermined,
@@ -243,17 +243,20 @@ void main() {
       },
     );
 
-    test('negado no sistema: status "negado" e não pergunta de novo', () async {
-      final r = await rig(
-        platform: FakePushPlatform(currentPermission: PushPermission.denied),
-      );
-      expect(r.status, PushStatus.denied);
-      await r.controller.enable();
-      expect(r.platform.permissionRequests, 0);
-      expect(r.push.registered, isEmpty);
-    });
+    test(
+      'denied in the system: status "denied" and does not asks of new',
+      () async {
+        final r = await rig(
+          platform: FakePushPlatform(currentPermission: PushPermission.denied),
+        );
+        expect(r.status, PushStatus.denied);
+        await r.controller.enable();
+        expect(r.platform.permissionRequests, 0);
+        expect(r.push.registered, isEmpty);
+      },
+    );
 
-    test('falha no servidor: status "falhou"; voltar ao app tenta de novo e conclui', () async {
+    test('fails on the server: status "failed"; returning to the app tries of new and completes', () async {
       final r = Rig();
       r.push.registerError = const NetworkException();
       await r.start();
@@ -267,37 +270,34 @@ void main() {
       expect(r.push.registered.length, 1);
     });
 
-    test('token indisponível: "falhou", sem chamar o servidor', () async {
+    test('token unavailable: "failed", without call the server', () async {
       final r = await rig(platform: FakePushPlatform(currentToken: null));
       expect(r.status, PushStatus.failed);
       expect(r.push.registered, isEmpty);
     });
 
+    test('token refreshed through the system is registrado of new, the same installation', () async {
+      final r = await rig();
+      r.platform.refreshToken('fcm-token-2');
+      await r.settle();
+      expect(r.push.registered.map((e) => e.token), [
+        'fcm-token-1',
+        'fcm-token-2',
+      ]);
+      expect(r.push.registered.map((e) => e.installationId).toSet().length, 1);
+    });
+
     test(
-      'token renovado pelo sistema é registrado de novo, na mesma instalação',
+      'returning to the app with everything correct does not repeat the entry',
       () async {
         final r = await rig();
-        r.platform.refreshToken('fcm-token-2');
+        r.controller.onResume();
         await r.settle();
-        expect(r.push.registered.map((e) => e.token), [
-          'fcm-token-1',
-          'fcm-token-2',
-        ]);
-        expect(
-          r.push.registered.map((e) => e.installationId).toSet().length,
-          1,
-        );
+        expect(r.push.registered.length, 1);
       },
     );
 
-    test('voltar ao app com tudo certo não repete o registro', () async {
-      final r = await rig();
-      r.controller.onResume();
-      await r.settle();
-      expect(r.push.registered.length, 1);
-    });
-
-    test('sair da conta durante a obtenção do token não registra para a sessão errada', () async {
+    test('leave of the account during the retrieval of the token does not registers for the session wrong', () async {
       final platform = FakePushPlatform()..tokenGate = Completer<void>();
       final r = Rig(platform: platform);
       await r.start();
@@ -308,7 +308,7 @@ void main() {
       expect(r.push.registered, isEmpty);
     });
 
-    test('sem suporte (web ou sem adaptador): nada é feito', () async {
+    test('without support (web or without adapter): nothing is done', () async {
       final r = await rig(platform: FakePushPlatform(supported: false));
       expect(r.status, PushStatus.unsupported);
       expect(r.push.registered, isEmpty);
@@ -318,8 +318,8 @@ void main() {
     });
   });
 
-  group('sair e trocar de conta', () {
-    test('sair revoga o aparelho ANTES de encerrar a sessão', () async {
+  group('leave and switching accounts', () {
+    test('leave revokes the device before of close the session', () async {
       final r = await rig();
       r.push.revokeGate = Completer<void>();
       unawaited(r.container.read(sessionControllerProvider.notifier).logout());
@@ -338,18 +338,15 @@ void main() {
       expect(r.push.revoked.single, r.push.registered.single.installationId);
     });
 
-    test(
-      'se a revogação falhar (sem rede), o logout acontece mesmo assim',
-      () async {
-        final r = await rig();
-        r.push.revokeError = const NetworkException();
-        await r.container.read(sessionControllerProvider.notifier).logout();
-        expect(r.auth.logoutCalls, 1);
-        expect(r.container.read(currentUserIdProvider), isNull);
-      },
-    );
+    test('if the revocation fails (without the network connection), the logout happens same thus', () async {
+      final r = await rig();
+      r.push.revokeError = const NetworkException();
+      await r.container.read(sessionControllerProvider.notifier).logout();
+      expect(r.auth.logoutCalls, 1);
+      expect(r.container.read(currentUserIdProvider), isNull);
+    });
 
-    test('se a revogação travar, o logout espera no máximo 3 s', () {
+    test('if the revocation hang, the logout waits at most 3 s', () {
       fakeAsync((async) {
         final r = Rig();
         r.push.revokeGate = Completer<void>();
@@ -369,7 +366,7 @@ void main() {
       });
     });
 
-    test('trocar de conta no aparelho: mesma instalação, nova conta registra de novo', () async {
+    test('switching accounts in the device: same installation, new account registers of new', () async {
       final r = await rig();
       final first = r.push.registered.single.installationId;
       await r.container.read(sessionControllerProvider.notifier).logout();
@@ -384,8 +381,8 @@ void main() {
     });
   });
 
-  group('mensagens', () {
-    test('push com o app aberto atualiza a central', () async {
+  group('messages', () {
+    test('push with the app open updates the center', () async {
       final r = await rig();
       r.container.listen(notificationsControllerProvider, (_, _) {});
       await r.settle();
@@ -395,7 +392,7 @@ void main() {
       expect(r.notifications.listCalls, before + 1);
     });
 
-    test('push de outra conta com o app aberto é ignorado', () async {
+    test('push from another account with the app open is ignored', () async {
       final r = await rig();
       r.container.listen(notificationsControllerProvider, (_, _) {});
       await r.settle();
@@ -405,24 +402,30 @@ void main() {
       expect(r.notifications.listCalls, before);
     });
 
-    test('push de mensagem não mexe na central de notificações', () async {
-      final r = await rig();
-      r.container.listen(notificationsControllerProvider, (_, _) {});
-      await r.settle();
-      final before = r.notifications.listCalls;
-      r.platform.receive(pushOf('message', conversationId: _conversation));
-      await r.settle();
-      expect(r.notifications.listCalls, before);
-    });
+    test(
+      'push of message does not moves in the center of notifications',
+      () async {
+        final r = await rig();
+        r.container.listen(notificationsControllerProvider, (_, _) {});
+        await r.settle();
+        final before = r.notifications.listCalls;
+        r.platform.receive(pushOf('message', conversationId: _conversation));
+        await r.settle();
+        expect(r.notifications.listCalls, before);
+      },
+    );
 
-    test('tocar no push pede a navegação ao destino', () async {
-      final r = await rig();
-      r.platform.open(pushOf('comment', postId: _post));
-      await r.settle();
-      expect(r.pendingRoute, '/posts/$_post');
-    });
+    test(
+      'tap in the push requests the navigation to the destination',
+      () async {
+        final r = await rig();
+        r.platform.open(pushOf('comment', postId: _post));
+        await r.settle();
+        expect(r.pendingRoute, '/posts/$_post');
+      },
+    );
 
-    test('tocar no push de outra conta não navega', () async {
+    test('tap in the push from another account does not navigate', () async {
       final r = await rig();
       r.platform.open(pushOf('comment', recipientId: 'u2', postId: _post));
       await r.settle();
@@ -430,7 +433,7 @@ void main() {
     });
 
     test(
-      'push tocado antes de a sessão ser restaurada espera e navega depois',
+      'push tapped before the session ser restored waits and navigates after',
       () async {
         final r = await rig(signedIn: false);
         r.platform.open(pushOf('follow', actorId: _actor));
@@ -445,7 +448,7 @@ void main() {
       },
     );
 
-    test('push guardado há mais de 2 minutos é descartado', () async {
+    test('push stored there is more of 2 minutes is discarded', () async {
       final r = await rig(signedIn: false);
       r.platform.open(pushOf('follow', actorId: _actor));
       await r.settle();
@@ -458,20 +461,23 @@ void main() {
       expect(r.pendingRoute, isNull);
     });
 
-    test('push guardado para uma conta não abre nada em outra conta', () async {
-      final r = await rig(signedIn: false);
-      r.platform.open(pushOf('follow', actorId: _actor));
-      await r.settle();
-      r.auth.nextUser = fakeUser('u2', 'beto');
-      await r.container
-          .read(sessionControllerProvider.notifier)
-          .login('beto', 'senha');
-      await r.settle();
-      expect(r.pendingRoute, isNull);
-    });
+    test(
+      'push stored for the account does not opens nothing in another account',
+      () async {
+        final r = await rig(signedIn: false);
+        r.platform.open(pushOf('follow', actorId: _actor));
+        await r.settle();
+        r.auth.nextUser = fakeUser('u2', 'beto');
+        await r.container
+            .read(sessionControllerProvider.notifier)
+            .login('beto', 'senha');
+        await r.settle();
+        expect(r.pendingRoute, isNull);
+      },
+    );
 
     test(
-      'notificação que abriu o app do zero é tratada uma única vez',
+      'notification that opened the app of the zero is handled the single time',
       () async {
         final platform = FakePushPlatform()
           ..initial = pushOf('like', postId: _post);
@@ -494,8 +500,8 @@ void main() {
     );
   });
 
-  group('instalação', () {
-    test('o id é gerado uma vez e persistido', () async {
+  group('installation', () {
+    test('the id is generated the time and persisted', () async {
       final r = await rig();
       final prefs = r.container.read(sharedPreferencesProvider);
       expect(
@@ -506,8 +512,8 @@ void main() {
     });
   });
 
-  group('tela e navegação', () {
-    testWidgets('tocar no push abre o post por cima da tela atual', (
+  group('screen and navigation', () {
+    testWidgets('tap in the push opens the post by top of the screen current', (
       tester,
     ) async {
       final platform = FakePushPlatform();
@@ -526,7 +532,7 @@ void main() {
     });
 
     testWidgets(
-      'notificação que abriu o app leva ao destino depois de restaurar a sessão',
+      'notification that opened the app opens destination after restore the session',
       (tester) async {
         final platform = FakePushPlatform()
           ..initial = pushOf('like', postId: _post);
@@ -540,50 +546,53 @@ void main() {
       },
     );
 
-    testWidgets('push de outra conta com o app aberto não navega', (
-      tester,
-    ) async {
-      final platform = FakePushPlatform();
-      final h = AppHarness(pushPlatform: platform);
-      await h.pump(tester);
-      platform.open(pushOf('like', recipientId: 'u2', postId: _post));
-      await tester.pumpAndSettle();
-      expect(find.byType(NavigationBar), findsOneWidget);
-    });
+    testWidgets(
+      'push from another account with the app open does not navigate',
+      (tester) async {
+        final platform = FakePushPlatform();
+        final h = AppHarness(pushPlatform: platform);
+        await h.pump(tester);
+        platform.open(pushOf('like', recipientId: 'u2', postId: _post));
+        await tester.pumpAndSettle();
+        expect(find.byType(NavigationBar), findsOneWidget);
+      },
+    );
 
-    testWidgets('configurações: sem suporte explica onde ver as notificações', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      await h.pump(tester);
-      await goTo(tester, '/settings');
-      expect(
-        find.text(
-          'As notificações aparecem na central com o app aberto. '
-          'Avisos com o app fechado não estão disponíveis nesta versão.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Ativar'), findsNothing);
-    });
+    testWidgets(
+      'settings: without support explains where see the notifications',
+      (tester) async {
+        final h = AppHarness();
+        await h.pump(tester);
+        await goTo(tester, '/settings');
+        expect(
+          find.text(
+            'As notificações aparecem na central com o app aberto. '
+            'Avisos com o app fechado não estão disponíveis nesta versão.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Ativar'), findsNothing);
+      },
+    );
 
-    testWidgets('configurações: ativar pede permissão e passa a "Ativadas"', (
-      tester,
-    ) async {
-      final platform = FakePushPlatform(
-        currentPermission: PushPermission.notDetermined,
-      );
-      final h = AppHarness(pushPlatform: platform);
-      await h.pump(tester);
-      await goTo(tester, '/settings');
-      expect(find.text('Desativadas neste aparelho.'), findsOneWidget);
-      await tapAndSettle(tester, find.text('Ativar'));
-      expect(find.text('Ativadas neste aparelho.'), findsOneWidget);
-      expect(h.push.registered.length, 1);
-      expect(find.text('Ativar'), findsNothing);
-    });
+    testWidgets(
+      'settings: enable requests permission and passes the "Enabled"',
+      (tester) async {
+        final platform = FakePushPlatform(
+          currentPermission: PushPermission.notDetermined,
+        );
+        final h = AppHarness(pushPlatform: platform);
+        await h.pump(tester);
+        await goTo(tester, '/settings');
+        expect(find.text('Desativadas neste aparelho.'), findsOneWidget);
+        await tapAndSettle(tester, find.text('Ativar'));
+        expect(find.text('Ativadas neste aparelho.'), findsOneWidget);
+        expect(h.push.registered.length, 1);
+        expect(find.text('Ativar'), findsNothing);
+      },
+    );
 
-    testWidgets('configurações: negado mostra o motivo e como resolver', (
+    testWidgets('settings: denied shows the reason and the resolver', (
       tester,
     ) async {
       final h = AppHarness(
@@ -599,9 +608,7 @@ void main() {
       );
     });
 
-    testWidgets('configurações: falha de registro oferece tentar de novo', (
-      tester,
-    ) async {
+    testWidgets('settings: fails of entry offers try of new', (tester) async {
       final push = FakePushRepository()
         ..registerError = const NetworkException();
       final h = AppHarness(pushPlatform: FakePushPlatform(), push: push);
@@ -616,18 +623,21 @@ void main() {
       expect(find.text('Ativadas neste aparelho.'), findsOneWidget);
     });
 
-    testWidgets('sair pelas configurações revoga o aparelho e volta ao login', (
+    testWidgets(
+      'leave by settings revokes the device and returns to the login',
+      (tester) async {
+        final h = AppHarness(pushPlatform: FakePushPlatform());
+        await h.pump(tester);
+        await goTo(tester, '/settings');
+        await tapSignOut(tester);
+        expect(h.push.revoked.length, 1);
+        expect(h.auth.logoutCalls, 1);
+      },
+    );
+
+    testWidgets('layout the 360 px with text 200% does not overflows', (
       tester,
     ) async {
-      final h = AppHarness(pushPlatform: FakePushPlatform());
-      await h.pump(tester);
-      await goTo(tester, '/settings');
-      await tapSignOut(tester);
-      expect(h.push.revoked.length, 1);
-      expect(h.auth.logoutCalls, 1);
-    });
-
-    testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
       final h = AppHarness(
         pushPlatform: FakePushPlatform(
           currentPermission: PushPermission.denied,

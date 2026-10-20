@@ -29,7 +29,7 @@ Future<AppHarness> openComposer(
 }
 
 void main() {
-  testWidgets('publicar desabilitado sem texto', (tester) async {
+  testWidgets('publish disabled without text', (tester) async {
     await openComposer(tester);
     expect(tester.widget<FilledButton>(publish).onPressed, isNull);
     await tester.enterText(textField, '   ');
@@ -44,44 +44,45 @@ void main() {
     expect(tester.widget<FilledButton>(publish).onPressed, isNotNull);
   });
 
-  testWidgets('publica texto sem vínculo e o post aparece no topo do Geral', (
-    tester,
-  ) async {
-    final feed = FakeFeedRepository(
-      general: [fakePost(id: 'old', content: 'post antigo')],
-    );
-    final h = AppHarness(feed: feed);
-    await h.pump(tester);
-    await tapAndSettle(tester, find.text('Comunidade').last);
-    await tapAndSettle(
-      tester,
-      find.widgetWithText(FloatingActionButton, 'Publicar'),
-    );
+  testWidgets(
+    'publishes text without link and the post appears in the top of the General',
+    (tester) async {
+      final feed = FakeFeedRepository(
+        general: [fakePost(id: 'old', content: 'post antigo')],
+      );
+      final h = AppHarness(feed: feed);
+      await h.pump(tester);
+      await tapAndSettle(tester, find.text('Comunidade').last);
+      await tapAndSettle(
+        tester,
+        find.widgetWithText(FloatingActionButton, 'Publicar'),
+      );
 
-    await tester.enterText(textField, '  Meu primeiro post  ');
-    await tester.pumpAndSettle();
-    await tapAndSettle(tester, publish);
+      await tester.enterText(textField, '  Meu primeiro post  ');
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, publish);
 
-    expect(
-      feed.created.single.content,
-      'Meu primeiro post',
-      reason: 'texto aparado',
-    );
-    expect(
-      (feed.created.single.gameId, feed.created.single.gameEntryId),
-      (null, null),
-    );
-    expect(
-      find.text('Meu primeiro post'),
-      findsOneWidget,
-      reason: 'voltou ao feed com o novo post',
-    );
-    final newY = tester.getTopLeft(find.text('Meu primeiro post')).dy;
-    final oldY = tester.getTopLeft(find.text('post antigo')).dy;
-    expect(newY, lessThan(oldY), reason: 'no topo');
-  });
+      expect(
+        feed.created.single.content,
+        'Meu primeiro post',
+        reason: 'texto aparado',
+      );
+      expect(
+        (feed.created.single.gameId, feed.created.single.gameEntryId),
+        (null, null),
+      );
+      expect(
+        find.text('Meu primeiro post'),
+        findsOneWidget,
+        reason: 'voltou ao feed com o novo post',
+      );
+      final newY = tester.getTopLeft(find.text('Meu primeiro post')).dy;
+      final oldY = tester.getTopLeft(find.text('post antigo')).dy;
+      expect(newY, lessThan(oldY), reason: 'no topo');
+    },
+  );
 
-  testWidgets('falha preserva o texto e os vínculos e permite tentar de novo', (
+  testWidgets('failure preserves text and links and allows retry', (
     tester,
   ) async {
     final feed = FakeFeedRepository()..createError = const NetworkException();
@@ -104,52 +105,55 @@ void main() {
     expect(feed.created.single.content, 'Texto que não pode sumir');
   });
 
-  testWidgets('vincula um jogo pela busca e envia o UUID do jogo', (
+  testWidgets(
+    'links the game through the search and sends the UUID of the game',
+    (tester) async {
+      final games =
+          FakeGamesRepository(
+              games: {
+                900001: fakeGame(),
+                55: fakeGame(igdbId: 55, name: 'Escolhido'),
+              },
+            )
+            ..searchResult = const [
+              GameSummary(
+                igdbId: 55,
+                name: 'Escolhido',
+                platforms: ['PC'],
+                genres: [],
+              ),
+            ];
+      final feed = FakeFeedRepository();
+      await openComposer(tester, feed: feed, games: games);
+
+      await tapAndSettle(tester, find.text('Vincular um jogo'));
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(SearchBar),
+          matching: find.byType(EditableText),
+        ),
+        'esco',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, find.text('Escolhido'));
+      expect(find.widgetWithText(InputChip, 'Escolhido'), findsOneWidget);
+
+      await tester.enterText(textField, 'Joguei isso');
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, publish);
+      expect(
+        feed.created.single.gameId,
+        'g-55',
+        reason: 'o backend vincula pelo UUID, não pelo igdbId',
+      );
+      expect(feed.created.single.gameEntryId, isNull);
+    },
+  );
+
+  testWidgets('removes the link returns the publish without game', (
     tester,
   ) async {
-    final games =
-        FakeGamesRepository(
-            games: {
-              900001: fakeGame(),
-              55: fakeGame(igdbId: 55, name: 'Escolhido'),
-            },
-          )
-          ..searchResult = const [
-            GameSummary(
-              igdbId: 55,
-              name: 'Escolhido',
-              platforms: ['PC'],
-              genres: [],
-            ),
-          ];
-    final feed = FakeFeedRepository();
-    await openComposer(tester, feed: feed, games: games);
-
-    await tapAndSettle(tester, find.text('Vincular um jogo'));
-    await tester.enterText(
-      find.descendant(
-        of: find.byType(SearchBar),
-        matching: find.byType(EditableText),
-      ),
-      'esco',
-    );
-    await tester.pump(const Duration(milliseconds: 450));
-    await tester.pumpAndSettle();
-    await tapAndSettle(tester, find.text('Escolhido'));
-    expect(find.widgetWithText(InputChip, 'Escolhido'), findsOneWidget);
-
-    await tester.enterText(textField, 'Joguei isso');
-    await tester.pumpAndSettle();
-    await tapAndSettle(tester, publish);
-    expect(
-      feed.created.single.gameId,
-      'g-55',
-      reason: 'o backend vincula pelo UUID, não pelo igdbId',
-    );
-    expect(feed.created.single.gameEntryId, isNull);
-  });
-
-  testWidgets('remover o vínculo volta a publicar sem jogo', (tester) async {
     final entry = fakeEntry(id: 'e1');
     final feed = FakeFeedRepository();
     await openComposer(
@@ -173,7 +177,7 @@ void main() {
   });
 
   testWidgets(
-    'com registro do jogo, escolhe qual playthrough e envia o registro',
+    'with entry of the game, chooses which playthrough and sends the entry',
     (tester) async {
       final library = FakeLibraryRepository([
         fakeEntry(id: 'a', platform: 'PC', status: GameStatus.completed),
@@ -217,44 +221,47 @@ void main() {
     },
   );
 
-  testWidgets('sair com texto pede confirmação; sem texto, não', (
-    tester,
-  ) async {
-    final h = AppHarness();
-    await h.pump(tester);
-    await tapAndSettle(tester, find.text('Comunidade').last);
-    await tapAndSettle(
-      tester,
-      find.widgetWithText(FloatingActionButton, 'Publicar'),
-    );
+  testWidgets(
+    'leaving with text asks for confirmation; without text, does not',
+    (tester) async {
+      final h = AppHarness();
+      await h.pump(tester);
+      await tapAndSettle(tester, find.text('Comunidade').last);
+      await tapAndSettle(
+        tester,
+        find.widgetWithText(FloatingActionButton, 'Publicar'),
+      );
 
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.text('Descartar publicação?'), findsNothing);
-    expect(
-      find.text('Nova publicação'),
-      findsNothing,
-      reason: 'voltou ao feed',
-    );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Descartar publicação?'), findsNothing);
+      expect(
+        find.text('Nova publicação'),
+        findsNothing,
+        reason: 'voltou ao feed',
+      );
 
-    await tapAndSettle(
-      tester,
-      find.widgetWithText(FloatingActionButton, 'Publicar'),
-    );
-    await tester.enterText(textField, 'rascunho');
-    await tester.pumpAndSettle();
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.text('Descartar publicação?'), findsOneWidget);
+      await tapAndSettle(
+        tester,
+        find.widgetWithText(FloatingActionButton, 'Publicar'),
+      );
+      await tester.enterText(textField, 'rascunho');
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Descartar publicação?'), findsOneWidget);
 
-    await tapAndSettle(tester, find.text('Continuar editando'));
-    expect(find.text('rascunho'), findsOneWidget, reason: 'texto preservado');
-  });
+      await tapAndSettle(tester, find.text('Continuar editando'));
+      expect(find.text('rascunho'), findsOneWidget, reason: 'texto preservado');
+    },
+  );
 
-  group('concluir um jogo não convida a publicar', () {
+  group('complete the game does not invites the publish', () {
     // O backend já cria a atividade "zerou" sozinho; um convite para publicar o mesmo fato à mão
     // duplicava o post no feed.
-    testWidgets('pelo menu de status: só confirma a mudança', (tester) async {
+    testWidgets('through the menu of status: only confirms the change', (
+      tester,
+    ) async {
       final library = FakeLibraryRepository([
         fakeEntry(id: 'e1', status: GameStatus.playing),
       ]);
@@ -275,7 +282,7 @@ void main() {
       expect(feed.created, isEmpty);
     });
 
-    testWidgets('pelo formulário ao editar: só diz que atualizou', (
+    testWidgets('through the form to the edit: only says that updated', (
       tester,
     ) async {
       final library = FakeLibraryRepository([
@@ -295,7 +302,9 @@ void main() {
       expect(find.textContaining('Quer contar'), findsNothing);
     });
 
-    testWidgets('criando já como concluído: só diz que criou', (tester) async {
+    testWidgets('creating already the completed: only says that created', (
+      tester,
+    ) async {
       await AppHarness().pump(tester);
       await goTo(tester, '/games/900001/playthroughs/new');
       await tapAndSettle(tester, find.widgetWithText(ChoiceChip, 'Concluído'));
@@ -308,12 +317,12 @@ void main() {
     });
   });
 
-  group('vínculo pela rota', () {
+  group('link through the route', () {
     final linkChip = find.widgetWithText(InputChip, 'Jogo Fixture Um');
     final retry = find.widgetWithText(FilledButton, 'Tentar de novo');
     final withoutLink = find.text('Publicar sem vínculo');
 
-    testWidgets('?igdbId resolve o jogo e o post vai com o UUID', (
+    testWidgets('?igdbId resolve the game and the post goes with the UUID', (
       tester,
     ) async {
       final feed = FakeFeedRepository();
@@ -330,7 +339,7 @@ void main() {
       expect(feed.created.single.gameEntryId, isNull);
     });
 
-    testWidgets('com os dois, o registro válido tem precedência', (
+    testWidgets('when both are present, the valid entry takes precedence', (
       tester,
     ) async {
       final feed = FakeFeedRepository();
@@ -351,7 +360,7 @@ void main() {
       expect(feed.created.single.gameEntryId, 'e1');
     });
 
-    testWidgets('registro inexistente cai no jogo da rota', (tester) async {
+    testWidgets('entry missing falls in the game of the route', (tester) async {
       final feed = FakeFeedRepository();
       await openComposer(
         tester,
@@ -367,7 +376,7 @@ void main() {
       expect(feed.created.single.gameEntryId, isNull);
     });
 
-    testWidgets('igdbId inválido é ignorado: sem vínculo', (tester) async {
+    testWidgets('invalid igdbId is ignored: without the link', (tester) async {
       final feed = FakeFeedRepository();
       await openComposer(tester, path: '/posts/new?igdbId=abc', feed: feed);
       expect(find.byType(InputChip), findsNothing);
@@ -378,7 +387,7 @@ void main() {
       expect(feed.created.single.gameId, isNull);
     });
 
-    testWidgets('falha ao resolver bloqueia publicar até tentar de novo', (
+    testWidgets('fails to the resolver blocks publish until try of new', (
       tester,
     ) async {
       final games = FakeGamesRepository()..gameError = const NetworkException();
@@ -412,29 +421,31 @@ void main() {
       expect(feed.created.single.gameId, 'g-900001');
     });
 
-    testWidgets('remover o vínculo de propósito libera o post sem jogo', (
-      tester,
-    ) async {
-      final games = FakeGamesRepository()..gameError = const NetworkException();
-      final feed = FakeFeedRepository();
-      await openComposer(
-        tester,
-        path: '/posts/new?igdbId=900001',
-        feed: feed,
-        games: games,
-      );
-      await tester.enterText(textField, 'Só texto');
-      await tester.pumpAndSettle();
-      expect(tester.widget<FilledButton>(publish).onPressed, isNull);
+    testWidgets(
+      'intentionally removing the link allows posting without the game',
+      (tester) async {
+        final games = FakeGamesRepository()
+          ..gameError = const NetworkException();
+        final feed = FakeFeedRepository();
+        await openComposer(
+          tester,
+          path: '/posts/new?igdbId=900001',
+          feed: feed,
+          games: games,
+        );
+        await tester.enterText(textField, 'Só texto');
+        await tester.pumpAndSettle();
+        expect(tester.widget<FilledButton>(publish).onPressed, isNull);
 
-      await tapAndSettle(tester, withoutLink);
-      expect(find.textContaining('Não foi possível vincular'), findsNothing);
-      expect(find.text('Vincular um jogo'), findsOneWidget);
-      await tapAndSettle(tester, publish);
-      expect(feed.created.single.gameId, isNull);
-    });
+        await tapAndSettle(tester, withoutLink);
+        expect(find.textContaining('Não foi possível vincular'), findsNothing);
+        expect(find.text('Vincular um jogo'), findsOneWidget);
+        await tapAndSettle(tester, publish);
+        expect(feed.created.single.gameId, isNull);
+      },
+    );
 
-    testWidgets('enquanto resolve, publicar fica desabilitado', (tester) async {
+    testWidgets('while resolve, publish stays disabled', (tester) async {
       final gate = Completer<void>();
       final games = FakeGamesRepository()..gameGate = gate;
       // Sem `goTo`: ele espera estabilizar, e o indicador de carregamento anima enquanto a
@@ -454,67 +465,71 @@ void main() {
       expect(tester.widget<FilledButton>(publish).onPressed, isNotNull);
     });
 
-    testWidgets('falha ao resolver o jogo escolhido na busca também bloqueia', (
-      tester,
-    ) async {
-      final games = FakeGamesRepository()
-        ..searchResult = const [
-          GameSummary(
-            igdbId: 900001,
-            name: 'Zelda Fixture',
-            platforms: [],
-            genres: [],
+    testWidgets(
+      'failure resolving the game selected in search also blocks submission',
+      (tester) async {
+        final games = FakeGamesRepository()
+          ..searchResult = const [
+            GameSummary(
+              igdbId: 900001,
+              name: 'Zelda Fixture',
+              platforms: [],
+              genres: [],
+            ),
+          ]
+          ..gameError = const NetworkException();
+        await openComposer(tester, games: games);
+        await tester.enterText(textField, 'Oi');
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Vincular um jogo'));
+        await tester.enterText(
+          find.descendant(
+            of: find.byType(SearchBar),
+            matching: find.byType(EditableText),
           ),
-        ]
-        ..gameError = const NetworkException();
-      await openComposer(tester, games: games);
-      await tester.enterText(textField, 'Oi');
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Vincular um jogo'));
-      await tester.enterText(
-        find.descendant(
-          of: find.byType(SearchBar),
-          matching: find.byType(EditableText),
-        ),
-        'zelda',
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Zelda Fixture'));
+          'zelda',
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Zelda Fixture'));
 
-      expect(
-        find.textContaining('Não foi possível vincular ao jogo'),
-        findsOneWidget,
-      );
-      expect(tester.widget<FilledButton>(publish).onPressed, isNull);
-    });
+        expect(
+          find.textContaining('Não foi possível vincular ao jogo'),
+          findsOneWidget,
+        );
+        expect(tester.widget<FilledButton>(publish).onPressed, isNull);
+      },
+    );
   });
 
-  testWidgets('layout a 360 px e texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px and text 200% does not overflows', (
+    tester,
+  ) async {
     final h = AppHarness(library: FakeLibraryRepository([fakeEntry(id: 'e1')]));
     await h.pump(tester, size: const Size(360, 800), textScale: 2.0);
     await goTo(tester, '/posts/new?entryId=e1');
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('o vínculo com o jogo fica num bloco próprio abaixo do texto', (
-    tester,
-  ) async {
-    final h = AppHarness();
-    await h.pump(tester);
-    await goTo(tester, '/posts/new');
-    final field = tester.getRect(find.byType(TextField).first);
-    final label = tester.getRect(find.text('Jogo (opcional)'));
-    final block = tester.getRect(
-      find
-          .ancestor(
-            of: find.text('Jogo (opcional)'),
-            matching: find.byType(DecoratedBox),
-          )
-          .first,
-    );
-    expect(block.top, greaterThan(field.bottom));
-    expect(block.contains(label.center), isTrue);
-    expect(find.text('Vincular um jogo'), findsOneWidget);
-  });
+  testWidgets(
+    'the link with the game stays number block own below of the text',
+    (tester) async {
+      final h = AppHarness();
+      await h.pump(tester);
+      await goTo(tester, '/posts/new');
+      final field = tester.getRect(find.byType(TextField).first);
+      final label = tester.getRect(find.text('Jogo (opcional)'));
+      final block = tester.getRect(
+        find
+            .ancestor(
+              of: find.text('Jogo (opcional)'),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect(block.top, greaterThan(field.bottom));
+      expect(block.contains(label.center), isTrue);
+      expect(find.text('Vincular um jogo'), findsOneWidget);
+    },
+  );
 }

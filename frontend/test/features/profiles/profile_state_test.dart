@@ -59,8 +59,8 @@ Future<ProviderContainer> makeContainer(
 }
 
 void main() {
-  group('contrato: respostas reais do backend', () {
-    test('perfil: contadores, relação e datas', () {
+  group('contract: replies real from the backend', () {
+    test('profile: counters, relationship, and dates', () {
       final p = UserProfile.fromJson(
         fixtureBody('user_profile') as Map<String, dynamic>,
       );
@@ -76,7 +76,7 @@ void main() {
       expect(p.bannerUrl, isNull);
     });
 
-    test('resultado de busca de pessoas', () {
+    test('result of search of people', () {
       final list = (fixtureBody('users_search') as List)
           .cast<Map<String, dynamic>>()
           .map(PersonResult.fromJson)
@@ -86,7 +86,7 @@ void main() {
       expect(list.first.isFollowedByMe, isA<bool>());
     });
 
-    test('favoritos do perfil são jogos completos', () {
+    test('profile favorites are complete games', () {
       final games = (fixtureBody('user_favorites') as List)
           .cast<Map<String, dynamic>>()
           .map(Game.fromJson)
@@ -94,15 +94,18 @@ void main() {
       expect(games.single.igdbId, 900001);
     });
 
-    test('bio vazia equivale a sem bio; nome ausente cai no username', () {
-      final p = fakeProfile(bio: '', name: null, username: 'zé');
-      expect(p.bioOrNull, isNull);
-      expect(p.displayName, 'zé');
-      expect(fakeProfile(bio: '  ').bioOrNull, isNull);
-      expect(fakeProfile(bio: 'oi').bioOrNull, 'oi');
-    });
+    test(
+      'bio empty equivale the without bio; name missing falls in the username',
+      () {
+        final p = fakeProfile(bio: '', name: null, username: 'zé');
+        expect(p.bioOrNull, isNull);
+        expect(p.displayName, 'zé');
+        expect(fakeProfile(bio: '  ').bioOrNull, isNull);
+        expect(fakeProfile(bio: 'oi').bioOrNull, 'oi');
+      },
+    );
 
-    test('alterações enviam só o que foi informado; bio vazia limpa', () {
+    test('changes send only the that was informed; bio empty clears', () {
       expect(const ProfileChanges(bio: 'x').toJson(), {'bio': 'x'});
       expect(const ProfileChanges(bio: '').toJson(), {'bio': ''});
       expect(const ProfileChanges().isEmpty, isTrue);
@@ -112,12 +115,12 @@ void main() {
       });
     });
 
-    test('limite de 8 MiB do upload', () {
+    test('limit of 8 MiB of the upload', () {
       expect(fakeImage(size: PickedImage.maxBytes).isTooLarge, isFalse);
       expect(fakeImage(size: PickedImage.maxBytes + 1).isTooLarge, isTrue);
     });
 
-    test('tipo da imagem pela extensão', () {
+    test('image type from the extension', () {
       expect(mimeTypeForFileName('a.PNG'), 'image/png');
       expect(mimeTypeForFileName('a.webp'), 'image/webp');
       expect(mimeTypeForFileName('a.heic'), 'image/heic');
@@ -126,7 +129,7 @@ void main() {
     });
   });
 
-  group('corpo das requisições', () {
+  group('request bodies', () {
     ({RemoteProfilesRepository repo, FakeAdapter adapter}) make(
       Object? body, {
       int status = 200,
@@ -137,7 +140,7 @@ void main() {
       return (repo: RemoteProfilesRepository(dio), adapter: adapter);
     }
 
-    test('PATCH só com os campos alterados', () async {
+    test('PATCH only with the fields changed', () async {
       final m = make(null, status: 204);
       await m.repo.updateProfile(const ProfileChanges(bio: 'nova'));
       expect(m.adapter.requests.single.method, 'PATCH');
@@ -145,13 +148,13 @@ void main() {
       expect(m.adapter.requests.single.data, {'bio': 'nova'});
     });
 
-    test('sem alterações não faz requisição', () async {
+    test('without changes does not make the request', () async {
       final m = make(null, status: 204);
       await m.repo.updateProfile(const ProfileChanges());
       expect(m.adapter.requests, isEmpty);
     });
 
-    test('seguir usa POST e deixar de seguir usa DELETE', () async {
+    test('follow uses post and leave of follow uses DELETE', () async {
       final m = make(null, status: 204);
       await m.repo.setFollow('u1', follow: true);
       await m.repo.setFollow('u1', follow: false);
@@ -161,39 +164,39 @@ void main() {
       ]);
     });
 
+    test('upload of avatar: multipart with the field, the name and the type correct', () async {
+      final m = make({'avatarUrl': 'http://x/uploads/avatars/a.jpg'});
+      final url = await m.repo.uploadImage(
+        ProfileImageKind.avatar,
+        fakeImage(name: 'eu.png'),
+      );
+      final req = m.adapter.requests.single;
+      expect((req.method, req.path), ('POST', '/users/me/avatar'));
+      final form = req.data as FormData;
+      expect(form.files.single.key, 'avatar');
+      expect(form.files.single.value.filename, 'eu.png');
+      expect(form.files.single.value.contentType.toString(), 'image/png');
+      expect(url, 'http://x/uploads/avatars/a.jpg');
+    });
+
     test(
-      'upload de avatar: multipart com o campo, o nome e o tipo certos',
+      'upload of banner uses the route and the field of the banner',
       () async {
-        final m = make({'avatarUrl': 'http://x/uploads/avatars/a.jpg'});
+        final m = make({'bannerUrl': 'http://x/uploads/banners/b.jpg'});
         final url = await m.repo.uploadImage(
-          ProfileImageKind.avatar,
-          fakeImage(name: 'eu.png'),
+          ProfileImageKind.banner,
+          fakeImage(),
         );
-        final req = m.adapter.requests.single;
-        expect((req.method, req.path), ('POST', '/users/me/avatar'));
-        final form = req.data as FormData;
-        expect(form.files.single.key, 'avatar');
-        expect(form.files.single.value.filename, 'eu.png');
-        expect(form.files.single.value.contentType.toString(), 'image/png');
-        expect(url, 'http://x/uploads/avatars/a.jpg');
+        expect(m.adapter.requests.single.path, '/users/me/banner');
+        expect(
+          (m.adapter.requests.single.data as FormData).files.single.key,
+          'banner',
+        );
+        expect(url, endsWith('b.jpg'));
       },
     );
 
-    test('upload de banner usa a rota e o campo do banner', () async {
-      final m = make({'bannerUrl': 'http://x/uploads/banners/b.jpg'});
-      final url = await m.repo.uploadImage(
-        ProfileImageKind.banner,
-        fakeImage(),
-      );
-      expect(m.adapter.requests.single.path, '/users/me/banner');
-      expect(
-        (m.adapter.requests.single.data as FormData).files.single.key,
-        'banner',
-      );
-      expect(url, endsWith('b.jpg'));
-    });
-
-    test('perfil e busca usam o id e o termo', () async {
+    test('profile and search use the id and the term', () async {
       final m = make([]);
       await m.repo.search('ana');
       expect(m.adapter.requests.single.queryParameters['q'], 'ana');
@@ -202,7 +205,7 @@ void main() {
 
   group('FollowStore', () {
     test(
-      'seguir é imediato, soma +1 ao contador e confirma no servidor',
+      'follow is immediate, sum +1 to the counter and confirms on the server',
       () async {
         final repo = FakeProfilesRepository();
         final c = await makeContainer(repo);
@@ -215,16 +218,19 @@ void main() {
       },
     );
 
-    test('deixar de seguir logo depois acumula o ajuste (volta a 0)', () async {
-      final c = await makeContainer(FakeProfilesRepository());
-      final store = c.read(followStoreProvider.notifier);
-      await store.toggle('u-beto', currentlyFollowing: false);
-      await store.toggle('u-beto', currentlyFollowing: true);
-      final info = c.read(followStoreProvider)['u-beto']!;
-      expect((info.following, info.followerDelta), (false, 0));
-    });
+    test(
+      'leave of follow logo after accumulates the adjustment (returns the 0)',
+      () async {
+        final c = await makeContainer(FakeProfilesRepository());
+        final store = c.read(followStoreProvider.notifier);
+        await store.toggle('u-beto', currentlyFollowing: false);
+        await store.toggle('u-beto', currentlyFollowing: true);
+        final info = c.read(followStoreProvider)['u-beto']!;
+        expect((info.following, info.followerDelta), (false, 0));
+      },
+    );
 
-    test('desfaz quando o servidor falha (sem registro anterior, remove a entrada)', () async {
+    test('undoes when the server fails (without entry previous, removes the entry)', () async {
       final repo = FakeProfilesRepository()
         ..followError = const NetworkException();
       final c = await makeContainer(repo);
@@ -238,21 +244,24 @@ void main() {
       expect(c.read(followStoreProvider.notifier).isPending('u-beto'), isFalse);
     });
 
-    test('desfaz para o estado anterior quando já havia ajuste', () async {
-      final repo = FakeProfilesRepository();
-      final c = await makeContainer(repo);
-      final store = c.read(followStoreProvider.notifier);
-      await store.toggle('u-beto', currentlyFollowing: false);
-      repo.followError = const NetworkException();
-      await expectLater(
-        store.toggle('u-beto', currentlyFollowing: true),
-        throwsA(isA<NetworkException>()),
-      );
-      final info = c.read(followStoreProvider)['u-beto']!;
-      expect((info.following, info.followerDelta), (true, 1));
-    });
+    test(
+      'undoes for the state previous when already there was adjustment',
+      () async {
+        final repo = FakeProfilesRepository();
+        final c = await makeContainer(repo);
+        final store = c.read(followStoreProvider.notifier);
+        await store.toggle('u-beto', currentlyFollowing: false);
+        repo.followError = const NetworkException();
+        await expectLater(
+          store.toggle('u-beto', currentlyFollowing: true),
+          throwsA(isA<NetworkException>()),
+        );
+        final info = c.read(followStoreProvider)['u-beto']!;
+        expect((info.following, info.followerDelta), (true, 1));
+      },
+    );
 
-    test('toques enquanto pendente não geram requisições', () async {
+    test('taps while pending does not generate requests', () async {
       final gate = Completer<void>();
       final repo = FakeProfilesRepository()..followGate = gate;
       final c = await makeContainer(repo);
@@ -266,7 +275,7 @@ void main() {
     });
 
     test(
-      'sync descarta o ajuste local, menos enquanto há alteração em andamento',
+      'sync discards the local change except while the change is in progress',
       () async {
         final gate = Completer<void>();
         final repo = FakeProfilesRepository()..followGate = gate;
@@ -291,7 +300,7 @@ void main() {
       },
     );
 
-    test('seguir marca o feed Seguindo como desatualizado', () async {
+    test('follow marks the feed Following the outdated', () async {
       var now = DateTime.utc(2026, 6, 1, 12);
       final feed = FakeFeedRepository(following: [fakePost(id: 'p1')]);
       final c = await makeContainer(
@@ -312,7 +321,7 @@ void main() {
       expect(feed.feedCalls.length, calls + 1);
     });
 
-    test('o estado é descartado ao sair da conta', () async {
+    test('state is discarded when leaving the account', () async {
       final auth = FakeAuthRepository()
         ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
       final c = await makeContainer(FakeProfilesRepository(), auth: auth);
@@ -325,15 +334,15 @@ void main() {
     });
   });
 
-  group('busca de pessoas', () {
-    test('termo curto não consulta', () async {
+  group('search of people', () {
+    test('term short does not query', () async {
       final repo = FakeProfilesRepository();
       final c = await makeContainer(repo);
       expect(await c.read(peopleSearchProvider('a').future), isEmpty);
       expect(repo.searches, isEmpty);
     });
 
-    test('respeita o debounce e o termo é aparado', () {
+    test('respects debounce and trims the term', () {
       fakeAsync((async) {
         final repo = FakeProfilesRepository()..searchResult = [fakePerson()];
         final c = ProviderContainer(
@@ -354,7 +363,7 @@ void main() {
       });
     });
 
-    test('digitar mais antes do debounce abandona a consulta anterior', () {
+    test('type more before of the debounce abandons the query previous', () {
       fakeAsync((async) {
         final repo = FakeProfilesRepository();
         final c = ProviderContainer(
@@ -376,95 +385,85 @@ void main() {
       });
     });
 
-    test('resultados descartam ajustes locais antigos de follow (servidor é a verdade)', () async {
-      final repo = FakeProfilesRepository()
-        ..searchResult = [fakePerson(id: 'u-beto', followed: true)];
-      final c = await makeContainer(repo);
-      await c
-          .read(followStoreProvider.notifier)
-          .toggle('u-beto', currentlyFollowing: false);
-      expect(c.read(followStoreProvider), isNotEmpty);
+    test(
+      'results discard old local follow changes (the server is authoritative)',
+      () async {
+        final repo = FakeProfilesRepository()
+          ..searchResult = [fakePerson(id: 'u-beto', followed: true)];
+        final c = await makeContainer(repo);
+        await c
+            .read(followStoreProvider.notifier)
+            .toggle('u-beto', currentlyFollowing: false);
+        expect(c.read(followStoreProvider), isNotEmpty);
 
-      c.listen(peopleSearchProvider('beto'), (_, _) {});
-      await Future<void>.delayed(
-        peopleSearchDebounce + const Duration(milliseconds: 50),
-      );
-      await c.read(peopleSearchProvider('beto').future);
-      expect(c.read(followStoreProvider), isEmpty);
-    });
+        c.listen(peopleSearchProvider('beto'), (_, _) {});
+        await Future<void>.delayed(
+          peopleSearchDebounce + const Duration(milliseconds: 50),
+        );
+        await c.read(peopleSearchProvider('beto').future);
+        expect(c.read(followStoreProvider), isEmpty);
+      },
+    );
   });
 
   group('ProfileEditor', () {
-    test(
-      'salvar atualiza a sessão, os posts já carregados e recarrega o perfil',
-      () async {
-        final auth = FakeAuthRepository()
-          ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
-        final repo = FakeProfilesRepository()
-          ..profiles['u-ana'] = fakeProfile(
-            id: 'u-ana',
-            username: 'ana',
-            name: 'ANA',
-          );
-        final c = await makeContainer(repo, auth: auth);
-        c.listen(profileProvider('u-ana'), (_, _) {});
-        await c.read(profileProvider('u-ana').future);
-        c.read(postStoreProvider.notifier).upsert([
-          fakePost(
-            id: 'mine',
-            author: const UserSummary(
-              id: 'u-ana',
-              username: 'ana',
-              name: 'ANA',
-            ),
-          ),
-          fakePost(id: 'other', author: beto),
-        ]);
-        final profileCalls = repo.profileCalls;
-
-        auth.meResult = const AuthUser(
+    test('save updates the session, the posts already loaded and reloads the profile', () async {
+      final auth = FakeAuthRepository()
+        ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
+      final repo = FakeProfilesRepository()
+        ..profiles['u-ana'] = fakeProfile(
           id: 'u-ana',
-          username: 'ana_nova',
-          email: 'ana@example.test',
-          name: 'Ana Silva',
-          avatarUrl: 'http://x/a.jpg',
+          username: 'ana',
+          name: 'ANA',
         );
-        await c
-            .read(profileEditorProvider)
-            .save(
-              const ProfileChanges(username: 'ana_nova', name: 'Ana Silva'),
-            );
+      final c = await makeContainer(repo, auth: auth);
+      c.listen(profileProvider('u-ana'), (_, _) {});
+      await c.read(profileProvider('u-ana').future);
+      c.read(postStoreProvider.notifier).upsert([
+        fakePost(
+          id: 'mine',
+          author: const UserSummary(id: 'u-ana', username: 'ana', name: 'ANA'),
+        ),
+        fakePost(id: 'other', author: beto),
+      ]);
+      final profileCalls = repo.profileCalls;
 
-        expect(repo.updates.single.toJson(), {
-          'username': 'ana_nova',
-          'name': 'Ana Silva',
-        });
-        final session = c.read(sessionControllerProvider);
-        expect((session as dynamic).user.username, 'ana_nova');
-        final mine = c.read(postStoreProvider)['mine']!;
-        expect(
-          (
-            mine.author.displayName,
-            mine.author.username,
-            mine.author.avatarUrl,
-          ),
-          ('Ana Silva', 'ana_nova', 'http://x/a.jpg'),
-        );
-        expect(
-          c.read(postStoreProvider)['other']!.author.username,
-          'beto',
-          reason: 'posts de outros intactos',
-        );
-        await c.read(profileProvider('u-ana').future);
-        expect(
-          repo.profileCalls,
-          greaterThan(profileCalls),
-          reason: 'perfil recarregado',
-        );
-      },
-    );
+      auth.meResult = const AuthUser(
+        id: 'u-ana',
+        username: 'ana_nova',
+        email: 'ana@example.test',
+        name: 'Ana Silva',
+        avatarUrl: 'http://x/a.jpg',
+      );
+      await c
+          .read(profileEditorProvider)
+          .save(const ProfileChanges(username: 'ana_nova', name: 'Ana Silva'));
 
-    test('conflito de username lança e não altera nada', () async {
+      expect(repo.updates.single.toJson(), {
+        'username': 'ana_nova',
+        'name': 'Ana Silva',
+      });
+      final session = c.read(sessionControllerProvider);
+      expect((session as dynamic).user.username, 'ana_nova');
+      final mine = c.read(postStoreProvider)['mine']!;
+      expect(
+        (mine.author.displayName, mine.author.username, mine.author.avatarUrl),
+        ('Ana Silva', 'ana_nova', 'http://x/a.jpg'),
+      );
+      expect(
+        c.read(postStoreProvider)['other']!.author.username,
+        'beto',
+        reason: 'posts de outros intactos',
+      );
+      await c.read(profileProvider('u-ana').future);
+      expect(
+        repo.profileCalls,
+        greaterThan(profileCalls),
+        reason: 'perfil recarregado',
+      );
+    });
+
+    test('username conflict throws and changes nothing', () async {
       final auth = FakeAuthRepository()
         ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
       final repo = FakeProfilesRepository()
@@ -488,38 +487,35 @@ void main() {
       );
     });
 
-    test(
-      'upload: reporta progresso, devolve a URL e atualiza o avatar da sessão',
-      () async {
-        final auth = FakeAuthRepository()
-          ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
-        final repo = FakeProfilesRepository();
-        final c = await makeContainer(repo, auth: auth);
-        auth.meResult = AuthUser(
-          id: 'u-ana',
-          username: 'ana',
-          email: 'a@example.test',
-          avatarUrl: repo.avatarUrlResult,
-        );
+    test('upload: reports progress, returns the URL and updates the avatar of the session', () async {
+      final auth = FakeAuthRepository()
+        ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
+      final repo = FakeProfilesRepository();
+      final c = await makeContainer(repo, auth: auth);
+      auth.meResult = AuthUser(
+        id: 'u-ana',
+        username: 'ana',
+        email: 'a@example.test',
+        avatarUrl: repo.avatarUrlResult,
+      );
 
-        final progress = <double>[];
-        final url = await c
-            .read(profileEditorProvider)
-            .uploadImage(
-              ProfileImageKind.avatar,
-              fakeImage(),
-              onProgress: progress.add,
-            );
-        expect(url, repo.avatarUrlResult);
-        expect(progress, [0.5, 1.0]);
-        expect(
-          (c.read(sessionControllerProvider) as dynamic).user.avatarUrl,
-          repo.avatarUrlResult,
-        );
-      },
-    );
+      final progress = <double>[];
+      final url = await c
+          .read(profileEditorProvider)
+          .uploadImage(
+            ProfileImageKind.avatar,
+            fakeImage(),
+            onProgress: progress.add,
+          );
+      expect(url, repo.avatarUrlResult);
+      expect(progress, [0.5, 1.0]);
+      expect(
+        (c.read(sessionControllerProvider) as dynamic).user.avatarUrl,
+        repo.avatarUrlResult,
+      );
+    });
 
-    test('upload com falha lança e não mexe na sessão', () async {
+    test('upload failure throws and does not change the session', () async {
       final repo = FakeProfilesRepository()
         ..uploadError = const ApiException(
           400,
@@ -539,7 +535,7 @@ void main() {
       );
     });
 
-    test('se reler a conta falhar depois de salvar, a alteração não é dada como falha', () async {
+    test('if reler the account fails after save, the change is not given the fails', () async {
       final auth = FakeAuthRepository()
         ..restoreResult = Restored(fakeUser('u-ana', 'ana'))
         ..meError = const NetworkException();
@@ -550,8 +546,8 @@ void main() {
     });
   });
 
-  group('tema', () {
-    test('a preferência persiste entre aberturas do app', () async {
+  group('theme', () {
+    test('the preference persists across app launches', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       ProviderContainer make() => ProviderContainer(
@@ -568,7 +564,7 @@ void main() {
       expect(second.read(themeModeProvider), ThemeMode.dark);
     });
 
-    test('valor desconhecido cai em "sistema"', () async {
+    test('value unknown falls in "system"', () async {
       SharedPreferences.setMockInitialValues({'theme.mode': 'roxo'});
       final prefs = await SharedPreferences.getInstance();
       final c = ProviderContainer(

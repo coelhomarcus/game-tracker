@@ -30,7 +30,7 @@ ThemeMode appThemeMode(WidgetTester tester) =>
     ThemeMode.system;
 
 void main() {
-  test('a versão exibida é a do pubspec.yaml', () {
+  test('the displayed version matches pubspec.yaml', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final match = RegExp(
       r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)',
@@ -44,7 +44,7 @@ void main() {
     expect(appVersion, match!.group(1));
   });
 
-  testWidgets('mostra conta, versão e tema atual', (tester) async {
+  testWidgets('shows account, current version, and theme', (tester) async {
     await openSettings(tester);
     expect(find.text('Aparência'), findsOneWidget);
     expect(find.text('Preferência deste aparelho.'), findsOneWidget);
@@ -62,7 +62,9 @@ void main() {
     expect(find.text('Versão $appVersion'), findsOneWidget);
   });
 
-  testWidgets('trocar o tema aplica na hora e persiste', (tester) async {
+  testWidgets('switch the theme applies immediately and persists', (
+    tester,
+  ) async {
     await openSettings(tester);
     expect(appThemeMode(tester), ThemeMode.system);
 
@@ -76,13 +78,17 @@ void main() {
     expect(prefs.getString('theme.mode'), 'light');
   });
 
-  testWidgets('o tema salvo é aplicado ao abrir o app', (tester) async {
+  testWidgets('the saved theme is applied when opening the app', (
+    tester,
+  ) async {
     final h = AppHarness();
     await h.pump(tester, prefs: {'theme.mode': 'dark'});
     expect(appThemeMode(tester), ThemeMode.dark);
   });
 
-  testWidgets('sair volta ao login e chama o logout', (tester) async {
+  testWidgets('leave returns to the login and calls the logout', (
+    tester,
+  ) async {
     final auth = FakeAuthRepository();
     final h = await openSettings(tester, auth: auth);
     await tapSignOut(tester);
@@ -90,13 +96,15 @@ void main() {
     expect(h.auth.logoutCalls, 1);
   });
 
-  testWidgets('voltar leva ao perfil', (tester) async {
+  testWidgets('return opens profile', (tester) async {
     await openSettings(tester);
     await tapAndSettle(tester, find.byType(BackButton));
     expect(find.text('Editar perfil'), findsOneWidget);
   });
 
-  testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px with text 200% does not overflows', (
+    tester,
+  ) async {
     final h = AppHarness();
     await h.pump(tester, size: const Size(360, 800), textScale: 2.0);
     await goTo(tester, '/settings');

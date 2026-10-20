@@ -44,8 +44,8 @@ void keepAlive(ProviderContainer c, ProviderListenable<Object?> provider) {
 }
 
 void main() {
-  group('contrato: respostas reais do backend', () {
-    test('GET /games/igdb/:id com favorito e sinopse', () {
+  group('contract: replies real from the backend', () {
+    test('GET /games/igdb/:id with favorite and summary', () {
       final g = Game.fromJson(
         fixtureBody('games_by_igdb') as Map<String, dynamic>,
       );
@@ -59,7 +59,7 @@ void main() {
       expect(g.summary, 'Sinopse de teste.');
     });
 
-    test('jogo com metadados incompletos', () {
+    test('game with metadata incomplete', () {
       final g = Game.fromJson(
         fixtureBody('games_by_igdb_incomplete') as Map<String, dynamic>,
       );
@@ -69,7 +69,7 @@ void main() {
       expect(g.screenshots, isEmpty);
     });
 
-    test('estatísticas contam playthroughs por status', () {
+    test('statistics count playthroughs by status', () {
       // As contagens dependem do banco de onde a fixture foi gravada; o contrato é a forma.
       final json = fixtureBody('game_stats') as Map<String, dynamic>;
       expect(
@@ -82,7 +82,7 @@ void main() {
       expect(s.forStatus(GameStatus.playing), s.playing);
     });
 
-    test('resultado de busca da IGDB (formato do backend)', () {
+    test('result of search of the IGDB (format from the backend)', () {
       final r = GameSummary.fromJson({
         'igdbId': 1942,
         'name': 'The Witcher 3',
@@ -97,7 +97,7 @@ void main() {
       expect(r.platforms, ['PC']);
     });
 
-    test('jogador com horas string', () {
+    test('player with hours string', () {
       final p = GamePlayer.fromJson({
         'user': {'id': 'u', 'username': 'ana', 'name': null, 'avatarUrl': null},
         'status': 'playing',
@@ -108,8 +108,8 @@ void main() {
     });
   });
 
-  group('favorito', () {
-    test('atualiza na hora e confirma no servidor', () async {
+  group('favorite', () {
+    test('updates immediately and confirms on the server', () async {
       final games = FakeGamesRepository();
       final c = await makeSettled(games);
       keepAlive(c, gameControllerProvider(900001));
@@ -125,7 +125,7 @@ void main() {
       ], reason: 'favoritar usa o UUID do jogo, não o igdbId');
     });
 
-    test('desfaz quando o servidor falha', () async {
+    test('undoes when the server fails', () async {
       final games = FakeGamesRepository()
         ..favoriteError = const NetworkException();
       final c = await makeSettled(games);
@@ -143,7 +143,7 @@ void main() {
     });
 
     test(
-      'toques repetidos enquanto pendente não geram requisições duplicadas',
+      'repeated taps while pending of the not generate duplicate requests',
       () async {
         final gate = Completer<void>();
         final games = FakeGamesRepository()..favoriteGate = gate;
@@ -167,7 +167,7 @@ void main() {
       },
     );
 
-    test('jogo inexistente vira erro, não crash', () async {
+    test('game missing becomes error, does not crash', () async {
       final games = FakeGamesRepository()
         ..gameError = const ApiException(
           404,
@@ -183,8 +183,8 @@ void main() {
     });
   });
 
-  group('busca', () {
-    test('termo curto não consulta o servidor', () async {
+  group('search', () {
+    test('term short does not query the server', () async {
       final games = FakeGamesRepository();
       final c = makeContainer(games);
       expect(await c.read(gameSearchProvider('a').future), isEmpty);
@@ -192,7 +192,7 @@ void main() {
       expect(games.searches, isEmpty);
     });
 
-    test('espera o debounce antes de consultar', () {
+    test('waits the debounce before query', () {
       fakeAsync((async) {
         final games = FakeGamesRepository()
           ..searchResult = const [
@@ -215,7 +215,7 @@ void main() {
       });
     });
 
-    test('digitar mais antes do debounce abandona a consulta anterior', () {
+    test('type more before of the debounce abandons the query previous', () {
       fakeAsync((async) {
         final games = FakeGamesRepository();
         final c = makeContainer(games);
@@ -232,7 +232,7 @@ void main() {
       });
     });
 
-    test('termo é aparado antes de enviar', () {
+    test('term is trimmed before sending', () {
       fakeAsync((async) {
         final games = FakeGamesRepository();
         final c = makeContainer(games);
@@ -244,7 +244,7 @@ void main() {
       });
     });
 
-    test('erro de busca é distinto de lista vazia', () async {
+    test('search error differs from an empty list', () async {
       final games = FakeGamesRepository()
         ..searchError = const ApiException(
           503,

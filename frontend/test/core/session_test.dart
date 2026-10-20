@@ -64,38 +64,33 @@ class Harness {
 }
 
 void main() {
-  group('refresh em 401', () {
-    test(
-      'vários 401 simultâneos disparam um único refresh e todos são repetidos',
-      () async {
-        final h = Harness();
-        await h.session.start(
-          const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
+  group('refresh in 401', () {
+    test('multiple simultaneous 401 responses trigger the single refresh and all are repeated', () async {
+      final h = Harness();
+      await h.session.start(
+        const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
+      );
+      h.refreshGate = Completer<void>();
+
+      final calls = [for (var i = 0; i < 5; i++) h.dio.get<dynamic>('/data$i')];
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      h.refreshGate!.complete();
+      final results = await Future.wait(calls);
+
+      expect(h.refreshCalls, 1);
+      expect(results.every((r) => r.statusCode == 200), isTrue);
+      expect(results.first.data['auth'], 'Bearer a2');
+      for (var i = 0; i < 5; i++) {
+        expect(
+          h.hits('/data$i'),
+          2,
+          reason: 'uma tentativa original e uma repetição',
         );
-        h.refreshGate = Completer<void>();
+      }
+      expect(await h.store.read(), 'r2');
+    });
 
-        final calls = [
-          for (var i = 0; i < 5; i++) h.dio.get<dynamic>('/data$i'),
-        ];
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-        h.refreshGate!.complete();
-        final results = await Future.wait(calls);
-
-        expect(h.refreshCalls, 1);
-        expect(results.every((r) => r.statusCode == 200), isTrue);
-        expect(results.first.data['auth'], 'Bearer a2');
-        for (var i = 0; i < 5; i++) {
-          expect(
-            h.hits('/data$i'),
-            2,
-            reason: 'uma tentativa original e uma repetição',
-          );
-        }
-        expect(await h.store.read(), 'r2');
-      },
-    );
-
-    test('request que falhou com token antigo não renova de novo se outra já renovou', () async {
+    test('request that failed with token old does not refreshes of new if another already refreshed', () async {
       final h = Harness();
       await h.session.start(
         const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
@@ -108,7 +103,7 @@ void main() {
     });
 
     test(
-      'repete no máximo uma vez, mesmo que o servidor continue recusando',
+      'repeats at most the time, same that the server continue rejecting',
       () async {
         final h = Harness()..alwaysUnauthorized = true;
         await h.session.start(
@@ -123,46 +118,52 @@ void main() {
       },
     );
 
-    test('refresh recusado limpa a sessão e avisa uma única vez', () async {
-      final h = Harness()
-        ..refreshFailure = const ApiException(
-          401,
-          'invalid_refresh_token',
-          'inválido',
+    test(
+      'refresh rejected clears the session and warns the single time',
+      () async {
+        final h = Harness()
+          ..refreshFailure = const ApiException(
+            401,
+            'invalid_refresh_token',
+            'inválido',
+          );
+        await h.session.start(
+          const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
         );
-      await h.session.start(
-        const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
-      );
-      final calls = [
-        for (var i = 0; i < 3; i++)
-          h.dio
-              .get<dynamic>('/data$i')
-              .catchError(
-                (_) =>
-                    Response(requestOptions: RequestOptions(), statusCode: 0),
-              ),
-      ];
-      await Future.wait(calls);
-      expect(h.expired, 1);
-      expect(h.session.accessToken, isNull);
-      expect(await h.store.read(), isNull);
-      expect(h.refreshCalls, 1, reason: 'sem loop de refresh');
-    });
+        final calls = [
+          for (var i = 0; i < 3; i++)
+            h.dio
+                .get<dynamic>('/data$i')
+                .catchError(
+                  (_) =>
+                      Response(requestOptions: RequestOptions(), statusCode: 0),
+                ),
+        ];
+        await Future.wait(calls);
+        expect(h.expired, 1);
+        expect(h.session.accessToken, isNull);
+        expect(await h.store.read(), isNull);
+        expect(h.refreshCalls, 1, reason: 'sem loop de refresh');
+      },
+    );
 
-    test('rede indisponível no refresh preserva as credenciais', () async {
-      final h = Harness()..refreshFailure = const NetworkException();
-      await h.session.start(
-        const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
-      );
-      await expectLater(
-        h.dio.get<dynamic>('/data'),
-        throwsA(isA<DioException>()),
-      );
-      expect(h.expired, 0);
-      expect(await h.store.read(), 'r0');
-    });
+    test(
+      'network unavailable in the refresh preserves the credentials',
+      () async {
+        final h = Harness()..refreshFailure = const NetworkException();
+        await h.session.start(
+          const SessionTokens(accessToken: 'velho', refreshToken: 'r0'),
+        );
+        await expectLater(
+          h.dio.get<dynamic>('/data'),
+          throwsA(isA<DioException>()),
+        );
+        expect(h.expired, 0);
+        expect(await h.store.read(), 'r0');
+      },
+    );
 
-    test('erro que não é 401 não dispara refresh', () async {
+    test('error that is not 401 does not triggers refresh', () async {
       final h = Harness();
       h.accessValid = 'a1';
       await h.session.start(
@@ -174,9 +175,9 @@ void main() {
     });
   });
 
-  group('logout e troca de conta', () {
+  group('logout and switches of account', () {
     test(
-      'logout durante o refresh: resultado tardio não restaura a conta',
+      'logout during the refresh: result late does not restores the account',
       () async {
         final h = Harness();
         await h.session.start(
@@ -204,7 +205,7 @@ void main() {
       },
     );
 
-    test('resposta que chega depois do logout é descartada', () async {
+    test('reply that arrives after of the logout is discarded', () async {
       final h = Harness();
       h.accessValid = 'a1';
       await h.session.start(
@@ -220,26 +221,29 @@ void main() {
       expect((result as DioException).type, DioExceptionType.cancel);
     });
 
-    test('start de outra conta invalida requisições da anterior', () async {
-      final h = Harness();
-      h.accessValid = 'a1';
-      await h.session.start(
-        const SessionTokens(accessToken: 'a1', refreshToken: 'r0'),
-      );
-      final call = h.dio
-          .get<dynamic>('/slow')
-          .then<Object?>((r) => r, onError: (Object e) => e);
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      await h.session.start(
-        const SessionTokens(accessToken: 'b1', refreshToken: 'rb'),
-      );
-      expect(await call, isA<DioException>());
-      expect(h.session.accessToken, 'b1');
-      expect(await h.store.read(), 'rb');
-    });
+    test(
+      'start from another account invalidates requests of the previous',
+      () async {
+        final h = Harness();
+        h.accessValid = 'a1';
+        await h.session.start(
+          const SessionTokens(accessToken: 'a1', refreshToken: 'r0'),
+        );
+        final call = h.dio
+            .get<dynamic>('/slow')
+            .then<Object?>((r) => r, onError: (Object e) => e);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await h.session.start(
+          const SessionTokens(accessToken: 'b1', refreshToken: 'rb'),
+        );
+        expect(await call, isA<DioException>());
+        expect(h.session.accessToken, 'b1');
+        expect(await h.store.read(), 'rb');
+      },
+    );
 
     test(
-      'clear devolve o refresh token anterior para revogação remota',
+      'clear returns the refresh token previous for revocation remote',
       () async {
         final h = Harness();
         await h.session.start(
@@ -252,19 +256,19 @@ void main() {
   });
 
   group('restore (bootstrap)', () {
-    test('sem token guardado', () async {
+    test('without token stored', () async {
       final h = Harness();
       await h.store.clear();
       expect(await h.session.restore(), RefreshOutcome.noSession);
     });
 
-    test('token válido restaura a sessão', () async {
+    test('token valid restores the session', () async {
       final h = Harness();
       expect(await h.session.restore(), RefreshOutcome.refreshed);
       expect(h.session.accessToken, 'a2');
     });
 
-    test('token revogado limpa e sinaliza expiração', () async {
+    test('token revoked clears and signals expiration', () async {
       final h = Harness()
         ..refreshFailure = const ApiException(
           401,
@@ -276,7 +280,7 @@ void main() {
       expect(h.expired, 1);
     });
 
-    test('falha de rede mantém o token e permite tentar de novo', () async {
+    test('fails of network keeps the token and allows try of new', () async {
       final h = Harness()..refreshFailure = const NetworkException();
       expect(await h.session.restore(), RefreshOutcome.unavailable);
       expect(await h.store.read(), 'r0');
@@ -286,12 +290,15 @@ void main() {
       expect(await h.session.restore(), RefreshOutcome.refreshed);
     });
 
-    test('erro 5xx também é indisponibilidade, não sessão inválida', () async {
-      final h = Harness()
-        ..refreshFailure = const ApiException(503, 'server_error', 'fora');
-      expect(await h.session.restore(), RefreshOutcome.unavailable);
-      expect(await h.store.read(), 'r0');
-    });
+    test(
+      'error 5xx also is unavailability, does not session invalid',
+      () async {
+        final h = Harness()
+          ..refreshFailure = const ApiException(503, 'server_error', 'fora');
+        expect(await h.session.restore(), RefreshOutcome.unavailable);
+        expect(await h.store.read(), 'r0');
+      },
+    );
   });
 
   group('mapDioException', () {
@@ -305,7 +312,7 @@ void main() {
       ),
     );
 
-    test('envelope padrão', () {
+    test('envelope default', () {
       final e = mapDioException(
         bad(409, {
           'error': {'code': 'conflict', 'message': 'Username já cadastrado'},
@@ -317,7 +324,7 @@ void main() {
       );
     });
 
-    test('rate limiter com corpo fora do envelope', () {
+    test('rate limiter with body outside of the envelope', () {
       final e = mapDioException(
         bad(429, 'Too many requests, please try again later.'),
       ) as ApiException;
@@ -326,13 +333,13 @@ void main() {
       expect(e.message, contains('Muitas tentativas'));
     });
 
-    test('corpo HTML de proxy 502', () {
+    test('body HTML of proxy 502', () {
       final e =
           mapDioException(bad(502, '<html>Bad gateway</html>')) as ApiException;
       expect(e.isServerError, isTrue);
     });
 
-    test('timeout e conexão recusada viram NetworkException', () {
+    test('timeout and connection rejected become NetworkException', () {
       for (final type in [
         DioExceptionType.connectionTimeout,
         DioExceptionType.connectionError,

@@ -39,17 +39,18 @@ Future<AppHarness> openExplore(
 }
 
 void main() {
-  testWidgets('sem termo mostra a dica e não consulta o servidor', (
-    tester,
-  ) async {
-    final h = await openExplore(tester);
-    expect(find.text('Busque um jogo pelo nome'), findsOneWidget);
-    await typeQuery(tester, 'z');
-    expect(find.text('Busque um jogo pelo nome'), findsOneWidget);
-    expect(h.games.searches, isEmpty);
-  });
+  testWidgets(
+    'without the search term shows the hint and does not query the server',
+    (tester) async {
+      final h = await openExplore(tester);
+      expect(find.text('Busque um jogo pelo nome'), findsOneWidget);
+      await typeQuery(tester, 'z');
+      expect(find.text('Busque um jogo pelo nome'), findsOneWidget);
+      expect(h.games.searches, isEmpty);
+    },
+  );
 
-  testWidgets('mostra resultados depois do debounce', (tester) async {
+  testWidgets('shows results after of the debounce', (tester) async {
     final h = await openExplore(tester);
     await typeQuery(tester, 'zelda');
     expect(h.games.searches, ['zelda']);
@@ -57,7 +58,7 @@ void main() {
     expect(find.text('Switch · Wii U'), findsOneWidget);
   });
 
-  testWidgets('nenhum resultado é diferente de erro', (tester) async {
+  testWidgets('in the result is different of error', (tester) async {
     final games = FakeGamesRepository()..searchResult = const [];
     await openExplore(tester, games: games);
     await typeQuery(tester, 'xyz');
@@ -66,7 +67,7 @@ void main() {
   });
 
   testWidgets(
-    'IGDB não configurada mostra erro explicativo com nova tentativa',
+    'IGDB does not configured shows error explanatory with new attempt',
     (tester) async {
       final games = FakeGamesRepository()
         ..searchError = const ApiException(503, 'igdb_not_configured', 'x');
@@ -85,16 +86,14 @@ void main() {
     },
   );
 
-  testWidgets('tocar no resultado abre a página do jogo', (tester) async {
+  testWidgets('tap in the result opens the page of the game', (tester) async {
     await openExplore(tester);
     await typeQuery(tester, 'zelda');
     await tapAndSettle(tester, find.text('Zelda Fixture'));
     expect(find.text('Meu progresso'), findsOneWidget);
   });
 
-  testWidgets('botão adicionar abre o formulário de novo playthrough', (
-    tester,
-  ) async {
+  testWidgets('button add opens the form of new playthrough', (tester) async {
     await openExplore(tester);
     await typeQuery(tester, 'zelda');
     await tapAndSettle(
@@ -105,16 +104,14 @@ void main() {
     expect(find.text('Plataforma'), findsOneWidget);
   });
 
-  testWidgets('limpar a busca volta à dica', (tester) async {
+  testWidgets('clear the search returns to the hint', (tester) async {
     await openExplore(tester);
     await typeQuery(tester, 'zelda');
     await tapAndSettle(tester, find.byTooltip('Limpar busca'));
     expect(find.text('Busque um jogo pelo nome'), findsOneWidget);
   });
 
-  testWidgets('seletor de jogo da Biblioteca leva ao formulário', (
-    tester,
-  ) async {
+  testWidgets('selector of game from the Library opens form', (tester) async {
     final h = AppHarness(games: FakeGamesRepository()..searchResult = [_zelda]);
     await h.pump(tester);
     await tapAndSettle(

@@ -100,8 +100,8 @@ Future<void> openTab(WidgetTester tester, String tab) =>
 void main() {
   setUpAll(loadGoldenFonts);
 
-  group('estrutura', () {
-    testWidgets('uma barra só, e as abas Jogos e Pessoas abaixo dela', (
+  group('structure', () {
+    testWidgets('the slash only, and the tabs games and people below her', (
       tester,
     ) async {
       await open(tester);
@@ -118,49 +118,51 @@ void main() {
       expect(searchBar, findsOneWidget, reason: 'continua uma barra só');
     });
 
-    testWidgets(
-      'a consulta é compartilhada; só a aba ativa consulta o servidor',
-      (tester) async {
-        final h = await open(tester);
-        await type(tester, 'ze');
-        expect(h.games.searches, ['ze']);
-        expect(h.profiles.searches, isEmpty);
+    testWidgets('the query is shared; only the tab active query the server', (
+      tester,
+    ) async {
+      final h = await open(tester);
+      await type(tester, 'ze');
+      expect(h.games.searches, ['ze']);
+      expect(h.profiles.searches, isEmpty);
 
+      await openTab(tester, 'Pessoas');
+      await tester.pump(_wait);
+      await tester.pumpAndSettle();
+      expect(h.profiles.searches, ['ze'], reason: 'a mesma consulta');
+      expect(find.text('Beto Silva'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        'ze',
+        reason: 'o campo não muda ao trocar de aba',
+      );
+    });
+
+    testWidgets(
+      'the query and the tab survive the open the result and return',
+      (tester) async {
+        await open(tester);
         await openTab(tester, 'Pessoas');
-        await tester.pump(_wait);
-        await tester.pumpAndSettle();
-        expect(h.profiles.searches, ['ze'], reason: 'a mesma consulta');
+        await type(tester, 'be');
+        await tapAndSettle(tester, find.text('Beto Silva'));
+        expect(location(tester), '/users/u-beto');
+        await tapAndSettle(tester, find.byType(BackButton));
+
+        expect(location(tester), '/explore');
         expect(find.text('Beto Silva'), findsOneWidget);
+        final bar = tester.widget<SearchBar>(searchBar);
+        expect(bar.controller!.text, 'be');
         expect(
-          tester.widget<TextField>(find.byType(TextField)).controller?.text,
-          'ze',
-          reason: 'o campo não muda ao trocar de aba',
+          tester.widget<TabBar>(find.byType(TabBar)).controller!.index,
+          1,
+          reason: 'continua em Pessoas',
         );
       },
     );
 
-    testWidgets('a consulta e a aba sobrevivem a abrir um resultado e voltar', (
+    testWidgets('the query is preserved to the switch of destination', (
       tester,
     ) async {
-      await open(tester);
-      await openTab(tester, 'Pessoas');
-      await type(tester, 'be');
-      await tapAndSettle(tester, find.text('Beto Silva'));
-      expect(location(tester), '/users/u-beto');
-      await tapAndSettle(tester, find.byType(BackButton));
-
-      expect(location(tester), '/explore');
-      expect(find.text('Beto Silva'), findsOneWidget);
-      final bar = tester.widget<SearchBar>(searchBar);
-      expect(bar.controller!.text, 'be');
-      expect(
-        tester.widget<TabBar>(find.byType(TabBar)).controller!.index,
-        1,
-        reason: 'continua em Pessoas',
-      );
-    });
-
-    testWidgets('a consulta é mantida ao trocar de destino', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       await tapAndSettle(tester, find.text('Biblioteca').last);
@@ -169,7 +171,9 @@ void main() {
       expect(find.text('Zelda Fixture'), findsOneWidget);
     });
 
-    testWidgets('limpar a busca cancela e volta ao início', (tester) async {
+    testWidgets('clear the search cancels and returns to the start', (
+      tester,
+    ) async {
       await open(tester);
       await type(tester, 'zelda');
       await tapAndSettle(tester, find.byTooltip('Limpar busca'));
@@ -178,19 +182,19 @@ void main() {
     });
   });
 
-  group('escopo pela rota', () {
-    testWidgets('/explore?scope=people abre Pessoas', (tester) async {
+  group('scope through the route', () {
+    testWidgets('/explore?scope=people opens people', (tester) async {
       await open(tester, path: '/explore?scope=people');
       expect(tester.widget<TabBar>(find.byType(TabBar)).controller!.index, 1);
       expect(find.text('Encontre pessoas'), findsOneWidget);
     });
 
-    testWidgets('valor desconhecido usa Jogos', (tester) async {
+    testWidgets('value unknown uses games', (tester) async {
       await open(tester, path: '/explore?scope=banana');
       expect(tester.widget<TabBar>(find.byType(TabBar)).controller!.index, 0);
     });
 
-    testWidgets('com a página aberta, o link troca de aba', (tester) async {
+    testWidgets('with the page open, the link switches of tab', (tester) async {
       await open(tester);
       expect(tester.widget<TabBar>(find.byType(TabBar)).controller!.index, 0);
       await goTo(tester, '/explore?scope=people');
@@ -203,7 +207,7 @@ void main() {
       );
     });
 
-    testWidgets('a consulta nunca vai para a URL', (tester) async {
+    testWidgets('the query never goes for the URL', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
@@ -211,10 +215,8 @@ void main() {
     });
   });
 
-  group('busca', () {
-    testWidgets('digitar rápido consulta só o termo final (debounce)', (
-      tester,
-    ) async {
+  group('search', () {
+    testWidgets('type fast query only the term end (debounce)', (tester) async {
       final h = await open(tester);
       await type(tester, 'ze', wait: false);
       await tester.pump(const Duration(milliseconds: 100));
@@ -225,43 +227,45 @@ void main() {
       expect(h.games.searches, ['zel']);
     });
 
-    testWidgets('resposta atrasada não substitui a da busca mais recente', (
-      tester,
-    ) async {
-      final games = FakeGamesRepository()
-        ..searchByTerm['ze'] = const [_celeste]
-        ..searchByTerm['zel'] = const [_zelda];
-      final gate = Completer<void>();
-      games.searchGates['ze'] = gate;
-      await open(tester, games: games);
+    testWidgets(
+      'reply delayed does not replaces the of the search more recent',
+      (tester) async {
+        final games = FakeGamesRepository()
+          ..searchByTerm['ze'] = const [_celeste]
+          ..searchByTerm['zel'] = const [_zelda];
+        final gate = Completer<void>();
+        games.searchGates['ze'] = gate;
+        await open(tester, games: games);
 
-      // A busca de 'ze' fica em voo (o carregamento anima, então sem pumpAndSettle).
-      await type(tester, 'ze', wait: false);
-      await tester.pump(); // o termo novo cria a busca; o debounce começa aqui
-      await tester.pump(_wait);
-      expect(games.searches, ['ze'], reason: 'a busca antiga está em voo');
-      await type(tester, 'zel', wait: false);
-      await tester.pump();
-      await tester.pump(_wait);
-      await tester.pumpAndSettle();
-      expect(find.text('Zelda Fixture'), findsOneWidget);
-      gate.complete();
-      await tester.pumpAndSettle();
-      expect(find.text('Zelda Fixture'), findsOneWidget);
-      expect(
-        find.text('Celeste Fixture'),
-        findsNothing,
-        reason: 'resposta antiga descartada',
-      );
-      expect(
-        games.cancelledSearches,
-        1,
-        reason: 'a requisição antiga foi cancelada',
-      );
-    });
+        // A busca de 'ze' fica em voo (o carregamento anima, então sem pumpAndSettle).
+        await type(tester, 'ze', wait: false);
+        await tester
+            .pump(); // o termo novo cria a busca; o debounce começa aqui
+        await tester.pump(_wait);
+        expect(games.searches, ['ze'], reason: 'a busca antiga está em voo');
+        await type(tester, 'zel', wait: false);
+        await tester.pump();
+        await tester.pump(_wait);
+        await tester.pumpAndSettle();
+        expect(find.text('Zelda Fixture'), findsOneWidget);
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Zelda Fixture'), findsOneWidget);
+        expect(
+          find.text('Celeste Fixture'),
+          findsNothing,
+          reason: 'resposta antiga descartada',
+        );
+        expect(
+          games.cancelledSearches,
+          1,
+          reason: 'a requisição antiga foi cancelada',
+        );
+      },
+    );
 
     testWidgets(
-      'rede, credenciais e zero resultados são mensagens diferentes',
+      'network, credentials and zero results are messages different',
       (tester) async {
         final games = FakeGamesRepository()
           ..searchError = const NetworkException();
@@ -281,8 +285,8 @@ void main() {
     );
   });
 
-  group('resultado de jogo', () {
-    testWidgets('capa, nome e até duas plataformas com o que resta', (
+  group('result of game', () {
+    testWidgets('cover, name and until two platforms with the that remains', (
       tester,
     ) async {
       await open(tester);
@@ -292,7 +296,7 @@ void main() {
       expect(find.text('PC'), findsOneWidget);
     });
 
-    testWidgets('sem registro: "Adicionar" abre o formulário', (tester) async {
+    testWidgets('without entry: "add" opens the form', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       expect(find.widgetWithText(FilledButton, 'Adicionar'), findsNWidgets(2));
@@ -304,7 +308,7 @@ void main() {
       expect(location(tester), '/games/900001/playthroughs/new');
     });
 
-    testWidgets('com registro: "Na biblioteca" abre Meu progresso', (
+    testWidgets('with an entry: "in the library" opens my progress', (
       tester,
     ) async {
       final library = FakeLibraryRepository([
@@ -332,7 +336,7 @@ void main() {
       );
     });
 
-    testWidgets('tocar no corpo abre o jogo', (tester) async {
+    testWidgets('tap in the body opens the game', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       await tapAndSettle(tester, find.text('Zelda Fixture'));
@@ -340,8 +344,8 @@ void main() {
     });
   });
 
-  group('resultado de pessoa', () {
-    testWidgets('nome, handle, bio e Seguir', (tester) async {
+  group('result of person', () {
+    testWidgets('name, handle, bio and follow', (tester) async {
       await open(tester);
       await openTab(tester, 'Pessoas');
       await type(tester, 'be');
@@ -351,7 +355,7 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Seguir'), findsOneWidget);
     });
 
-    testWidgets('bio longa ocupa no máximo duas linhas', (tester) async {
+    testWidgets('bio long occupies at most two lines', (tester) async {
       final profiles = FakeProfilesRepository()
         ..searchResult = [
           fakePerson(username: 'beto', name: 'Beto', bio: 'Uma bio ' * 40),
@@ -364,7 +368,7 @@ void main() {
       expect(bio.overflow, TextOverflow.ellipsis);
     });
 
-    testWidgets('seguir usa o estado compartilhado e tocar abre o perfil', (
+    testWidgets('follow uses the state shared and tap opens the profile', (
       tester,
     ) async {
       final profiles = FakeProfilesRepository()
@@ -381,8 +385,8 @@ void main() {
     });
   });
 
-  group('pesquisas recentes', () {
-    testWidgets('digitar não grava; Enter grava', (tester) async {
+  group('searches recent', () {
+    testWidgets('type does not saves; Enter saves', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       await tapAndSettle(tester, find.byTooltip('Limpar busca'));
@@ -398,7 +402,7 @@ void main() {
       expect(find.widgetWithText(ActionChip, 'zelda'), findsOneWidget);
     });
 
-    testWidgets('abrir um resultado grava o termo', (tester) async {
+    testWidgets('open the result saves the term', (tester) async {
       await open(tester);
       await type(tester, 'zelda');
       await tapAndSettle(tester, find.text('Zelda Fixture'));
@@ -407,31 +411,32 @@ void main() {
       expect(find.widgetWithText(ActionChip, 'zelda'), findsOneWidget);
     });
 
-    testWidgets('termo curto não vira pesquisa', (tester) async {
+    testWidgets('term short does not becomes search', (tester) async {
       await open(tester);
       await submit(tester, 'z');
       await tapAndSettle(tester, find.byTooltip('Limpar busca'));
       expect(find.text('Pesquisas recentes'), findsNothing);
     });
 
-    testWidgets('repetir sobe ao topo sem duplicar, ignorando caixa e acento', (
-      tester,
-    ) async {
-      await open(tester);
-      for (final t in ['Pokémon', 'zelda', 'POKEMON']) {
-        await submit(tester, t);
-      }
-      await tapAndSettle(tester, find.byTooltip('Limpar busca'));
-      final chips = tester
-          .widgetList<ActionChip>(find.byType(ActionChip))
-          .toList();
-      expect(
-        [for (final c in chips) (c.label as Text).data],
-        ['POKEMON', 'zelda'],
-      );
-    });
+    testWidgets(
+      'repeat moves up to the top without duplicates, ignoring box and accent',
+      (tester) async {
+        await open(tester);
+        for (final t in ['Pokémon', 'zelda', 'POKEMON']) {
+          await submit(tester, t);
+        }
+        await tapAndSettle(tester, find.byTooltip('Limpar busca'));
+        final chips = tester
+            .widgetList<ActionChip>(find.byType(ActionChip))
+            .toList();
+        expect(
+          [for (final c in chips) (c.label as Text).data],
+          ['POKEMON', 'zelda'],
+        );
+      },
+    );
 
-    testWidgets('guarda no máximo 8', (tester) async {
+    testWidgets('stores at most 8', (tester) async {
       await open(tester);
       for (var i = 0; i < 10; i++) {
         await submit(tester, 'termo $i');
@@ -442,7 +447,7 @@ void main() {
       expect(find.widgetWithText(ActionChip, 'termo 1'), findsNothing);
     });
 
-    testWidgets('tocar numa recente refaz a busca', (tester) async {
+    testWidgets('tap a recent retries the search', (tester) async {
       final h = await open(tester);
       await submit(tester, 'zelda');
       await tapAndSettle(tester, find.byTooltip('Limpar busca'));
@@ -455,7 +460,9 @@ void main() {
       expect(find.text('Zelda Fixture'), findsOneWidget);
     });
 
-    testWidgets('"Limpar histórico" apaga só o do escopo', (tester) async {
+    testWidgets('"clear history" deletes only the of the scope', (
+      tester,
+    ) async {
       await open(tester);
       await submit(tester, 'zelda');
       await openTab(tester, 'Pessoas');
@@ -474,7 +481,7 @@ void main() {
       expect(find.widgetWithText(ActionChip, 'zelda'), findsOneWidget);
     });
 
-    testWidgets('descartadas ao sair da conta', (tester) async {
+    testWidgets('discarded when leaving of the account', (tester) async {
       await open(tester);
       await submit(tester, 'zelda');
       await tapAndSettle(tester, find.text('Perfil').last);
@@ -489,9 +496,9 @@ void main() {
     });
   });
 
-  group('início', () {
+  group('start', () {
     testWidgets(
-      'Jogos: Jogando agora da Biblioteca, e o convite à Comunidade',
+      'games: currently playing from the Library, with an invitation to the community',
       (tester) async {
         final library = FakeLibraryRepository([
           fakeEntry(id: 'a', status: GameStatus.playing),
@@ -522,7 +529,7 @@ void main() {
       },
     );
 
-    testWidgets('Jogos sem dados: orientação curta e o convite', (
+    testWidgets('games without date: guidance short and the invitation', (
       tester,
     ) async {
       await open(tester);
@@ -531,9 +538,7 @@ void main() {
       expect(find.text('Encontrar conversas na Comunidade'), findsOneWidget);
     });
 
-    testWidgets('Pessoas: orientação e "Conhecer a comunidade"', (
-      tester,
-    ) async {
+    testWidgets('people: guidance and "Meet the community"', (tester) async {
       await open(tester);
       await openTab(tester, 'Pessoas');
       expect(find.text('Encontre pessoas'), findsOneWidget);
@@ -542,7 +547,7 @@ void main() {
       expect(location(tester), '/community');
     });
 
-    testWidgets('não inventa "Em alta"', (tester) async {
+    testWidgets('does not invents "in high"', (tester) async {
       await open(tester);
       expect(find.textContaining('alta'), findsNothing);
     });
@@ -559,7 +564,7 @@ void main() {
       (const Size(1440, 900), 2.0, false),
     ]) {
       testWidgets(
-        '${size.width.toInt()} px, texto $scale×: início e resultados sem overflow',
+        '${size.width.toInt()} px, text $scale×: start and results without overflow',
         (tester) async {
           final library = FakeLibraryRepository([
             fakeEntry(id: 'a', status: GameStatus.playing),
@@ -584,8 +589,8 @@ void main() {
     }
   });
 
-  group('seletores em modal continuam com busca própria', () {
-    testWidgets('seletor de jogo da Biblioteca', (tester) async {
+  group('selectors in modal continue with search own', () {
+    testWidgets('selector of game from the Library', (tester) async {
       await open(tester);
       await tapAndSettle(tester, find.text('Biblioteca').last);
       await tapAndSettle(
@@ -611,7 +616,7 @@ void main() {
     });
   });
 
-  group('goldens da etapa 3', () {
+  group('goldens of the etapa 3', () {
     FakeGamesRepository games() => FakeGamesRepository()
       ..searchResult = [
         _zelda,

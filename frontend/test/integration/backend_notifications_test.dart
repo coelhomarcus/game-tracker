@@ -14,12 +14,12 @@ import 'backend_chat_test.dart' show Peer, signUp, backend;
 
 void main() {
   if (backend.isEmpty) {
-    test('sem GT_BACKEND', () {}, skip: 'defina --dart-define=GT_BACKEND');
+    test('without GT_BACKEND', () {}, skip: 'define --dart-define=GT_BACKEND');
     return;
   }
 
-  group('notificações', () {
-    test('seguir gera uma notificação; marcar todas zera o contador; repetir não duplica', () async {
+  group('notifications', () {
+    test('follow generates the notification; mark all clears the counter; repeat does not duplicates', () async {
       final ana = await signUp('na');
       final beto = await signUp('nb');
       final notifications = RemoteNotificationsRepository(ana.dio);
@@ -43,7 +43,7 @@ void main() {
       await notifications.markAllRead();
     });
 
-    test('sem sessão válida a lista é recusada (401)', () async {
+    test('without the valid session, the list is rejected (401)', () async {
       final ana = await signUp('nc');
       final other = RemoteNotificationsRepository(ana.dio);
       await ana.session.clear();
@@ -60,7 +60,7 @@ void main() {
     });
   });
 
-  group('instalações de push', () {
+  group('push installations', () {
     late Peer ana;
     late Peer beto;
     late PushRepository anaPush;
@@ -80,22 +80,25 @@ void main() {
       token: token,
     );
 
-    test('registrar é idempotente; revogar duas vezes também', () async {
+    test('registration is idempotent; revoking twice too', () async {
       final id = newClientId();
       await put(anaPush, id, 'tok-${newClientId()}');
       await put(anaPush, id, 'tok-${newClientId()}');
       await anaPush.revoke(id);
       await anaPush.revoke(id);
-    });
-
-    test('mesma instalação em outra conta (troca de conta) é aceita', () async {
-      final id = newClientId();
-      await put(anaPush, id, 'tok-${newClientId()}');
-      await put(betoPush, id, 'tok-${newClientId()}');
     });
 
     test(
-      'revogar a instalação de outra pessoa não dá erro nem revela nada',
+      'same installation in another account (account switch) is accepted',
+      () async {
+        final id = newClientId();
+        await put(anaPush, id, 'tok-${newClientId()}');
+        await put(betoPush, id, 'tok-${newClientId()}');
+      },
+    );
+
+    test(
+      "revoking another user's installation gives an error and reveals nothing",
       () async {
         final id = newClientId();
         await put(anaPush, id, 'tok-${newClientId()}');
@@ -103,7 +106,7 @@ void main() {
       },
     );
 
-    test('id que não é UUID é recusado com erro de validação', () async {
+    test('non-UUID id is rejected with the validation error', () async {
       await expectLater(
         put(anaPush, 'nao-uuid', 'tok'),
         throwsA(isA<ApiException>().having((e) => e.status, 'status', 400)),

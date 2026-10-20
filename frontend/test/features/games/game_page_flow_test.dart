@@ -61,8 +61,8 @@ Future<void> openTab(WidgetTester tester, String tab) =>
     tapAndSettle(tester, find.widgetWithText(Tab, tab));
 
 void main() {
-  group('cabeçalho', () {
-    testWidgets('sem registros: "Adicionar à biblioteca"', (tester) async {
+  group('header', () {
+    testWidgets('without entries: "add to the library"', (tester) async {
       await open(tester, harness());
       expect(find.text('Adicionar à biblioteca'), findsOneWidget);
       expect(find.textContaining('Você tem'), findsNothing);
@@ -70,7 +70,7 @@ void main() {
       expect(uri(tester), '/games/900001/playthroughs/new');
     });
 
-    testWidgets('com registros: "Novo registro" e quantos já existem', (
+    testWidgets('with entries: "new entry" and how many already exist', (
       tester,
     ) async {
       await open(
@@ -87,14 +87,12 @@ void main() {
       expect(find.text('Você tem 2 registros deste jogo'), findsOneWidget);
     });
 
-    testWidgets('um registro: singular', (tester) async {
+    testWidgets('one entry: singular', (tester) async {
       await open(tester, harness(entries: [fakeEntry()]));
       expect(find.text('Você tem 1 registro deste jogo'), findsOneWidget);
     });
 
-    testWidgets('capa, título, plataformas, gêneros e favorito', (
-      tester,
-    ) async {
+    testWidgets('cover, title, platforms, genres and favorite', (tester) async {
       await open(tester, harness());
       expect(find.byType(GameCover), findsOneWidget);
       expect(find.text('PC · PlayStation 5'), findsOneWidget);
@@ -102,7 +100,7 @@ void main() {
       expect(find.byTooltip('Favoritar'), findsOneWidget);
     });
 
-    testWidgets('o cabeçalho de outro jogo não mistura registros', (
+    testWidgets('the header from another game does not mix entries', (
       tester,
     ) async {
       await open(
@@ -120,8 +118,8 @@ void main() {
     });
   });
 
-  group('ação principal do cabeçalho', () {
-    testWidgets('um registro: "Atualizar progresso" abre a edição dele', (
+  group('action main of the header', () {
+    testWidgets('one entry: "update progress" opens the editing his', (
       tester,
     ) async {
       await open(tester, harness(entries: [fakeEntry(id: 'solo')]));
@@ -133,33 +131,34 @@ void main() {
       expect(uri(tester), '/games/900001/playthroughs/solo/edit');
     });
 
-    testWidgets('um registro: "Novo registro" cria um replay', (tester) async {
+    testWidgets('one entry: "new entry" creates the replay', (tester) async {
       await open(tester, harness(entries: [fakeEntry(id: 'solo')]));
       await tapAndSettle(tester, find.text('Novo registro'));
       expect(uri(tester), '/games/900001/playthroughs/new');
     });
 
-    testWidgets('vários registros: "Ver registros" abre a aba de progresso', (
-      tester,
-    ) async {
-      await open(
-        tester,
-        harness(
-          entries: [
-            fakeEntry(id: 'a'),
-            fakeEntry(id: 'b', platform: 'PS5'),
-          ],
-        ),
-      );
-      expect(find.text('Ver registros'), findsOneWidget);
-      expect(find.text('Atualizar progresso'), findsNothing);
-      await tapAndSettle(tester, find.text('Ver registros'));
-      expect(tabIndex(tester), 1);
-      expect(uri(tester), '/games/900001?tab=progress');
-      expect(find.byType(EntryMenuButton), findsNWidgets(2));
-    });
+    testWidgets(
+      'multiple entries: the "view entries" action opens the progress tab',
+      (tester) async {
+        await open(
+          tester,
+          harness(
+            entries: [
+              fakeEntry(id: 'a'),
+              fakeEntry(id: 'b', platform: 'PS5'),
+            ],
+          ),
+        );
+        expect(find.text('Ver registros'), findsOneWidget);
+        expect(find.text('Atualizar progresso'), findsNothing);
+        await tapAndSettle(tester, find.text('Ver registros'));
+        expect(tabIndex(tester), 1);
+        expect(uri(tester), '/games/900001?tab=progress');
+        expect(find.byType(EntryMenuButton), findsNWidgets(2));
+      },
+    );
 
-    testWidgets('enquanto a biblioteca carrega, a ação espera', (tester) async {
+    testWidgets('while the library loads, the action waits', (tester) async {
       final h = harness(entries: [fakeEntry(id: 'solo')]);
       final gate = Completer<void>();
       h.library.listGate = gate;
@@ -180,24 +179,27 @@ void main() {
       expect(find.text('Atualizar progresso'), findsOneWidget);
     });
 
-    testWidgets('se a biblioteca falha, a ação não finge que não há registro', (
-      tester,
-    ) async {
-      final h = harness();
-      h.library.listError = const NetworkException();
-      await open(tester, h);
-      expect(find.text('Registros indisponíveis'), findsOneWidget);
-      expect(find.text('Adicionar à biblioteca'), findsNothing);
-    });
+    testWidgets(
+      'if the library fails, the action does not pretends that does not there is entry',
+      (tester) async {
+        final h = harness();
+        h.library.listError = const NetworkException();
+        await open(tester, h);
+        expect(find.text('Registros indisponíveis'), findsOneWidget);
+        expect(find.text('Adicionar à biblioteca'), findsNothing);
+      },
+    );
   });
 
-  group('arte do cabeçalho', () {
-    testWidgets('sem screenshots não reserva faixa de arte', (tester) async {
+  group('art of the header', () {
+    testWidgets('without screenshots does not reserves band of art', (
+      tester,
+    ) async {
       await open(tester, harness());
       expect(find.byType(Image), findsNothing);
     });
 
-    testWidgets('com screenshot mostra a arte sem texto sobre ela', (
+    testWidgets('with screenshot shows the art without text about it', (
       tester,
     ) async {
       final games = FakeGamesRepository(
@@ -221,18 +223,19 @@ void main() {
     });
   });
 
-  group('largura ampla', () {
-    testWidgets('Sobre coloca plataformas e gêneros ao lado da sinopse', (
-      tester,
-    ) async {
-      await open(tester, harness(), size: const Size(1440, 900));
-      final synopsis = tester.getTopLeft(find.text('Sinopse')).dx;
-      final platforms = tester.getTopLeft(find.text('Plataformas')).dx;
-      expect(platforms, greaterThan(synopsis + 400));
-      expect(tester.takeException(), isNull);
-    });
+  group('width wide', () {
+    testWidgets(
+      'about places platforms and genres to the side of the summary',
+      (tester) async {
+        await open(tester, harness(), size: const Size(1440, 900));
+        final synopsis = tester.getTopLeft(find.text('Sinopse')).dx;
+        final platforms = tester.getTopLeft(find.text('Plataformas')).dx;
+        expect(platforms, greaterThan(synopsis + 400));
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    testWidgets('registros ficam em duas colunas', (tester) async {
+    testWidgets('entries remain in two columns', (tester) async {
       await open(
         tester,
         harness(
@@ -251,7 +254,7 @@ void main() {
       expect(second.dx, greaterThan(first.dx));
     });
 
-    testWidgets('notas ganham o rótulo de nota privada', (tester) async {
+    testWidgets('notes get the label of note private', (tester) async {
       await open(
         tester,
         harness(entries: [fakeEntry(notes: 'Só para mim')]),
@@ -265,7 +268,7 @@ void main() {
     });
   });
 
-  group('abas pela rota', () {
+  group('tabs through the route', () {
     for (final (path, index) in [
       ('/games/900001', 0),
       ('/games/900001?tab=progress', 1),
@@ -273,13 +276,13 @@ void main() {
       ('/games/900001?tab=banana', 0),
       ('/games/900001?tab=', 0),
     ]) {
-      testWidgets('$path abre a aba $index', (tester) async {
+      testWidgets('$path opens the tab $index', (tester) async {
         await open(tester, harness(), path: path);
         expect(tabIndex(tester), index);
       });
     }
 
-    testWidgets('trocar de aba atualiza a rota', (tester) async {
+    testWidgets('switch of tab updates the route', (tester) async {
       await open(tester, harness());
       await openTab(tester, 'Meu progresso');
       expect(uri(tester), '/games/900001?tab=progress');
@@ -289,7 +292,7 @@ void main() {
       expect(uri(tester), '/games/900001');
     });
 
-    testWidgets('trocar de aba não acumula histórico', (tester) async {
+    testWidgets('switch of tab does not accumulates history', (tester) async {
       final h = harness(entries: [fakeEntry()]);
       await h.pump(tester, size: const Size(400, 1400));
       await openLibraryGame(tester, 'Jogo Fixture Um');
@@ -306,7 +309,9 @@ void main() {
       );
     });
 
-    testWidgets('a rota mudando por fora troca a aba', (tester) async {
+    testWidgets('the route changing by outside switches the tab', (
+      tester,
+    ) async {
       await open(tester, harness());
       expect(tabIndex(tester), 0);
       await goTo(tester, '/games/900001?tab=community');
@@ -316,7 +321,7 @@ void main() {
     });
 
     testWidgets(
-      'a aba escolhida pelo toque sobrevive à troca de tema/tamanho',
+      'the tab chosen through the tap survives to the switches of theme/size',
       (tester) async {
         await open(tester, harness(), path: '/games/900001?tab=progress');
         tester.view.physicalSize = const Size(900, 900);
@@ -326,9 +331,9 @@ void main() {
     );
   });
 
-  group('Sobre', () {
+  group('about', () {
     testWidgets(
-      'sinopse longa começa em seis linhas, com Ler mais e Ler menos',
+      'a long summary starts in six lines, with "show more" and "show less"',
       (tester) async {
         final long = List.filled(60, 'Uma frase longa da sinopse').join(' ');
         final games = FakeGamesRepository(
@@ -358,13 +363,13 @@ void main() {
       },
     );
 
-    testWidgets('sinopse curta não mostra Ler mais', (tester) async {
+    testWidgets('a short summary does not show "show more"', (tester) async {
       await open(tester, harness());
       expect(find.text('Sinopse de teste.'), findsOneWidget);
       expect(find.text('Ler mais'), findsNothing);
     });
 
-    testWidgets('plataformas e gêneros completos, sem inventar campos', (
+    testWidgets('platforms and genres complete, without invent fields', (
       tester,
     ) async {
       await open(tester, harness());
@@ -376,7 +381,7 @@ void main() {
     });
   });
 
-  group('Meu progresso', () {
+  group('my progress', () {
     final older = fakeEntry(
       id: 'old',
       platform: 'PC',
@@ -395,9 +400,7 @@ void main() {
       createdAt: DateTime.utc(2026, 3, 1),
     );
 
-    testWidgets('um card por registro, do mais novo ao mais antigo', (
-      tester,
-    ) async {
+    testWidgets('the card by entry, of the newest to oldest', (tester) async {
       await open(
         tester,
         harness(entries: [older, newer]),
@@ -410,7 +413,7 @@ void main() {
     });
 
     testWidgets(
-      'cada card mostra plataforma, status, datas, horas, nota e notas',
+      'each card shows platform, status, dates, hours, note and notes',
       (tester) async {
         await open(
           tester,
@@ -430,7 +433,7 @@ void main() {
       },
     );
 
-    testWidgets('sem datas de jogo, só a de criação', (tester) async {
+    testWidgets('without game dates, only the of creation', (tester) async {
       await open(
         tester,
         harness(entries: [newer]),
@@ -441,7 +444,7 @@ void main() {
       expect(find.text('Criado em $created'), findsOneWidget);
     });
 
-    testWidgets('tocar no card abre a edição daquele registro', (tester) async {
+    testWidgets('tap in the card opens the editing that entry', (tester) async {
       await open(
         tester,
         harness(entries: [older, newer]),
@@ -452,14 +455,14 @@ void main() {
     });
   });
 
-  group('Comunidade: posts do jogo', () {
+  group('community: posts of the game', () {
     FakeFeedRepository feedWith(List<Post> posts, {int pageSize = 2}) {
       final feed = FakeFeedRepository(pageSize: pageSize);
       feed.gamePostLists['g-900001'] = posts;
       return feed;
     }
 
-    testWidgets('só consulta depois de abrir a aba, com o UUID do jogo', (
+    testWidgets('queries only after open the tab, with the UUID of the game', (
       tester,
     ) async {
       final feed = feedWith([post('p1')]);
@@ -473,7 +476,9 @@ void main() {
       expect(feed.gamePostCalls, [('g-900001', null)]);
     });
 
-    testWidgets('mostra os posts do jogo e não os de outro', (tester) async {
+    testWidgets('shows the posts of the game and does not the of another', (
+      tester,
+    ) async {
       final feed = feedWith([post('p1', text: 'Sobre este jogo')]);
       feed.gamePostLists['g-outro'] = [post('x', text: 'Sobre outro jogo')];
       await open(
@@ -486,7 +491,7 @@ void main() {
       expect(feed.gamePostCalls.every((c) => c.$1 == 'g-900001'), isTrue);
     });
 
-    testWidgets('pagina por cursor sem duplicar e chega ao fim', (
+    testWidgets('page by cursor without duplicates and arrives to the end', (
       tester,
     ) async {
       final feed = feedWith([for (var i = 1; i <= 5; i++) post('p$i')]);
@@ -524,7 +529,7 @@ void main() {
     });
 
     testWidgets(
-      'falha ao carregar mais mostra "Tentar de novo" no rodapé e mantém a lista',
+      'a failed load-more shows "try again" in the footer and keeps the list',
       (tester) async {
         // A segunda página falha: a primeira já foi carregada e continua na tela.
         final feed = feedWith([for (var i = 1; i <= 4; i++) post('p$i')])
@@ -568,7 +573,9 @@ void main() {
       },
     );
 
-    testWidgets('sem posts: estado vazio com o convite', (tester) async {
+    testWidgets('without posts: state empty with the invitation', (
+      tester,
+    ) async {
       await open(
         tester,
         harness(feed: feedWith(const [])),
@@ -579,7 +586,7 @@ void main() {
     });
 
     testWidgets(
-      'falha da primeira página não derruba as estatísticas e tenta de novo',
+      'fails of the first page does not crash the statistics and tries of new',
       (tester) async {
         final feed = feedWith([post('p1')])
           ..feedError = const NetworkException();
@@ -597,52 +604,62 @@ void main() {
       },
     );
 
-    testWidgets('os jogadores avisam que são só alguns', (tester) async {
+    testWidgets('the players indicate that there are only some', (
+      tester,
+    ) async {
       await open(tester, harness(), path: '/games/900001?tab=community');
       expect(find.text('Alguns dos jogadores, até 10.'), findsOneWidget);
     });
 
-    testWidgets('"Publicar sobre este jogo" abre o compositor ligado ao jogo', (
-      tester,
-    ) async {
-      await open(
-        tester,
-        harness(feed: feedWith(const [])),
-        path: '/games/900001?tab=community',
-      );
-      await tapAndSettle(tester, find.text('Publicar sobre este jogo'));
-      expect(uri(tester), '/posts/new?igdbId=900001');
-      expect(find.widgetWithText(InputChip, 'Jogo Fixture Um'), findsOneWidget);
-    });
-
-    testWidgets('o novo post fica vinculado e entra no topo da lista do jogo', (
-      tester,
-    ) async {
-      final feed = feedWith([post('p1', text: 'Post antigo')]);
-      await open(
-        tester,
-        harness(feed: feed),
-        path: '/games/900001?tab=community',
-      );
-      await tapAndSettle(tester, find.text('Publicar sobre este jogo'));
-      await tester.enterText(
-        find.widgetWithText(TextField, 'O que você quer compartilhar?'),
-        'Meu post novo',
-      );
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Publicar'));
-
-      expect(feed.created.single.gameId, 'g-900001');
-      expect(uri(tester), '/games/900001?tab=community');
-      expect(find.text('Meu post novo'), findsOneWidget);
-      expect(
-        tester.getTopLeft(find.text('Meu post novo')).dy,
-        lessThan(tester.getTopLeft(find.text('Post antigo')).dy),
-      );
-    });
+    testWidgets(
+      '"publish about este game" opens the composer linked to the game',
+      (tester) async {
+        await open(
+          tester,
+          harness(feed: feedWith(const [])),
+          path: '/games/900001?tab=community',
+        );
+        await tapAndSettle(tester, find.text('Publicar sobre este jogo'));
+        expect(uri(tester), '/posts/new?igdbId=900001');
+        expect(
+          find.widgetWithText(InputChip, 'Jogo Fixture Um'),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets(
-      'curtir na lista do jogo vale em todas as superfícies (mesma entidade)',
+      'the new post stays linked and enters in the top from the list of the game',
+      (tester) async {
+        final feed = feedWith([post('p1', text: 'Post antigo')]);
+        await open(
+          tester,
+          harness(feed: feed),
+          path: '/games/900001?tab=community',
+        );
+        await tapAndSettle(tester, find.text('Publicar sobre este jogo'));
+        await tester.enterText(
+          find.widgetWithText(TextField, 'O que você quer compartilhar?'),
+          'Meu post novo',
+        );
+        await tester.pumpAndSettle();
+        await tapAndSettle(
+          tester,
+          find.widgetWithText(FilledButton, 'Publicar'),
+        );
+
+        expect(feed.created.single.gameId, 'g-900001');
+        expect(uri(tester), '/games/900001?tab=community');
+        expect(find.text('Meu post novo'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.text('Meu post novo')).dy,
+          lessThan(tester.getTopLeft(find.text('Post antigo')).dy),
+        );
+      },
+    );
+
+    testWidgets(
+      'liking in the game list applies to every surface (same entity)',
       (tester) async {
         final shared = post('p1', text: 'Post compartilhado');
         final feed = FakeFeedRepository(general: [shared])
@@ -666,7 +683,7 @@ void main() {
       },
     );
 
-    testWidgets('tocar num post abre o detalhe', (tester) async {
+    testWidgets('tap number post opens the detail', (tester) async {
       final feed = feedWith([post('p1')]);
       feed.posts = {'p1': post('p1')};
       await open(
@@ -687,7 +704,7 @@ void main() {
     ]) {
       for (final tab in ['', '?tab=progress', '?tab=community']) {
         testWidgets(
-          '${size.width.toInt()} px, texto $scale×, aba "$tab": sem overflow',
+          '${size.width.toInt()} px, text $scale×, tab "$tab": without overflow',
           (tester) async {
             final feed = FakeFeedRepository()
               ..gamePostLists['g-900001'] = [

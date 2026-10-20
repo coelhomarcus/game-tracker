@@ -25,7 +25,7 @@ Future<SessionState> settle(ProviderContainer c) async {
 
 void main() {
   group('bootstrap', () {
-    test('começa inicializando e restaura a sessão', () async {
+    test('starts initializing and restores the session', () async {
       final repo = FakeAuthRepository()..restoreResult = Restored(fakeUser());
       final c = makeContainer(repo);
       expect(c.read(sessionControllerProvider), isA<SessionInitializing>());
@@ -34,29 +34,29 @@ void main() {
       expect((state as SessionAuthenticated).user.id, 'u1');
     });
 
-    test('sem sessão guardada vai para não autenticado', () async {
-      final c = makeContainer(FakeAuthRepository());
-      expect(await settle(c), isA<SessionUnauthenticated>());
-    });
-
     test(
-      'rede indisponível não vira logout e permite tentar de novo',
+      'without the session stored goes for does not authenticated',
       () async {
-        final repo = FakeAuthRepository()
-          ..restoreResult = const RestoreUnavailable();
-        final c = makeContainer(repo);
-        expect(await settle(c), isA<SessionRestoreUnavailable>());
-
-        repo.restoreResult = Restored(fakeUser());
-        await c.read(sessionControllerProvider.notifier).bootstrap();
-        expect(c.read(sessionControllerProvider), isA<SessionAuthenticated>());
-        expect(repo.restoreCalls, 2);
+        final c = makeContainer(FakeAuthRepository());
+        expect(await settle(c), isA<SessionUnauthenticated>());
       },
     );
+
+    test('unavailable network does not log out and allows retry', () async {
+      final repo = FakeAuthRepository()
+        ..restoreResult = const RestoreUnavailable();
+      final c = makeContainer(repo);
+      expect(await settle(c), isA<SessionRestoreUnavailable>());
+
+      repo.restoreResult = Restored(fakeUser());
+      await c.read(sessionControllerProvider.notifier).bootstrap();
+      expect(c.read(sessionControllerProvider), isA<SessionAuthenticated>());
+      expect(repo.restoreCalls, 2);
+    });
   });
 
-  group('ações', () {
-    test('login com sucesso autentica', () async {
+  group('actions', () {
+    test('login with success authenticates', () async {
       final repo = FakeAuthRepository();
       final c = makeContainer(repo);
       await settle(c);
@@ -66,7 +66,7 @@ void main() {
       expect(c.read(sessionControllerProvider), isA<SessionAuthenticated>());
     });
 
-    test('login recusado propaga o erro e mantém o estado', () async {
+    test('login rejected propaga the error and keeps the state', () async {
       final repo = FakeAuthRepository()
         ..loginError = const ApiException(
           401,
@@ -82,7 +82,7 @@ void main() {
       expect(c.read(sessionControllerProvider), isA<SessionUnauthenticated>());
     });
 
-    test('logout encerra a sessão e chama o repositório', () async {
+    test('logout ends the session and calls the repository', () async {
       final repo = FakeAuthRepository()..restoreResult = Restored(fakeUser());
       final c = makeContainer(repo);
       await settle(c);
@@ -91,7 +91,7 @@ void main() {
       expect(repo.logoutCalls, 1);
     });
 
-    test('refresh recusado durante o uso devolve ao login', () async {
+    test('refresh rejected during the use returns to the login', () async {
       final repo = FakeAuthRepository()..restoreResult = Restored(fakeUser());
       final c = makeContainer(repo);
       await settle(c);
@@ -100,9 +100,9 @@ void main() {
     });
   });
 
-  group('isolamento entre contas', () {
+  group('isolation between accounts', () {
     test(
-      'estado derivado da sessão é descartado ao sair e ao trocar de conta',
+      'derived session state is discarded on logout and account switch',
       () async {
         final repo = FakeAuthRepository()
           ..restoreResult = Restored(fakeUser('u1', 'ana'));

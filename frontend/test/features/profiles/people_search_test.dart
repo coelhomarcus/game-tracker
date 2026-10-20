@@ -42,7 +42,9 @@ FakeProfilesRepository withResults() => FakeProfilesRepository()
   ..profiles['u-beto'] = fakeProfile(name: 'Beto Silva', followers: 3);
 
 void main() {
-  testWidgets('sem termo mostra a dica e não consulta', (tester) async {
+  testWidgets('without the search term shows the hint and does not query', (
+    tester,
+  ) async {
     final p = withResults();
     await openPeople(tester, profiles: p);
     expect(find.text('Encontre pessoas'), findsOneWidget);
@@ -52,7 +54,7 @@ void main() {
   });
 
   testWidgets(
-    'mostra nome, username, bio e o estado de seguir depois do debounce',
+    'shows name, username, bio and the state of follow after of the debounce',
     (tester) async {
       final p = withResults();
       await openPeople(tester, profiles: p);
@@ -71,25 +73,26 @@ void main() {
     },
   );
 
-  testWidgets('seguir direto nos resultados é imediato; falha desfaz e avisa', (
-    tester,
-  ) async {
-    final p = withResults();
-    await openPeople(tester, profiles: p);
-    await typePeople(tester, 'be');
+  testWidgets(
+    'following directly in results is immediate; fails undoes and warns',
+    (tester) async {
+      final p = withResults();
+      await openPeople(tester, profiles: p);
+      await typePeople(tester, 'be');
 
-    await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Seguir'));
-    expect(find.text('Seguindo'), findsNWidgets(2));
-    expect(p.followCalls.single, ('u-beto', true));
+      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Seguir'));
+      expect(find.text('Seguindo'), findsNWidgets(2));
+      expect(p.followCalls.single, ('u-beto', true));
 
-    p.followError = const NetworkException();
-    await tapAndSettle(tester, find.text('Seguindo').first);
-    expect(find.text('Seguindo'), findsNWidgets(2), reason: 'desfez');
-    expect(find.textContaining('Sem conexão'), findsOneWidget);
-  });
+      p.followError = const NetworkException();
+      await tapAndSettle(tester, find.text('Seguindo').first);
+      expect(find.text('Seguindo'), findsNWidgets(2), reason: 'desfez');
+      expect(find.textContaining('Sem conexão'), findsOneWidget);
+    },
+  );
 
   testWidgets(
-    'seguir na busca aparece no perfil da pessoa, com o contador somado',
+    'follow in the search appears in the profile of the person, with the counter added',
     (tester) async {
       final p = withResults();
       await openPeople(tester, profiles: p);
@@ -103,7 +106,7 @@ void main() {
     },
   );
 
-  testWidgets('nenhum resultado é diferente de erro', (tester) async {
+  testWidgets('in the result is different of error', (tester) async {
     final p = FakeProfilesRepository()..searchResult = const [];
     await openPeople(tester, profiles: p);
     await typePeople(tester, 'xyz');
@@ -111,7 +114,9 @@ void main() {
     expect(find.text('Tentar de novo'), findsNothing);
   });
 
-  testWidgets('erro de rede mostra mensagem e tenta de novo', (tester) async {
+  testWidgets('a network error shows a message and offers retry', (
+    tester,
+  ) async {
     final p = withResults()..searchError = const NetworkException();
     await openPeople(tester, profiles: p);
     await typePeople(tester, 'be');
@@ -126,7 +131,7 @@ void main() {
   });
 
   testWidgets(
-    'limpar a busca volta à dica; o termo é preservado ao trocar de aba',
+    'clearing search returns to the hint; the term is preserved when switching tabs',
     (tester) async {
       final p = withResults();
       await openPeople(tester, profiles: p);
@@ -148,7 +153,7 @@ void main() {
     },
   );
 
-  testWidgets('a abas Jogos e Pessoas têm buscas independentes', (
+  testWidgets('the Games and People tabs have independent searches', (
     tester,
   ) async {
     final p = withResults();

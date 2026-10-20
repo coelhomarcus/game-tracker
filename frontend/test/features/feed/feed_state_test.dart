@@ -42,8 +42,8 @@ List<Post> posts(int n, {String prefix = 'p'}) => [
 ];
 
 void main() {
-  group('PostStore: curtida', () {
-    test('é otimista e confirma no servidor', () async {
+  group('PostStore: like', () {
+    test('is optimistic and confirms on the server', () async {
       final feed = FakeFeedRepository();
       final c = await makeContainer(feed);
       final store = c.read(postStoreProvider.notifier)
@@ -65,7 +65,7 @@ void main() {
       );
     });
 
-    test('a tela vê o novo valor antes de o servidor responder', () async {
+    test('the screen sees the new value before the server responds', () async {
       final gate = Completer<void>();
       final feed = FakeFeedRepository()..likeGate = gate;
       final c = await makeContainer(feed);
@@ -86,30 +86,27 @@ void main() {
       expect(store.isLikePending('p1'), isFalse);
     });
 
-    test(
-      'desfaz exatamente o estado anterior quando o servidor falha',
-      () async {
-        final feed = FakeFeedRepository()..likeError = const NetworkException();
-        final c = await makeContainer(feed);
-        final store = c.read(postStoreProvider.notifier)
-          ..upsert([fakePost(id: 'p1', likes: 4, liked: true)]);
+    test('undoes exactly the state previous when the server fails', () async {
+      final feed = FakeFeedRepository()..likeError = const NetworkException();
+      final c = await makeContainer(feed);
+      final store = c.read(postStoreProvider.notifier)
+        ..upsert([fakePost(id: 'p1', likes: 4, liked: true)]);
 
-        await expectLater(
-          store.toggleLike('p1'),
-          throwsA(isA<NetworkException>()),
-        );
-        final p = c.read(postStoreProvider)['p1']!;
-        expect((p.likedByMe, p.likeCount), (true, 4));
-        expect(
-          store.isLikePending('p1'),
-          isFalse,
-          reason: 'permite tentar de novo',
-        );
-      },
-    );
+      await expectLater(
+        store.toggleLike('p1'),
+        throwsA(isA<NetworkException>()),
+      );
+      final p = c.read(postStoreProvider)['p1']!;
+      expect((p.likedByMe, p.likeCount), (true, 4));
+      expect(
+        store.isLikePending('p1'),
+        isFalse,
+        reason: 'permite tentar de novo',
+      );
+    });
 
     test(
-      'toques enquanto pendente não geram requisições nem invertem a ordem',
+      'taps while pending does not generate requests or reverse the order',
       () async {
         final gate = Completer<void>();
         final feed = FakeFeedRepository()..likeGate = gate;
@@ -128,7 +125,7 @@ void main() {
       },
     );
 
-    test('contagem nunca fica negativa', () async {
+    test('count never stays negative', () async {
       final c = await makeContainer(FakeFeedRepository());
       final store = c.read(postStoreProvider.notifier)
         ..upsert([fakePost(id: 'p1', likes: 0, liked: true)]);
@@ -136,14 +133,14 @@ void main() {
       expect(c.read(postStoreProvider)['p1']!.likeCount, 0);
     });
 
-    test('post desconhecido é ignorado', () async {
+    test('post unknown is ignored', () async {
       final feed = FakeFeedRepository();
       final c = await makeContainer(feed);
       await c.read(postStoreProvider.notifier).toggleLike('nada');
       expect(feed.likeCalls, isEmpty);
     });
 
-    test('o store é descartado ao sair da conta', () async {
+    test('the store is discarded when leaving of the account', () async {
       final auth = FakeAuthRepository()
         ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
       final c = await makeContainer(FakeFeedRepository(), auth: auth);
@@ -155,7 +152,7 @@ void main() {
   });
 
   group('FeedController', () {
-    test('carrega a primeira página e coloca os posts no store', () async {
+    test('loads the first page and places the posts in the store', () async {
       final feed = FakeFeedRepository(general: posts(5));
       final c = await makeContainer(feed);
       final state = await c.read(
@@ -171,24 +168,21 @@ void main() {
       );
     });
 
-    test(
-      'paginação anexa sem duplicar mesmo se o servidor repetir um item',
-      () async {
-        final feed = FakeFeedRepository(general: posts(5))
-          ..duplicateOnNextPage = fakePost(id: 'p2');
-        final c = await makeContainer(feed);
-        await c.read(feedControllerProvider(FeedScope.general).future);
+    test('pagination appends without duplicates same if the server repeat the item', () async {
+      final feed = FakeFeedRepository(general: posts(5))
+        ..duplicateOnNextPage = fakePost(id: 'p2');
+      final c = await makeContainer(feed);
+      await c.read(feedControllerProvider(FeedScope.general).future);
 
-        await c
-            .read(feedControllerProvider(FeedScope.general).notifier)
-            .loadMore();
-        final state = c.read(feedControllerProvider(FeedScope.general)).value!;
-        expect(state.ids, ['p1', 'p2', 'p3', 'p4'], reason: 'p2 não duplicado');
-        expect(state.ids.toSet().length, state.ids.length);
-      },
-    );
+      await c
+          .read(feedControllerProvider(FeedScope.general).notifier)
+          .loadMore();
+      final state = c.read(feedControllerProvider(FeedScope.general)).value!;
+      expect(state.ids, ['p1', 'p2', 'p3', 'p4'], reason: 'p2 não duplicado');
+      expect(state.ids.toSet().length, state.ids.length);
+    });
 
-    test('percorre até o fim e para de buscar', () async {
+    test('traverses to the end and for of search', () async {
       final feed = FakeFeedRepository(general: posts(5));
       final c = await makeContainer(feed);
       final ctl = c.read(feedControllerProvider(FeedScope.general).notifier);
@@ -208,24 +202,21 @@ void main() {
       );
     });
 
-    test(
-      'duas chamadas simultâneas de loadMore carregam uma única página',
-      () async {
-        final feed = FakeFeedRepository(general: posts(8));
-        final c = await makeContainer(feed);
-        final ctl = c.read(feedControllerProvider(FeedScope.general).notifier);
-        await c.read(feedControllerProvider(FeedScope.general).future);
+    test('two calls simultaneous of loadMore load the single page', () async {
+      final feed = FakeFeedRepository(general: posts(8));
+      final c = await makeContainer(feed);
+      final ctl = c.read(feedControllerProvider(FeedScope.general).notifier);
+      await c.read(feedControllerProvider(FeedScope.general).future);
 
-        await Future.wait([ctl.loadMore(), ctl.loadMore(), ctl.loadMore()]);
-        expect(feed.feedCalls.where((call) => call.$2 != null).length, 1);
-        expect(
-          c.read(feedControllerProvider(FeedScope.general)).value!.ids.length,
-          4,
-        );
-      },
-    );
+      await Future.wait([ctl.loadMore(), ctl.loadMore(), ctl.loadMore()]);
+      expect(feed.feedCalls.where((call) => call.$2 != null).length, 1);
+      expect(
+        c.read(feedControllerProvider(FeedScope.general)).value!.ids.length,
+        4,
+      );
+    });
 
-    test('erro de rodapé mantém a lista e permite tentar de novo', () async {
+    test('error of footer keeps the list and allows try of new', () async {
       final feed = FakeFeedRepository(general: posts(5))
         ..pageTwoError = const NetworkException();
       final c = await makeContainer(feed);
@@ -246,7 +237,7 @@ void main() {
       expect(state.ids.length, 4);
     });
 
-    test('Geral e Seguindo são independentes; o post compartilhado tem uma curtida só', () async {
+    test('General and Following are independent; the post shared has the like only', () async {
       final shared = fakePost(id: 'shared');
       final feed = FakeFeedRepository(
         general: [shared],
@@ -271,7 +262,7 @@ void main() {
       ]);
     });
 
-    test('Seguindo vazio é um estado válido, não erro', () async {
+    test('Following empty is the state valid, does not error', () async {
       final c = await makeContainer(FakeFeedRepository());
       final state = await c.read(
         feedControllerProvider(FeedScope.following).future,
@@ -281,7 +272,7 @@ void main() {
     });
 
     test(
-      'falha na primeira página vira erro recuperável por refresh',
+      'fails in the first page becomes error recoverable by refresh',
       () async {
         final feed = FakeFeedRepository(general: posts(2))
           ..feedError = const NetworkException();
@@ -303,24 +294,27 @@ void main() {
       },
     );
 
-    test('post criado entra no topo do Geral sem refetch', () async {
-      final feed = FakeFeedRepository(general: posts(3));
-      final c = await makeContainer(feed);
-      await c.read(feedControllerProvider(FeedScope.general).future);
-      final before = feed.feedCalls.length;
+    test(
+      'post created enters in the top of the General without refetch',
+      () async {
+        final feed = FakeFeedRepository(general: posts(3));
+        final c = await makeContainer(feed);
+        await c.read(feedControllerProvider(FeedScope.general).future);
+        final before = feed.feedCalls.length;
 
-      final created = await c
-          .read(postStoreProvider.notifier)
-          .create(content: 'Olá!');
-      expect(
-        c.read(feedControllerProvider(FeedScope.general)).value!.ids.first,
-        created.id,
-      );
-      expect(c.read(postStoreProvider)[created.id]!.content, 'Olá!');
-      expect(feed.feedCalls.length, before);
-    });
+        final created = await c
+            .read(postStoreProvider.notifier)
+            .create(content: 'Olá!');
+        expect(
+          c.read(feedControllerProvider(FeedScope.general)).value!.ids.first,
+          created.id,
+        );
+        expect(c.read(postStoreProvider)[created.id]!.content, 'Olá!');
+        expect(feed.feedCalls.length, before);
+      },
+    );
 
-    test('o store repassa registro e jogo ao repositório', () async {
+    test('the store forwards entry and game to the repository', () async {
       final feed = FakeFeedRepository();
       final c = await makeContainer(feed);
       final store = c.read(postStoreProvider.notifier);
@@ -334,7 +328,7 @@ void main() {
       ]);
     });
 
-    test('falha ao criar não altera o feed', () async {
+    test('fails to the create does not changes the feed', () async {
       final feed = FakeFeedRepository(general: posts(2))
         ..createError = const NetworkException();
       final c = await makeContainer(feed);
@@ -349,35 +343,32 @@ void main() {
       ]);
     });
 
-    test(
-      'revalida depois de 30 s ou quando marcado como desatualizado',
-      () async {
-        var now = DateTime.utc(2026, 6, 1, 12);
-        final feed = FakeFeedRepository(general: posts(2));
-        final c = await makeContainer(feed, clock: () => now);
-        c.listen(feedControllerProvider(FeedScope.general), (_, _) {});
-        await c.read(feedControllerProvider(FeedScope.general).future);
-        expect(feed.feedCalls.length, 1);
-        final revalidator = c.read(feedRevalidatorProvider);
+    test('revalidates after 30 s or when marked the outdated', () async {
+      var now = DateTime.utc(2026, 6, 1, 12);
+      final feed = FakeFeedRepository(general: posts(2));
+      final c = await makeContainer(feed, clock: () => now);
+      c.listen(feedControllerProvider(FeedScope.general), (_, _) {});
+      await c.read(feedControllerProvider(FeedScope.general).future);
+      expect(feed.feedCalls.length, 1);
+      final revalidator = c.read(feedRevalidatorProvider);
 
-        now = now.add(const Duration(seconds: 10));
-        revalidator.revalidateIfStale();
-        await c.read(feedControllerProvider(FeedScope.general).future);
-        expect(feed.feedCalls.length, 1, reason: 'ainda fresco');
+      now = now.add(const Duration(seconds: 10));
+      revalidator.revalidateIfStale();
+      await c.read(feedControllerProvider(FeedScope.general).future);
+      expect(feed.feedCalls.length, 1, reason: 'ainda fresco');
 
-        revalidator.markStale();
-        revalidator.revalidateIfStale();
-        await c.read(feedControllerProvider(FeedScope.general).future);
-        expect(feed.feedCalls.length, 2, reason: 'marcado como desatualizado');
+      revalidator.markStale();
+      revalidator.revalidateIfStale();
+      await c.read(feedControllerProvider(FeedScope.general).future);
+      expect(feed.feedCalls.length, 2, reason: 'marcado como desatualizado');
 
-        now = now.add(const Duration(seconds: 45));
-        revalidator.revalidateIfStale();
-        await c.read(feedControllerProvider(FeedScope.general).future);
-        expect(feed.feedCalls.length, 3, reason: 'passou de 30 s');
-      },
-    );
+      now = now.add(const Duration(seconds: 45));
+      revalidator.revalidateIfStale();
+      await c.read(feedControllerProvider(FeedScope.general).future);
+      expect(feed.feedCalls.length, 3, reason: 'passou de 30 s');
+    });
 
-    test('o feed é descartado ao sair da conta', () async {
+    test('the feed is discarded when leaving of the account', () async {
       final auth = FakeAuthRepository()
         ..restoreResult = Restored(fakeUser('u-ana', 'ana'));
       final c = await makeContainer(
@@ -413,7 +404,7 @@ void main() {
             ),
           ];
 
-    test('carrega a árvore inteira e sincroniza o contador do post', () async {
+    test('loads the tree entire and syncs the counter of the post', () async {
       final feed = withThread();
       final c = await makeContainer(feed);
       c.read(postStoreProvider.notifier).upsert([
@@ -429,29 +420,22 @@ void main() {
       );
     });
 
-    test(
-      'curtir uma resposta profunda é otimista e preserva o resto',
-      () async {
-        final feed = withThread();
-        final c = await makeContainer(feed);
-        c.listen(commentsControllerProvider('p1'), (_, _) {});
-        await c.read(commentsControllerProvider('p1').future);
+    test('like the reply deep is optimistic and preserves the rest', () async {
+      final feed = withThread();
+      final c = await makeContainer(feed);
+      c.listen(commentsControllerProvider('p1'), (_, _) {});
+      await c.read(commentsControllerProvider('p1').future);
 
-        await c.read(commentsControllerProvider('p1').notifier).toggleLike('c');
-        final tree = c.read(commentsControllerProvider('p1')).value!;
-        expect(findCommentInTree(tree, 'c')!.likedByMe, isTrue);
-        expect(findCommentInTree(tree, 'c')!.likeCount, 1);
-        expect(
-          findCommentInTree(tree, 'a')!.likeCount,
-          1,
-          reason: 'pai intacto',
-        );
-        expect(countComments(tree), 3);
-        expect(feed.commentLikeCalls, [('c', true)]);
-      },
-    );
+      await c.read(commentsControllerProvider('p1').notifier).toggleLike('c');
+      final tree = c.read(commentsControllerProvider('p1')).value!;
+      expect(findCommentInTree(tree, 'c')!.likedByMe, isTrue);
+      expect(findCommentInTree(tree, 'c')!.likeCount, 1);
+      expect(findCommentInTree(tree, 'a')!.likeCount, 1, reason: 'pai intacto');
+      expect(countComments(tree), 3);
+      expect(feed.commentLikeCalls, [('c', true)]);
+    });
 
-    test('curtida de comentário desfeita quando o servidor falha', () async {
+    test('like of comment undone when the server fails', () async {
       final feed = withThread()..likeError = const NetworkException();
       final c = await makeContainer(feed);
       c.listen(commentsControllerProvider('p1'), (_, _) {});
@@ -468,33 +452,10 @@ void main() {
       expect((a.likedByMe, a.likeCount), (false, 1));
     });
 
-    test('comentar recarrega a árvore e atualiza o contador do post', () async {
-      final feed = withThread();
-      final c = await makeContainer(feed);
-      c.read(postStoreProvider.notifier).upsert([
-        fakePost(id: 'p1', comments: 3),
-      ]);
-      c.listen(commentsControllerProvider('p1'), (_, _) {});
-      await c.read(commentsControllerProvider('p1').future);
-
-      await c
-          .read(commentsControllerProvider('p1').notifier)
-          .add('novo', parentCommentId: 'c');
-      final tree = c.read(commentsControllerProvider('p1')).value!;
-      expect(countComments(tree), 4);
-      expect(
-        findCommentInTree(tree, 'c')!.replies.single.content,
-        'novo',
-        reason: 'resposta aninhada ao alvo',
-      );
-      expect(c.read(postStoreProvider)['p1']!.commentCount, 4);
-      expect(feed.addedComments.single.parent, 'c');
-    });
-
     test(
-      'falha ao comentar lança e não altera a árvore nem o contador',
+      'commenting reloads the tree and updates the counter of the post',
       () async {
-        final feed = withThread()..commentError = const NetworkException();
+        final feed = withThread();
         final c = await makeContainer(feed);
         c.read(postStoreProvider.notifier).upsert([
           fakePost(id: 'p1', comments: 3),
@@ -502,17 +463,37 @@ void main() {
         c.listen(commentsControllerProvider('p1'), (_, _) {});
         await c.read(commentsControllerProvider('p1').future);
 
-        await expectLater(
-          c.read(commentsControllerProvider('p1').notifier).add('x'),
-          throwsA(isA<NetworkException>()),
-        );
+        await c
+            .read(commentsControllerProvider('p1').notifier)
+            .add('novo', parentCommentId: 'c');
+        final tree = c.read(commentsControllerProvider('p1')).value!;
+        expect(countComments(tree), 4);
         expect(
-          countComments(c.read(commentsControllerProvider('p1')).value!),
-          3,
+          findCommentInTree(tree, 'c')!.replies.single.content,
+          'novo',
+          reason: 'resposta aninhada ao alvo',
         );
-        expect(c.read(postStoreProvider)['p1']!.commentCount, 3);
-        expect(feed.addedComments, isEmpty, reason: 'sem retry silencioso');
+        expect(c.read(postStoreProvider)['p1']!.commentCount, 4);
+        expect(feed.addedComments.single.parent, 'c');
       },
     );
+
+    test('fails to the commenting throws and does not changes the tree or the counter', () async {
+      final feed = withThread()..commentError = const NetworkException();
+      final c = await makeContainer(feed);
+      c.read(postStoreProvider.notifier).upsert([
+        fakePost(id: 'p1', comments: 3),
+      ]);
+      c.listen(commentsControllerProvider('p1'), (_, _) {});
+      await c.read(commentsControllerProvider('p1').future);
+
+      await expectLater(
+        c.read(commentsControllerProvider('p1').notifier).add('x'),
+        throwsA(isA<NetworkException>()),
+      );
+      expect(countComments(c.read(commentsControllerProvider('p1')).value!), 3);
+      expect(c.read(postStoreProvider)['p1']!.commentCount, 3);
+      expect(feed.addedComments, isEmpty, reason: 'sem retry silencioso');
+    });
   });
 }

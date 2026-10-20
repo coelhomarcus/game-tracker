@@ -32,10 +32,10 @@ Future<AppHarness> openForm(
 }
 
 void main() {
-  group('regras de validação', () {
+  group('validation rules', () {
     const today = DateOnly(2026, 6, 10);
 
-    test('horas: vazio é válido; lixo e teto são recusados', () {
+    test('hours: empty is valid; garbage and limit are rejected', () {
       String? check(String t, {DateOnly? start, DateOnly? end}) =>
           TrackingRules.hours(t, start: start, end: end, today: today);
       expect(check(''), isNull);
@@ -45,7 +45,7 @@ void main() {
       expect(check('100000'), contains('máximo'));
     });
 
-    test('horas: 24 h por dia entre início e fim, ou até hoje', () {
+    test('hours: 24 h by day between start and end, or until today', () {
       final msg = TrackingRules.hours(
         '73',
         start: const DateOnly(2026, 6, 8),
@@ -73,7 +73,7 @@ void main() {
       expect(withEnd, contains('entre início e fim'));
     });
 
-    test('período: fim antes do início é erro', () {
+    test('period: end before start is an error', () {
       expect(
         TrackingRules.period(
           start: const DateOnly(2026, 2, 1),
@@ -95,8 +95,8 @@ void main() {
     });
   });
 
-  group('criar', () {
-    testWidgets('abre pelo deep link, com as plataformas do jogo', (
+  group('create', () {
+    testWidgets('opens through the deep link, with the platforms of the game', (
       tester,
     ) async {
       await openForm(tester);
@@ -106,7 +106,7 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, 'PlayStation 5'), findsOneWidget);
     });
 
-    testWidgets('salva status, horas e plataforma escolhidos', (tester) async {
+    testWidgets('saves status, hours and platform chosen', (tester) async {
       final h = await openForm(tester);
       await tapAndSettle(
         tester,
@@ -129,16 +129,14 @@ void main() {
       );
     });
 
-    testWidgets('zero horas é enviado como zero', (tester) async {
+    testWidgets('zero hours is sent the zero', (tester) async {
       final h = await openForm(tester);
       await tester.enterText(hoursField, '0');
       await tapAndSettle(tester, saveButton);
       expect(h.library.created.single.$2.hoursPlayed, 0);
     });
 
-    testWidgets('horas inválidas bloqueiam o salvar e explicam', (
-      tester,
-    ) async {
+    testWidgets('invalid hours block saving and explain why', (tester) async {
       final h = await openForm(tester);
       await tester.enterText(hoursField, 'abc');
       await tester.pumpAndSettle();
@@ -147,9 +145,7 @@ void main() {
       expect(h.library.created, isEmpty);
     });
 
-    testWidgets('teto de horas considera a data de início escolhida', (
-      tester,
-    ) async {
+    testWidgets('hour limit considers the chosen start date', (tester) async {
       final h = await openForm(tester);
       await tapAndSettle(tester, find.text('Início'));
       await tapAndSettle(tester, find.text('OK'));
@@ -166,9 +162,7 @@ void main() {
       expect(find.textContaining('passa das'), findsNothing);
     });
 
-    testWidgets('data escolhida é enviada como dia de calendário', (
-      tester,
-    ) async {
+    testWidgets('chosen date is sent the the calendar day', (tester) async {
       final h = await openForm(tester);
       await tapAndSettle(tester, find.text('Início'));
       await tapAndSettle(tester, find.text('OK'));
@@ -176,7 +170,7 @@ void main() {
       expect(h.library.created.single.$2.startedAt, DateOnly.today());
     });
 
-    testWidgets('falha preserva o que foi digitado e permite tentar de novo', (
+    testWidgets('fails preserves the that was typed and allows try of new', (
       tester,
     ) async {
       final library = FakeLibraryRepository()
@@ -211,7 +205,7 @@ void main() {
       expect(h.library.created.single.$2.hoursPlayed, 12);
     });
 
-    testWidgets('avisa que criar de novo é um replay', (tester) async {
+    testWidgets('warns that creating again is the replay', (tester) async {
       await openForm(
         tester,
         library: FakeLibraryRepository([fakeEntry(id: 'a')]),
@@ -224,7 +218,7 @@ void main() {
       );
     });
 
-    testWidgets('com vários registros, diz quantos', (tester) async {
+    testWidgets('with multiple entries, says how many', (tester) async {
       await openForm(
         tester,
         library: FakeLibraryRepository([
@@ -241,56 +235,58 @@ void main() {
       );
     });
 
-    testWidgets('sem registros anteriores não mostra o aviso de replay', (
-      tester,
-    ) async {
-      await openForm(tester);
-      expect(find.textContaining('Você já tem'), findsNothing);
-    });
+    testWidgets(
+      'without entries previous does not show the warning of replay',
+      (tester) async {
+        await openForm(tester);
+        expect(find.textContaining('Você já tem'), findsNothing);
+      },
+    );
 
-    testWidgets('nota: sem nota por padrão; escolher de 1 a 10 e remover', (
-      tester,
-    ) async {
-      final h = await openForm(tester);
-      expect(find.text('Sem nota'), findsOneWidget);
-      expect(find.byType(Slider), findsNothing);
-      for (var n = 1; n <= 10; n++) {
-        expect(find.widgetWithText(ChoiceChip, '$n'), findsOneWidget);
-      }
-      expect(find.widgetWithText(ChoiceChip, '0'), findsNothing);
-      expect(find.widgetWithText(ChoiceChip, '11'), findsNothing);
+    testWidgets(
+      'rating: in the rating by default; choose 1 to 10 and removes it',
+      (tester) async {
+        final h = await openForm(tester);
+        expect(find.text('Sem nota'), findsOneWidget);
+        expect(find.byType(Slider), findsNothing);
+        for (var n = 1; n <= 10; n++) {
+          expect(find.widgetWithText(ChoiceChip, '$n'), findsOneWidget);
+        }
+        expect(find.widgetWithText(ChoiceChip, '0'), findsNothing);
+        expect(find.widgetWithText(ChoiceChip, '11'), findsNothing);
 
-      await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '8'));
-      expect(find.text('8/10'), findsOneWidget);
-      await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '10'));
-      expect(find.text('10/10'), findsOneWidget);
-      expect(find.text('8/10'), findsNothing);
+        await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '8'));
+        expect(find.text('8/10'), findsOneWidget);
+        await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '10'));
+        expect(find.text('10/10'), findsOneWidget);
+        expect(find.text('8/10'), findsNothing);
 
-      await tapAndSettle(tester, find.widgetWithText(TextButton, 'Sem nota'));
-      expect(find.text('Sem nota'), findsOneWidget);
-      await tapAndSettle(tester, saveButton);
-      expect(
-        h.library.created.single.$2.rating,
-        isNull,
-        reason: 'sem nota nunca vira 0',
-      );
-    });
+        await tapAndSettle(tester, find.widgetWithText(TextButton, 'Sem nota'));
+        expect(find.text('Sem nota'), findsOneWidget);
+        await tapAndSettle(tester, saveButton);
+        expect(
+          h.library.created.single.$2.rating,
+          isNull,
+          reason: 'sem nota nunca vira 0',
+        );
+      },
+    );
 
-    testWidgets('a nota escolhida é enviada como inteira', (tester) async {
+    testWidgets('chosen rating is sent the an integer', (tester) async {
       final h = await openForm(tester);
       await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '1'));
       await tapAndSettle(tester, saveButton);
       expect(h.library.created.single.$2.rating, 1);
     });
 
-    testWidgets('a nota tem rótulo para o leitor de tela', (tester) async {
+    testWidgets('the note has label for the reader of screen', (tester) async {
       final handle = tester.ensureSemantics();
       await openForm(tester);
       expect(find.bySemanticsLabel('Nota 8 de 10'), findsOneWidget);
       handle.dispose();
     });
 
-    testWidgets('jogo sem plataformas pede a plataforma por texto', (
+    testWidgets('game without platforms requests the platform by text', (
       tester,
     ) async {
       final games = FakeGamesRepository(
@@ -319,8 +315,10 @@ void main() {
     });
   });
 
-  group('estrutura', () {
-    testWidgets('cabeçalho com a capa e o título do jogo', (tester) async {
+  group('structure', () {
+    testWidgets('header with the cover and the title of the game', (
+      tester,
+    ) async {
       await openForm(tester);
       expect(find.byType(GameCover), findsOneWidget);
       expect(find.text('Jogo Fixture Um'), findsWidgets);
@@ -331,9 +329,7 @@ void main() {
       );
     });
 
-    testWidgets('ordem: status, plataforma, progresso, avaliação', (
-      tester,
-    ) async {
+    testWidgets('order: status, platform, progress, rating', (tester) async {
       await openForm(tester);
       double y(String label) => tester.getTopLeft(find.text(label).first).dy;
       final order = [
@@ -352,7 +348,7 @@ void main() {
       expect(find.textContaining('opcional'), findsNWidgets(2));
     });
 
-    testWidgets('status em chips com ícone e texto', (tester) async {
+    testWidgets('status chips with icon and text', (tester) async {
       await openForm(tester);
       for (final s in GameStatus.values) {
         final chip = tester.widget<ChoiceChip>(
@@ -362,7 +358,9 @@ void main() {
       }
     });
 
-    testWidgets('notas pessoais dizem que só o usuário vê', (tester) async {
+    testWidgets('private notes indicate that only the user sees them', (
+      tester,
+    ) async {
       await openForm(tester);
       expect(find.text('Só você vê.'), findsOneWidget);
       expect(
@@ -371,7 +369,7 @@ void main() {
       );
     });
 
-    testWidgets('plataforma fora do catálogo: "Outra" abre o campo de texto', (
+    testWidgets('platform outside the catalog: "other" opens the text field', (
       tester,
     ) async {
       final h = await openForm(tester);
@@ -397,7 +395,7 @@ void main() {
       expect(h.library.created.single.$2.platform, 'Amiga 500');
     });
 
-    testWidgets('voltar a uma plataforma do catálogo descarta a digitada', (
+    testWidgets('returning to the catalog platform discards typed text', (
       tester,
     ) async {
       final h = await openForm(tester);
@@ -416,54 +414,56 @@ void main() {
     });
   });
 
-  group('salvar e teclado', () {
-    testWidgets('o salvar fica visível acima do teclado e do campo em foco', (
-      tester,
-    ) async {
-      await openForm(tester);
-      tester.view.viewInsets = const FakeViewPadding(bottom: 600);
-      addTearDown(tester.view.resetViewInsets);
-      await tester.pumpAndSettle();
-      await tester.tap(hoursField);
-      await tester.pumpAndSettle();
+  group('save and keyboard', () {
+    testWidgets(
+      'the save stays visible above of the keyboard and of the field in focus',
+      (tester) async {
+        await openForm(tester);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 600);
+        addTearDown(tester.view.resetViewInsets);
+        await tester.pumpAndSettle();
+        await tester.tap(hoursField);
+        await tester.pumpAndSettle();
 
-      final screenHeight =
-          tester.view.physicalSize.height / tester.view.devicePixelRatio;
-      final saveBottom = tester.getBottomLeft(saveButton).dy;
-      expect(
-        saveBottom,
-        lessThanOrEqualTo(screenHeight - 600),
-        reason: 'acima do teclado',
-      );
-      final fieldBottom = tester.getBottomLeft(hoursField).dy;
-      expect(
-        fieldBottom,
-        lessThanOrEqualTo(tester.getTopLeft(saveButton).dy),
-        reason: 'o campo em foco não fica atrás do botão',
-      );
-    });
+        final screenHeight =
+            tester.view.physicalSize.height / tester.view.devicePixelRatio;
+        final saveBottom = tester.getBottomLeft(saveButton).dy;
+        expect(
+          saveBottom,
+          lessThanOrEqualTo(screenHeight - 600),
+          reason: 'acima do teclado',
+        );
+        final fieldBottom = tester.getBottomLeft(hoursField).dy;
+        expect(
+          fieldBottom,
+          lessThanOrEqualTo(tester.getTopLeft(saveButton).dy),
+          reason: 'o campo em foco não fica atrás do botão',
+        );
+      },
+    );
 
-    testWidgets('erro de rede aparece junto do salvar e não limpa os campos', (
-      tester,
-    ) async {
-      final library = FakeLibraryRepository()
-        ..mutationError = const NetworkException();
-      await openForm(tester, library: library);
-      await tester.enterText(hoursField, '12');
-      await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '9'));
-      await tapAndSettle(tester, saveButton);
+    testWidgets(
+      'a network error appears beside the save button and does not clear the fields',
+      (tester) async {
+        final library = FakeLibraryRepository()
+          ..mutationError = const NetworkException();
+        await openForm(tester, library: library);
+        await tester.enterText(hoursField, '12');
+        await tapAndSettle(tester, find.widgetWithText(ChoiceChip, '9'));
+        await tapAndSettle(tester, saveButton);
 
-      expect(find.textContaining('Sem conexão'), findsOneWidget);
-      expect(
-        tester.getBottomLeft(find.textContaining('Sem conexão')).dy,
-        lessThanOrEqualTo(tester.getTopLeft(saveButton).dy),
-        reason: 'o aviso fica logo acima do botão',
-      );
-      expect(tester.widget<TextFormField>(hoursField).controller!.text, '12');
-      expect(find.text('9/10'), findsOneWidget);
-    });
+        expect(find.textContaining('Sem conexão'), findsOneWidget);
+        expect(
+          tester.getBottomLeft(find.textContaining('Sem conexão')).dy,
+          lessThanOrEqualTo(tester.getTopLeft(saveButton).dy),
+          reason: 'o aviso fica logo acima do botão',
+        );
+        expect(tester.widget<TextFormField>(hoursField).controller!.text, '12');
+        expect(find.text('9/10'), findsOneWidget);
+      },
+    );
 
-    testWidgets('erro de campo aparece no próprio campo', (tester) async {
+    testWidgets('error of field appears in the own field', (tester) async {
       await openForm(tester);
       await tester.enterText(hoursField, 'abc');
       await tapAndSettle(tester, saveButton);
@@ -476,7 +476,7 @@ void main() {
       );
     });
 
-    testWidgets('salvar dispara uma vez só mesmo com toques repetidos', (
+    testWidgets('save triggers the time only even with taps repeated', (
       tester,
     ) async {
       final gate = Completer<void>();
@@ -493,7 +493,7 @@ void main() {
     });
   });
 
-  group('editar', () {
+  group('edit', () {
     final entry = fakeEntry(
       id: 'e1',
       status: GameStatus.completed,
@@ -505,7 +505,7 @@ void main() {
     );
     const editPath = '/games/900001/playthroughs/e1/edit';
 
-    testWidgets('mostra os valores salvos, sem deslocar as datas', (
+    testWidgets('shows the values saved, without move the dates', (
       tester,
     ) async {
       await openForm(
@@ -527,7 +527,7 @@ void main() {
       );
     });
 
-    testWidgets('esvaziar campos envia a remoção, sem tocar no resto', (
+    testWidgets('clearing fields sends the removal without tapping elsewhere', (
       tester,
     ) async {
       final h = await openForm(
@@ -554,7 +554,7 @@ void main() {
       expect(draft.notes, 'Primeira vez');
     });
 
-    testWidgets('registro inexistente mostra saída útil', (tester) async {
+    testWidgets('missing entry shows the useful exit', (tester) async {
       await openForm(
         tester,
         path: '/games/900001/playthroughs/zzz/edit',
@@ -564,68 +564,73 @@ void main() {
       expect(find.text('Voltar ao jogo'), findsOneWidget);
     });
 
-    testWidgets('sair com alterações pede confirmação; sem alterações, não', (
-      tester,
-    ) async {
-      final h = AppHarness(library: FakeLibraryRepository([entry]));
-      await h.pump(tester);
-      await goTo(tester, '/games/900001');
-      Future<void> openEdit() async {
-        GoRouter.of(tester.element(find.byType(Scaffold).first)).push(editPath);
+    testWidgets(
+      'leaving with changes asks for confirmation; without changes, does not',
+      (tester) async {
+        final h = AppHarness(library: FakeLibraryRepository([entry]));
+        await h.pump(tester);
+        await goTo(tester, '/games/900001');
+        Future<void> openEdit() async {
+          GoRouter.of(tester.element(find.byType(Scaffold).first))
+              .push(editPath);
+          await tester.pumpAndSettle();
+        }
+
+        await openEdit();
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
-      }
+        expect(
+          find.text('Descartar alterações?'),
+          findsNothing,
+          reason: 'nada mudou',
+        );
+        expect(
+          find.text('Meu progresso'),
+          findsOneWidget,
+          reason: 'voltou ao jogo',
+        );
 
-      await openEdit();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Descartar alterações?'),
-        findsNothing,
-        reason: 'nada mudou',
-      );
-      expect(
-        find.text('Meu progresso'),
-        findsOneWidget,
-        reason: 'voltou ao jogo',
-      );
+        await openEdit();
+        await tester.enterText(hoursField, '25');
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Descartar alterações?'), findsOneWidget);
 
-      await openEdit();
-      await tester.enterText(hoursField, '25');
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.text('Descartar alterações?'), findsOneWidget);
+        await tapAndSettle(tester, find.text('Continuar editando'));
+        expect(find.text('Descartar alterações?'), findsNothing);
+        expect(
+          tester.widget<TextFormField>(hoursField).controller!.text,
+          '25',
+          reason: 'o texto continua',
+        );
 
-      await tapAndSettle(tester, find.text('Continuar editando'));
-      expect(find.text('Descartar alterações?'), findsNothing);
-      expect(
-        tester.widget<TextFormField>(hoursField).controller!.text,
-        '25',
-        reason: 'o texto continua',
-      );
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Descartar'));
+        expect(find.text('Meu progresso'), findsOneWidget);
+      },
+    );
 
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tapAndSettle(tester, find.text('Descartar'));
-      expect(find.text('Meu progresso'), findsOneWidget);
-    });
-
-    testWidgets('editar sem mudar nada não dispara alteração indevida', (
-      tester,
-    ) async {
-      final h = await openForm(
-        tester,
-        path: editPath,
-        library: FakeLibraryRepository([entry]),
-      );
-      await tapAndSettle(tester, saveButton);
-      // O formulário entrega o mesmo conteúdo; o repositório real compara e não envia nada (ver testes de corpo).
-      expect(h.library.updated.single.$2.hoursPlayed, 20);
-      expect(h.library.updated.single.$2.rating, 8);
-    });
+    testWidgets(
+      'edit without change nothing does not triggers change inappropriate',
+      (tester) async {
+        final h = await openForm(
+          tester,
+          path: editPath,
+          library: FakeLibraryRepository([entry]),
+        );
+        await tapAndSettle(tester, saveButton);
+        // O formulário entrega o mesmo conteúdo; o repositório real compara e não envia nada (ver testes de corpo).
+        expect(h.library.updated.single.$2.hoursPlayed, 20);
+        expect(h.library.updated.single.$2.rating, 8);
+      },
+    );
   });
 
-  testWidgets('layout a 360 px e texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px and text 200% does not overflows', (
+    tester,
+  ) async {
     final h = AppHarness();
     await h.pump(tester, size: const Size(360, 800), textScale: 2.0);
     await goTo(tester, _newPath);
@@ -634,7 +639,7 @@ void main() {
     expect(bottom, lessThanOrEqualTo(800), reason: 'o salvar continua à vista');
   });
 
-  testWidgets('mudar só a nota já conta como alteração a descartar', (
+  testWidgets('change only the note already account the change the discard', (
     tester,
   ) async {
     final h = await openForm(tester);
@@ -646,7 +651,7 @@ void main() {
     expect(h.library.created, isEmpty);
   });
 
-  testWidgets('sem alteração, voltar não pergunta', (tester) async {
+  testWidgets('without change, return does not asks', (tester) async {
     await openForm(tester);
     await tapAndSettle(tester, find.byType(BackButton));
     expect(find.text('Descartar alterações?'), findsNothing);

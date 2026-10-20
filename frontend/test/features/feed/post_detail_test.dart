@@ -46,15 +46,16 @@ FakeFeedRepository threadFeed() => FakeFeedRepository()
   ];
 
 void main() {
-  testWidgets('abre por deep link, mesmo sem o post ter passado pelo feed', (
-    tester,
-  ) async {
-    await openPost(tester, threadFeed());
-    expect(find.text('Post principal'), findsOneWidget);
-    expect(find.text('Comentários (3)'), findsOneWidget);
-  });
+  testWidgets(
+    'opens by deep link, even without the post have past through the feed',
+    (tester) async {
+      await openPost(tester, threadFeed());
+      expect(find.text('Post principal'), findsOneWidget);
+      expect(find.text('Comentários (3)'), findsOneWidget);
+    },
+  );
 
-  testWidgets('mostra a thread inteira com as respostas aninhadas', (
+  testWidgets('shows the thread entire with the replies nested', (
     tester,
   ) async {
     await openPost(tester, threadFeed());
@@ -63,7 +64,7 @@ void main() {
     expect(find.text('Resposta C'), findsOneWidget);
   });
 
-  testWidgets('thread profunda nunca esconde comentários (só limita o recuo)', (
+  testWidgets('thread deep never where comments (only limits the indent)', (
     tester,
   ) async {
     Comment chain(int depth, int max) => fakeComment(
@@ -91,47 +92,40 @@ void main() {
     expect(x1, lessThan(x3));
   });
 
-  testWidgets(
-    'curtir um comentário aninhado é imediato; falha desfaz e avisa',
-    (tester) async {
-      final feed = threadFeed();
-      await openPost(tester, feed);
-      final like = find.bySemanticsLabel(
-        RegExp('Curtir comentário de beto, 0 curtidas'),
-      );
-      final semantics = tester.ensureSemantics();
-      await tester.pumpAndSettle();
-      expect(like, findsWidgets);
+  testWidgets('like the comment nested is immediate; fails undoes and warns', (
+    tester,
+  ) async {
+    final feed = threadFeed();
+    await openPost(tester, feed);
+    final like = find.bySemanticsLabel(
+      RegExp('Curtir comentário de beto, 0 curtidas'),
+    );
+    final semantics = tester.ensureSemantics();
+    await tester.pumpAndSettle();
+    expect(like, findsWidgets);
 
-      await tapAndSettle(tester, like.last);
-      expect(feed.commentLikeCalls.single, ('c', true));
-      expect(
-        find.bySemanticsLabel(
-          RegExp('Descurtir comentário de beto, 1 curtidas'),
-        ),
-        findsOneWidget,
-      );
+    await tapAndSettle(tester, like.last);
+    expect(feed.commentLikeCalls.single, ('c', true));
+    expect(
+      find.bySemanticsLabel(RegExp('Descurtir comentário de beto, 1 curtidas')),
+      findsOneWidget,
+    );
 
-      feed.likeError = const NetworkException();
-      await tapAndSettle(
-        tester,
-        find.bySemanticsLabel(
-          RegExp('Descurtir comentário de beto, 1 curtidas'),
-        ),
-      );
-      expect(
-        find.bySemanticsLabel(
-          RegExp('Descurtir comentário de beto, 1 curtidas'),
-        ),
-        findsOneWidget,
-        reason: 'desfez a descurtida',
-      );
-      expect(find.textContaining('Sem conexão'), findsOneWidget);
-      semantics.dispose();
-    },
-  );
+    feed.likeError = const NetworkException();
+    await tapAndSettle(
+      tester,
+      find.bySemanticsLabel(RegExp('Descurtir comentário de beto, 1 curtidas')),
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Descurtir comentário de beto, 1 curtidas')),
+      findsOneWidget,
+      reason: 'desfez a descurtida',
+    );
+    expect(find.textContaining('Sem conexão'), findsOneWidget);
+    semantics.dispose();
+  });
 
-  testWidgets('comentar atualiza a thread e o contador', (tester) async {
+  testWidgets('commenting updates the thread and the counter', (tester) async {
     final feed = threadFeed();
     await openPost(tester, feed);
     await tester.enterText(composer, 'Meu comentário');
@@ -149,7 +143,7 @@ void main() {
     );
   });
 
-  testWidgets('responder aninha ao comentário escolhido e mostra o alvo', (
+  testWidgets('responds nests to the comment chosen and shows the target', (
     tester,
   ) async {
     final feed = threadFeed();
@@ -179,7 +173,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('cancelar a resposta volta a comentar no post', (tester) async {
+  testWidgets('cancel the reply returns the commenting in the post', (
+    tester,
+  ) async {
     final feed = threadFeed();
     await openPost(tester, feed);
     final semantics = tester.ensureSemantics();
@@ -193,41 +189,45 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('falha ao comentar preserva o texto e o alvo da resposta', (
-    tester,
-  ) async {
-    final feed = threadFeed()..commentError = const NetworkException();
-    await openPost(tester, feed);
-    final semantics = tester.ensureSemantics();
-    await tapAndSettle(tester, find.bySemanticsLabel('Responder a beto').first);
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Escreva sua resposta'),
-      'Texto importante',
-    );
-    await tester.pumpAndSettle();
-    await tapAndSettle(tester, sendButton);
+  testWidgets(
+    'fails to the commenting preserves the text and the target of the reply',
+    (tester) async {
+      final feed = threadFeed()..commentError = const NetworkException();
+      await openPost(tester, feed);
+      final semantics = tester.ensureSemantics();
+      await tapAndSettle(
+        tester,
+        find.bySemanticsLabel('Responder a beto').first,
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Escreva sua resposta'),
+        'Texto importante',
+      );
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, sendButton);
 
-    expect(find.textContaining('Sem conexão'), findsOneWidget);
-    expect(
-      find.text('Texto importante'),
-      findsOneWidget,
-      reason: 'texto preservado',
-    );
-    expect(
-      find.text('Respondendo a @beto'),
-      findsOneWidget,
-      reason: 'alvo preservado',
-    );
-    expect(feed.addedComments, isEmpty);
+      expect(find.textContaining('Sem conexão'), findsOneWidget);
+      expect(
+        find.text('Texto importante'),
+        findsOneWidget,
+        reason: 'texto preservado',
+      );
+      expect(
+        find.text('Respondendo a @beto'),
+        findsOneWidget,
+        reason: 'alvo preservado',
+      );
+      expect(feed.addedComments, isEmpty);
 
-    feed.commentError = null;
-    await tapAndSettle(tester, sendButton);
-    expect(feed.addedComments.single.content, 'Texto importante');
-    expect(feed.addedComments.single.parent, 'a');
-    semantics.dispose();
-  });
+      feed.commentError = null;
+      await tapAndSettle(tester, sendButton);
+      expect(feed.addedComments.single.content, 'Texto importante');
+      expect(feed.addedComments.single.parent, 'a');
+      semantics.dispose();
+    },
+  );
 
-  testWidgets('enviar fica desabilitado sem texto', (tester) async {
+  testWidgets('send stays disabled without text', (tester) async {
     await openPost(tester, threadFeed());
     expect(tester.widget<IconButton>(sendButton).onPressed, isNull);
     await tester.enterText(composer, '   ');
@@ -242,14 +242,14 @@ void main() {
     expect(tester.widget<IconButton>(sendButton).onPressed, isNotNull);
   });
 
-  testWidgets('post sem comentários convida a comentar', (tester) async {
+  testWidgets('post without comments invites the commenting', (tester) async {
     final feed = FakeFeedRepository()..posts['p1'] = fakePost(id: 'p1');
     await openPost(tester, feed);
     expect(find.textContaining('Seja o primeiro'), findsOneWidget);
   });
 
   testWidgets(
-    'post removido: diz que não está mais disponível e oferece voltar',
+    'post removed: says that does not is more available and offers return',
     (tester) async {
       final feed = FakeFeedRepository()
         ..postError = const ApiException(
@@ -269,7 +269,7 @@ void main() {
     },
   );
 
-  testWidgets('falha de rede ao abrir o post oferece tentar de novo', (
+  testWidgets('fails of network when opening the post offers try of new', (
     tester,
   ) async {
     final feed = threadFeed()..postError = const NetworkException();
@@ -281,7 +281,7 @@ void main() {
     expect(find.text('Post principal'), findsOneWidget);
   });
 
-  testWidgets('falha ao carregar os comentários não derruba o post', (
+  testWidgets('fails to the load the comments does not crash the post', (
     tester,
   ) async {
     final feed = threadFeed()..commentsError = const NetworkException();
@@ -298,7 +298,9 @@ void main() {
     expect(find.text('Raiz A'), findsOneWidget);
   });
 
-  testWidgets('curtir o post no detalhe reflete no feed', (tester) async {
+  testWidgets('like the post in the detail reflects in the feed', (
+    tester,
+  ) async {
     final feed = FakeFeedRepository(
       general: [fakePost(id: 'p1', content: 'Post do feed', likes: 5)],
     )..posts['p1'] = fakePost(id: 'p1', content: 'Post do feed', likes: 5);
@@ -319,7 +321,9 @@ void main() {
     expect(find.text('5'), findsNothing);
   });
 
-  testWidgets('layout a 360 px e texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px and text 200% does not overflows', (
+    tester,
+  ) async {
     await openPost(tester, threadFeed(), size: const Size(360, 800));
     expect(tester.takeException(), isNull);
     final h = AppHarness(feed: threadFeed());

@@ -18,7 +18,7 @@ final _vertical = find.byWidgetPredicate(
 
 void main() {
   testWidgets(
-    'biblioteca com 1000 registros (800 jogos, com replays): preguiçosa, rola até o fim',
+    'library with 1000 entries (800 games, with replays): lazy, scrolls to the end',
     (tester) async {
       // 800 jogos; os 200 primeiros têm um replay: 1000 registros.
       final entries = [
@@ -93,7 +93,7 @@ void main() {
   );
 
   testWidgets(
-    'biblioteca com 1000 registros: busca e filtro respondem sem reconstruir tudo',
+    'library with 1000 entries: search and filter responds without rebuild everything',
     (tester) async {
       final entries = [
         for (var i = 0; i < 1000; i++)
@@ -119,7 +119,7 @@ void main() {
   );
 
   testWidgets(
-    'conversa com 1000 mensagens: carrega por páginas até o começo, sem repetir',
+    'conversation with 1000 messages: loads pages to the beginning, without repeat',
     (tester) async {
       final h = AppHarness();
       h.chat.pageSize = 50;

@@ -50,9 +50,9 @@ Future<ProviderContainer> makeContainer(
 }
 
 void main() {
-  group('contrato: respostas reais do backend', () {
+  group('contract: replies real from the backend', () {
     test(
-      'GET /game-entries/me — horas string, datas UTC, replay do mesmo jogo',
+      'GET /game-entries/me — hours string, dates UTC, replay the same game',
       () {
         final list = entriesFrom('entries_list_mine');
         expect(list.length, 3);
@@ -78,7 +78,7 @@ void main() {
       },
     );
 
-    test('registro com campos limpos mantém as notas vazias do servidor como texto vazio', () {
+    test('entry with fields clean keeps the notes empty from the server the text empty', () {
       final cleared = entriesFrom('entries_list_after_patch')
           .firstWhere((e) => e.status == GameStatus.completed);
       expect(
@@ -89,14 +89,14 @@ void main() {
       expect(cleared.notes, '');
     });
 
-    test('zero horas continua zero, não ausência', () {
+    test('zero hours remains zero, not absence', () {
       final e = GameEntry.fromJson(
         fixtureBody('entries_create_zero_hours') as Map<String, dynamic>,
       );
       expect(e.hoursPlayed, 0.0);
     });
 
-    test('limpar tudo via PATCH null devolve campos nulos', () {
+    test('clear everything via PATCH null returns fields nulls', () {
       final e = GameEntry.fromJson(
         fixtureBody('entries_patch_null_clear') as Map<String, dynamic>,
       );
@@ -104,13 +104,13 @@ void main() {
     });
   });
 
-  group('corpo das requisições', () {
+  group('request bodies', () {
     final original = entriesFrom('entries_list_mine')
         .firstWhere((e) => e.status == GameStatus.completed);
 
     EntryDraft same() => EntryDraft.fromEntry(original);
 
-    test('POST omite o que não tem valor, mas envia zero horas', () {
+    test('post omits the that does not has value, but sends zero hours', () {
       final body = createBody(
         900001,
         const EntryDraft(
@@ -127,7 +127,7 @@ void main() {
       });
     });
 
-    test('POST com tudo preenchido; datas no formato do calendário', () {
+    test('post with every field filled; dates in calendar format', () {
       final body = createBody(
         1,
         const EntryDraft(
@@ -145,11 +145,14 @@ void main() {
       expect(body['notes'], 'boa');
     });
 
-    test('PATCH sem mudança é vazio (e o repositório não faz requisição)', () {
-      expect(updateBody(original, same()), isEmpty);
-    });
+    test(
+      'empty PATCH with in the changes (repository makes in the request)',
+      () {
+        expect(updateBody(original, same()), isEmpty);
+      },
+    );
 
-    test('PATCH envia só o que mudou', () {
+    test('PATCH sends only the that changed', () {
       final edited = EntryDraft(
         platform: original.platform,
         status: GameStatus.dropped,
@@ -165,7 +168,7 @@ void main() {
       });
     });
 
-    test('PATCH limpa campo esvaziado com null', () {
+    test('PATCH clears field emptied with null', () {
       final edited = EntryDraft(
         platform: original.platform,
         status: original.status,
@@ -182,7 +185,7 @@ void main() {
       });
     });
 
-    test('PATCH: zero horas substitui, não limpa', () {
+    test('PATCH: zero hours replaces, does not clear', () {
       final edited = EntryDraft(
         platform: original.platform,
         status: original.status,
@@ -195,7 +198,7 @@ void main() {
       expect(updateBody(original, edited), {'hoursPlayed': 0.0});
     });
 
-    test('notas vazias ("") do servidor equivalem a sem nota', () {
+    test('notes empty ("") from the server equivalem the without note', () {
       // O servidor guarda '' depois de limpar as notas; o formulário devolve vazio → nada a enviar.
       final cleared = entriesFrom('entries_list_after_patch')
           .firstWhere((e) => e.status == GameStatus.completed);
@@ -210,7 +213,7 @@ void main() {
     });
   });
 
-  group('ordenação e filtro', () {
+  group('ordering and filter', () {
     final a = fakeEntry(
       id: 'a',
       status: GameStatus.playing,
@@ -239,7 +242,7 @@ void main() {
 
     List<String> ids(List<GameEntry> l) => l.map((e) => e.id).toList();
 
-    test('recentes e antigos', () {
+    test('recent and old', () {
       expect(ids(applyLibraryView(all, sort: LibrarySort.recent)), [
         'd',
         'b',
@@ -254,19 +257,16 @@ void main() {
       ]);
     });
 
-    test(
-      'mais jogados: sem horas vai para o fim, zero fica acima de ausência',
-      () {
-        expect(ids(applyLibraryView(all, sort: LibrarySort.mostPlayed)), [
-          'c',
-          'a',
-          'd',
-          'b',
-        ]);
-      },
-    );
+    test('more played: without hours goes for the end, zero stays above of absence', () {
+      expect(ids(applyLibraryView(all, sort: LibrarySort.mostPlayed)), [
+        'c',
+        'a',
+        'd',
+        'b',
+      ]);
+    });
 
-    test('filtro por status', () {
+    test('filter by status', () {
       expect(
         ids(
           applyLibraryView(
@@ -279,20 +279,20 @@ void main() {
       );
     });
 
-    test('contagem por status ignora o filtro', () {
+    test('count by status ignores the filter', () {
       final counts = countByStatus(all);
       expect(counts[GameStatus.playing], 2);
       expect(counts[GameStatus.dropped], 0);
     });
 
-    test('não altera a lista original', () {
+    test('does not changes the list original', () {
       applyLibraryView(all, sort: LibrarySort.oldest);
       expect(ids(all), ['a', 'b', 'c', 'd']);
     });
   });
 
   group('LibraryController', () {
-    test('carrega a coleção do usuário', () async {
+    test('loads the user collection', () async {
       final repo = FakeLibraryRepository([
         fakeEntry(id: 'a'),
         fakeEntry(id: 'b'),
@@ -302,7 +302,7 @@ void main() {
       expect(list.map((e) => e.id), ['a', 'b']);
     });
 
-    test('create aplica a resposta do servidor sem refetch', () async {
+    test('create applies the reply from the server without refetch', () async {
       final repo = FakeLibraryRepository([fakeEntry(id: 'a')]);
       final c = await makeContainer(repo);
       await c.read(libraryProvider.future);
@@ -318,32 +318,29 @@ void main() {
       expect(repo.listCalls, 1, reason: 'sem refetch');
     });
 
-    test(
-      'dois playthroughs do mesmo jogo convivem; remover um preserva o outro',
-      () async {
-        final repo = FakeLibraryRepository();
-        final c = await makeContainer(repo);
-        await c.read(libraryProvider.future);
-        final ctl = c.read(libraryProvider.notifier);
-        const draft = EntryDraft(platform: 'PC', status: GameStatus.backlog);
-        final first = await ctl.create(900001, draft);
-        final second = await ctl.create(900001, draft);
-        expect(
-          c
-              .read(libraryProvider)
-              .value!
-              .where((e) => e.game.igdbId == 900001)
-              .length,
-          2,
-        );
+    test('two playthroughs the same game coexist; removes the preserves the another', () async {
+      final repo = FakeLibraryRepository();
+      final c = await makeContainer(repo);
+      await c.read(libraryProvider.future);
+      final ctl = c.read(libraryProvider.notifier);
+      const draft = EntryDraft(platform: 'PC', status: GameStatus.backlog);
+      final first = await ctl.create(900001, draft);
+      final second = await ctl.create(900001, draft);
+      expect(
+        c
+            .read(libraryProvider)
+            .value!
+            .where((e) => e.game.igdbId == 900001)
+            .length,
+        2,
+      );
 
-        await ctl.remove(first);
-        final left = c.read(libraryProvider).value!;
-        expect(left.map((e) => e.id), [second.id]);
-      },
-    );
+      await ctl.remove(first);
+      final left = c.read(libraryProvider).value!;
+      expect(left.map((e) => e.id), [second.id]);
+    });
 
-    test('edit substitui só o registro editado', () async {
+    test('edit replaces only the entry editado', () async {
       final a = fakeEntry(id: 'a');
       final b = fakeEntry(id: 'b');
       final repo = FakeLibraryRepository([a, b]);
@@ -365,65 +362,65 @@ void main() {
       expect(list.firstWhere((e) => e.id == 'b').status, GameStatus.backlog);
     });
 
-    test('falha de mutação chega ao chamador e não altera a coleção', () async {
-      final repo = FakeLibraryRepository([fakeEntry(id: 'a')])
-        ..mutationError = const NetworkException();
-      final c = await makeContainer(repo);
-      await c.read(libraryProvider.future);
-      await expectLater(
-        c
-            .read(libraryProvider.notifier)
-            .create(
-              1,
-              const EntryDraft(platform: 'PC', status: GameStatus.backlog),
-            ),
-        throwsA(isA<NetworkException>()),
-      );
-      expect(c.read(libraryProvider).value!.length, 1);
-      expect(repo.created, isEmpty, reason: 'sem retry silencioso');
-    });
-
     test(
-      'resposta que chega depois do logout não entra na coleção da outra conta',
+      'mutation failure reaches the caller and does not change the collection',
       () async {
-        final auth = FakeAuthRepository()
-          ..restoreResult = Restored(fakeUser('u1', 'ana'));
-        final repo = FakeLibraryRepository();
-        final c = await makeContainer(repo, auth: auth);
+        final repo = FakeLibraryRepository([fakeEntry(id: 'a')])
+          ..mutationError = const NetworkException();
+        final c = await makeContainer(repo);
         await c.read(libraryProvider.future);
-
-        repo.mutationGate = null;
-        final gateRepo = repo..mutationGate = null;
-        // A criação fica pendente enquanto a conta troca.
-        final gate = Completer0();
-        gateRepo.mutationGate = gate.completer;
-        final pending = c
-            .read(libraryProvider.notifier)
-            .create(
-              900001,
-              const EntryDraft(platform: 'PC', status: GameStatus.backlog),
-            );
-        await Future<void>.delayed(Duration.zero);
-
-        await c.read(sessionControllerProvider.notifier).logout();
-        auth.nextUser = fakeUser('u2', 'beto');
-        await c
-            .read(sessionControllerProvider.notifier)
-            .login('beto', 'senha-longa');
-        repo.entries = [];
-        await c.read(libraryProvider.future);
-
-        gate.completer.complete();
-        await pending;
-        expect(
-          c.read(libraryProvider).value,
-          isEmpty,
-          reason: 'coleção do beto não recebe o registro da ana',
+        await expectLater(
+          c
+              .read(libraryProvider.notifier)
+              .create(
+                1,
+                const EntryDraft(platform: 'PC', status: GameStatus.backlog),
+              ),
+          throwsA(isA<NetworkException>()),
         );
+        expect(c.read(libraryProvider).value!.length, 1);
+        expect(repo.created, isEmpty, reason: 'sem retry silencioso');
       },
     );
 
-    test('sair descarta a coleção', () async {
+    test("response arriving after logout does not enter the other account's collection", () async {
+      final auth = FakeAuthRepository()
+        ..restoreResult = Restored(fakeUser('u1', 'ana'));
+      final repo = FakeLibraryRepository();
+      final c = await makeContainer(repo, auth: auth);
+      await c.read(libraryProvider.future);
+
+      repo.mutationGate = null;
+      final gateRepo = repo..mutationGate = null;
+      // A criação fica pendente enquanto a conta troca.
+      final gate = Completer0();
+      gateRepo.mutationGate = gate.completer;
+      final pending = c
+          .read(libraryProvider.notifier)
+          .create(
+            900001,
+            const EntryDraft(platform: 'PC', status: GameStatus.backlog),
+          );
+      await Future<void>.delayed(Duration.zero);
+
+      await c.read(sessionControllerProvider.notifier).logout();
+      auth.nextUser = fakeUser('u2', 'beto');
+      await c
+          .read(sessionControllerProvider.notifier)
+          .login('beto', 'senha-longa');
+      repo.entries = [];
+      await c.read(libraryProvider.future);
+
+      gate.completer.complete();
+      await pending;
+      expect(
+        c.read(libraryProvider).value,
+        isEmpty,
+        reason: 'coleção do beto não recebe o registro da ana',
+      );
+    });
+
+    test('logout discards the collection', () async {
       final repo = FakeLibraryRepository([fakeEntry(id: 'a')]);
       final c = await makeContainer(repo);
       expect((await c.read(libraryProvider.future)).length, 1);
@@ -432,8 +429,8 @@ void main() {
     });
   });
 
-  group('revalidação ao voltar para o app', () {
-    test('só refaz a consulta depois de 30 segundos', () async {
+  group('revalidation when returning to the app', () {
+    test('only retries the query after 30 seconds', () async {
       var now = DateTime.utc(2026, 6, 1, 12);
       final repo = FakeLibraryRepository([fakeEntry(id: 'a')]);
       final c = await makeContainer(repo, clock: () => now);
@@ -453,7 +450,7 @@ void main() {
     });
 
     test(
-      'se a revalidação falha, a lista anterior continua disponível',
+      'if revalidation fails, the previous list remains available',
       () async {
         var now = DateTime.utc(2026, 6, 1, 12);
         final repo = FakeLibraryRepository([fakeEntry(id: 'a')]);
@@ -475,8 +472,8 @@ void main() {
     );
   });
 
-  group('preferências persistidas', () {
-    test('grade/lista e ordenação sobrevivem a um novo container', () async {
+  group('persisted preferences', () {
+    test('grid/list and sorting survive the new container', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       ProviderContainer make() => ProviderContainer(
@@ -497,7 +494,7 @@ void main() {
       expect(second.read(libraryPrefsProvider).sort, LibrarySort.mostPlayed);
     });
 
-    test('valor desconhecido cai no padrão', () async {
+    test('unknown value falls back to the default', () async {
       SharedPreferences.setMockInitialValues({'library.sort': 'qualquer'});
       final prefs = await SharedPreferences.getInstance();
       final c = ProviderContainer(

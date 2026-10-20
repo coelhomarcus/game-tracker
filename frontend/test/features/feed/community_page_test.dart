@@ -26,7 +26,7 @@ Future<AppHarness> openCommunity(
 }
 
 void main() {
-  testWidgets('Geral mostra autor, texto, jogo, curtidas e comentários', (
+  testWidgets('General shows author, text, game, likes and comments', (
     tester,
   ) async {
     final feed = FakeFeedRepository(
@@ -49,14 +49,14 @@ void main() {
     expect(find.text('2'), findsOneWidget);
   });
 
-  testWidgets('Geral vazio convida a publicar', (tester) async {
+  testWidgets('General empty invites the publish', (tester) async {
     await openCommunity(tester);
     expect(find.text('Ainda não há publicações'), findsOneWidget);
     expect(find.text('Seja a primeira pessoa a publicar.'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Publicar'), findsWidgets);
   });
 
-  testWidgets('Seguindo vazio explica e leva a Explorar', (tester) async {
+  testWidgets('Following empty explains and takes the explore', (tester) async {
     await openCommunity(tester);
     await tapAndSettle(tester, find.text('Seguindo'));
     expect(find.text('Acompanhe quem joga com você'), findsOneWidget);
@@ -69,7 +69,7 @@ void main() {
   });
 
   testWidgets(
-    'erro na primeira página mostra mensagem e recarrega ao tentar de novo',
+    'error in the first page shows message and reloads to the try of new',
     (tester) async {
       final feed = FakeFeedRepository(
         general: [fakePost(id: 'p1', content: 'Chegou')],
@@ -89,7 +89,7 @@ void main() {
   );
 
   testWidgets(
-    'rolar até o fim carrega as próximas páginas, sem duplicar, e termina',
+    'scroll to the end loads the next pages, without duplicates, and ends',
     (tester) async {
       final feed = FakeFeedRepository(
         general: [
@@ -124,7 +124,7 @@ void main() {
   );
 
   testWidgets(
-    'falha ao carregar mais mostra aviso no rodapé e permite tentar de novo',
+    'fails to the load more shows warning in the footer and allows try of new',
     (tester) async {
       final feed = FakeFeedRepository(
         general: [
@@ -155,7 +155,9 @@ void main() {
     },
   );
 
-  testWidgets('curtir atualiza na hora; falha desfaz e avisa', (tester) async {
+  testWidgets('like updates immediately; fails undoes and warns', (
+    tester,
+  ) async {
     final feed = FakeFeedRepository(general: [fakePost(id: 'p1', likes: 4)]);
     await openCommunity(tester, feed: feed);
 
@@ -170,7 +172,9 @@ void main() {
     expect(find.textContaining('Sem conexão'), findsOneWidget);
   });
 
-  testWidgets('a curtida do feed aparece no detalhe do post', (tester) async {
+  testWidgets('the like of the feed appears in the detail of the post', (
+    tester,
+  ) async {
     final feed = FakeFeedRepository(
       general: [fakePost(id: 'p1', content: 'Olha isso', likes: 1)],
     );
@@ -184,7 +188,7 @@ void main() {
     expect(find.byIcon(Icons.favorite), findsOneWidget);
   });
 
-  testWidgets('atividade é uma linha compacta com o status do momento', (
+  testWidgets('activity is the line compact with the status of the moment', (
     tester,
   ) async {
     final feed = FakeFeedRepository(
@@ -210,7 +214,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('tocar no autor abre o perfil dele', (tester) async {
+  testWidgets('tap in the author opens the profile his', (tester) async {
     final profiles = FakeProfilesRepository()
       ..profiles['u-beto'] = fakeProfile(
         name: 'Beto Silva',
@@ -227,7 +231,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('o próprio autor resolve para o perfil do usuário logado', (
+  testWidgets('the own author resolve for the profile of the user signed-in', (
     tester,
   ) async {
     final profiles = FakeProfilesRepository()
@@ -252,7 +256,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('botão Publicar abre o compositor', (tester) async {
+  testWidgets('button publish opens the composer', (tester) async {
     await openCommunity(
       tester,
       feed: FakeFeedRepository(general: [fakePost()]),
@@ -264,7 +268,9 @@ void main() {
     expect(find.text('Nova publicação'), findsOneWidget);
   });
 
-  testWidgets('atualizar por gesto refaz a consulta do feed', (tester) async {
+  testWidgets('update by gesture retries the query of the feed', (
+    tester,
+  ) async {
     final feed = FakeFeedRepository(general: [fakePost(id: 'p1')]);
     await openCommunity(tester, feed: feed);
     final before = feed.feedCalls.length;
@@ -278,7 +284,7 @@ void main() {
   });
 
   testWidgets(
-    'falha ao atualizar mantém os posts e avisa que estão desatualizados',
+    'fails to the update keeps the posts and warns that are outdated',
     (tester) async {
       final feed = FakeFeedRepository(
         general: [fakePost(id: 'p1', content: 'Continua aqui')],
@@ -297,7 +303,7 @@ void main() {
   );
 
   testWidgets(
-    'concluir um jogo marca o feed como desatualizado e ele revalida ao voltar',
+    'complete the game marks the feed the outdated and it revalidates when returning',
     (tester) async {
       final feed = FakeFeedRepository(general: [fakePost(id: 'p1')]);
       final library = FakeLibraryRepository([
@@ -333,7 +339,9 @@ void main() {
     },
   );
 
-  testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px with text 200% does not overflows', (
+    tester,
+  ) async {
     final feed = FakeFeedRepository(
       general: [
         fakePost(

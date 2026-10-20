@@ -151,64 +151,66 @@ Future<PickedImage?> save(
 }
 
 void main() {
-  group('fluxo', () {
-    testWidgets('avatar: "Ajustar foto" → "Salvar foto" devolve JPEG 400×400', (
-      tester,
-    ) async {
-      PickedImage? result;
-      var closed = false;
-      await open(tester, redBlue(600, 200), ProfileImageKind.avatar, (r) {
-        result = r;
-        closed = true;
-      });
+  group('flow', () {
+    testWidgets(
+      'avatar: "adjust photo" → "save photo" returns a 400×400 JPEG',
+      (tester) async {
+        PickedImage? result;
+        var closed = false;
+        await open(tester, redBlue(600, 200), ProfileImageKind.avatar, (r) {
+          result = r;
+          closed = true;
+        });
 
-      expect(find.text('Ajustar foto'), findsOneWidget);
-      expect(find.byType(Crop), findsOneWidget);
-      for (final label in ['Cancelar', 'Restaurar', 'Salvar foto']) {
-        expect(find.text(label), findsOneWidget, reason: label);
-      }
+        expect(find.text('Ajustar foto'), findsOneWidget);
+        expect(find.byType(Crop), findsOneWidget);
+        for (final label in ['Cancelar', 'Restaurar', 'Salvar foto']) {
+          expect(find.text(label), findsOneWidget, reason: label);
+        }
 
-      await tester.tap(find.text('Salvar foto'));
-      for (var i = 0; i < 500 && !closed; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 60)),
-        );
-        await tester.pump(const Duration(milliseconds: 60));
-      }
-      expect(closed, isTrue, reason: 'o editor fecha ao salvar');
-      final out = result!;
-      expect(out.mimeType, 'image/jpeg');
-      expect(out.fileName, 'avatar.jpg');
-      final decoded = img.decodeJpg(Uint8List.fromList(out.bytes))!;
-      expect((decoded.width, decoded.height), (400, 400));
-      expect(out.bytes.length, lessThan(PickedImage.maxBytes));
-    });
+        await tester.tap(find.text('Salvar foto'));
+        for (var i = 0; i < 500 && !closed; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 60)),
+          );
+          await tester.pump(const Duration(milliseconds: 60));
+        }
+        expect(closed, isTrue, reason: 'o editor fecha ao salvar');
+        final out = result!;
+        expect(out.mimeType, 'image/jpeg');
+        expect(out.fileName, 'avatar.jpg');
+        final decoded = img.decodeJpg(Uint8List.fromList(out.bytes))!;
+        expect((decoded.width, decoded.height), (400, 400));
+        expect(out.bytes.length, lessThan(PickedImage.maxBytes));
+      },
+    );
 
-    testWidgets('capa: "Ajustar capa" → "Salvar capa" devolve JPEG 1500×500', (
-      tester,
-    ) async {
-      PickedImage? result;
-      var closed = false;
-      await open(tester, redBlue(900, 300), ProfileImageKind.banner, (r) {
-        result = r;
-        closed = true;
-      });
-      expect(find.text('Ajustar capa'), findsOneWidget);
-      expect(find.text('Salvar foto'), findsNothing);
+    testWidgets(
+      'cover: "adjust cover" → "save cover" returns a 1500×500 JPEG',
+      (tester) async {
+        PickedImage? result;
+        var closed = false;
+        await open(tester, redBlue(900, 300), ProfileImageKind.banner, (r) {
+          result = r;
+          closed = true;
+        });
+        expect(find.text('Ajustar capa'), findsOneWidget);
+        expect(find.text('Salvar foto'), findsNothing);
 
-      await tester.tap(find.text('Salvar capa'));
-      for (var i = 0; i < 500 && !closed; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 60)),
-        );
-        await tester.pump(const Duration(milliseconds: 60));
-      }
-      final decoded = img.decodeJpg(Uint8List.fromList(result!.bytes))!;
-      expect((decoded.width, decoded.height), (1500, 500));
-      expect(result!.fileName, 'banner.jpg');
-    });
+        await tester.tap(find.text('Salvar capa'));
+        for (var i = 0; i < 500 && !closed; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 60)),
+          );
+          await tester.pump(const Duration(milliseconds: 60));
+        }
+        final decoded = img.decodeJpg(Uint8List.fromList(result!.bytes))!;
+        expect((decoded.width, decoded.height), (1500, 500));
+        expect(result!.fileName, 'banner.jpg');
+      },
+    );
 
-    testWidgets('Cancelar fecha sem devolver imagem', (tester) async {
+    testWidgets('cancel closes without returning an image', (tester) async {
       var closed = false;
       PickedImage? result = redBlue(10, 10);
       await open(tester, redBlue(600, 200), ProfileImageKind.avatar, (r) {
@@ -222,7 +224,7 @@ void main() {
       expect(find.byType(Crop), findsNothing);
     });
 
-    testWidgets('em janela larga abre como diálogo de no máximo 720 dp', (
+    testWidgets('on the wide window, opens the dialog of at most 720 dp', (
       tester,
     ) async {
       await open(
@@ -239,13 +241,13 @@ void main() {
       );
     });
 
-    testWidgets('em janela estreita abre em tela cheia', (tester) async {
+    testWidgets('in window narrow opens in screen full', (tester) async {
       await open(tester, redBlue(600, 200), ProfileImageKind.avatar, (_) {});
       expect(find.byType(Dialog), findsNothing);
     });
   });
 
-  group('enquadramento', () {
+  group('crop', () {
     /// Abre, aplica [act], salva e devolve a fração de pixels que satisfazem [test].
     Future<double> framed(
       WidgetTester tester,
@@ -267,7 +269,7 @@ void main() {
       return fraction(result!, test);
     }
 
-    testWidgets('mover a área para a direita revela mais azul', (tester) async {
+    testWidgets('moving the area right reveals more blue', (tester) async {
       final before = await framed(
         tester,
         redBlue(900, 300),
@@ -284,7 +286,7 @@ void main() {
       expect(after, lessThan(before - 0.1));
     });
 
-    testWidgets('mover para a esquerda revela mais vermelho', (tester) async {
+    testWidgets('mover for the left reveals more red', (tester) async {
       final before = await framed(
         tester,
         redBlue(900, 300),
@@ -301,7 +303,7 @@ void main() {
       expect(after, greaterThan(before + 0.1));
     });
 
-    testWidgets('as setas do teclado movem a área como os botões', (
+    testWidgets('keyboard arrows move the area like the buttons', (
       tester,
     ) async {
       final before = await framed(
@@ -320,7 +322,9 @@ void main() {
       expect(after, lessThan(before - 0.1));
     });
 
-    testWidgets('diminuir a área aproxima; aumentar afasta', (tester) async {
+    testWidgets('decreasing the area zooms in; increasing zooms out', (
+      tester,
+    ) async {
       final base = await framed(
         tester,
         squareWithDot(400),
@@ -356,7 +360,7 @@ void main() {
       expect(farther, closeTo(base, 0.1));
     });
 
-    testWidgets('Restaurar volta ao enquadramento inicial', (tester) async {
+    testWidgets('restore returns to the initial crop', (tester) async {
       final base = await framed(tester, redBlue(900, 300), isRed, () async {});
       await tester.pumpWidget(const SizedBox());
       final restored = await framed(tester, redBlue(900, 300), isRed, () async {
@@ -371,7 +375,7 @@ void main() {
     });
   });
 
-  group('prévia', () {
+  group('preview', () {
     /// Fração de pixels vermelhos na linha do meio do que a prévia desenha.
     Future<double> previewRed(WidgetTester tester) async {
       final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -393,48 +397,49 @@ void main() {
     }
 
     for (final kind in ProfileImageKind.values) {
-      testWidgets(
-        '${kind.name}: a prévia mostra o mesmo enquadramento que o arquivo salvo',
-        (tester) async {
-          PickedImage? result;
-          await open(tester, redBlue(1200, 400), kind, (r) => result = r);
-          for (var i = 0; i < 3; i++) {
-            await tester.tap(find.byTooltip('Mover área para a direita'));
-            await tester.pump();
-          }
-          await settle(tester, rounds: 5);
+      testWidgets('${kind.name}: the preview matches the saved file crop', (
+        tester,
+      ) async {
+        PickedImage? result;
+        await open(tester, redBlue(1200, 400), kind, (r) => result = r);
+        for (var i = 0; i < 3; i++) {
+          await tester.tap(find.byTooltip('Mover área para a direita'));
+          await tester.pump();
+        }
+        await settle(tester, rounds: 5);
 
-          final shown = await previewRed(tester);
-          await tester.tap(
-            find.text(
-              kind == ProfileImageKind.avatar ? 'Salvar foto' : 'Salvar capa',
-            ),
+        final shown = await previewRed(tester);
+        await tester.tap(
+          find.text(
+            kind == ProfileImageKind.avatar ? 'Salvar foto' : 'Salvar capa',
+          ),
+        );
+        for (var i = 0; i < 500 && result == null; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 60)),
           );
-          for (var i = 0; i < 500 && result == null; i++) {
-            await tester.runAsync(
-              () => Future<void>.delayed(const Duration(milliseconds: 60)),
-            );
-            await tester.pump(const Duration(milliseconds: 60));
-          }
-          final saved = fraction(result!, isRed);
+          await tester.pump(const Duration(milliseconds: 60));
+        }
+        final saved = fraction(result!, isRed);
 
-          expect(
-            shown,
-            closeTo(saved, 0.06),
-            reason: 'prévia $shown × salvo $saved',
-          );
-          expect(
-            shown,
-            lessThan(0.45),
-            reason: 'a moldura se moveu para a direita',
-          );
-        },
-      );
+        expect(
+          shown,
+          closeTo(saved, 0.06),
+          reason: 'prévia $shown × salvo $saved',
+        );
+        expect(
+          shown,
+          lessThan(0.45),
+          reason: 'a moldura se moveu para a direita',
+        );
+      });
     }
   });
 
-  group('avisos', () {
-    testWidgets('imagem pequena avisa, mas não impede salvar', (tester) async {
+  group('warnings', () {
+    testWidgets('image small warns, but does not prevents save', (
+      tester,
+    ) async {
       await open(tester, redBlue(120, 120), ProfileImageKind.avatar, (_) {});
       expect(
         find.text('Imagem pequena: a foto pode ficar com pouca nitidez.'),
@@ -450,14 +455,14 @@ void main() {
       );
     });
 
-    testWidgets('imagem grande não mostra o aviso de resolução', (
+    testWidgets('large image does not show the resolution warning', (
       tester,
     ) async {
       await open(tester, redBlue(1200, 1200), ProfileImageKind.avatar, (_) {});
       expect(find.textContaining('Imagem pequena'), findsNothing);
     });
 
-    testWidgets('GIF avisa que a foto será estática', (tester) async {
+    testWidgets('GIF warns that the photo will be static', (tester) async {
       await open(
         tester,
         redBlue(600, 600, mime: 'image/gif'),
@@ -468,8 +473,8 @@ void main() {
     });
   });
 
-  group('erros', () {
-    testWidgets('HEIC sem decodificador pede JPG, PNG ou WebP e fecha', (
+  group('errors', () {
+    testWidgets('HEIC without decoder requests JPG, PNG or WebP and closes', (
       tester,
     ) async {
       var closed = false;
@@ -511,7 +516,7 @@ void main() {
       expect(result, isNull);
     });
 
-    testWidgets('resolução acima de 24 milhões de pixels é recusada', (
+    testWidgets('resolution above 24 million pixels is rejected', (
       tester,
     ) async {
       final huge = img.Image(width: 5000, height: 5000, numChannels: 1);
@@ -530,8 +535,8 @@ void main() {
     });
   });
 
-  group('acessibilidade e layout', () {
-    testWidgets('controles têm rótulo e alvo de 48 dp', (tester) async {
+  group('accessibility and layout', () {
+    testWidgets('controls have the label and the 48 dp target', (tester) async {
       final handle = tester.ensureSemantics();
       await open(tester, redBlue(600, 200), ProfileImageKind.avatar, (_) {});
       for (final tooltip in [
@@ -556,7 +561,7 @@ void main() {
       (ProfileImageKind.banner, const Size(1440, 900), 1.0),
     ]) {
       testWidgets(
-        '${kind.name} a ${size.width.toInt()} px, texto $scale×: sem overflow',
+        '${kind.name} the ${size.width.toInt()} px, text $scale×: without overflow',
         (tester) async {
           await open(
             tester,

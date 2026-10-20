@@ -17,7 +17,7 @@ List<MessageItem> messageItems(List<ChatItem> items) =>
     items.whereType<MessageItem>().toList();
 
 void main() {
-  test('mensagens seguidas do mesmo autor formam um grupo; só a primeira tem avatar e só a última, horário', () {
+  test('consecutive messages from the same author form the group; only the first has an avatar and only the last has the timestamp', () {
     final items = messageItems(
       buildChatItems([
         m('a', minute: 0),
@@ -29,7 +29,7 @@ void main() {
     expect(items.map((i) => i.lastInGroup), [false, false, true]);
   });
 
-  test('trocar de autor abre um novo grupo', () {
+  test('switch of author opens the new group', () {
     final items = messageItems(
       buildChatItems([
         m('a', minute: 0),
@@ -42,22 +42,19 @@ void main() {
     expect(items.map((i) => i.mine), [false, true, false]);
   });
 
-  test(
-    'uma pausa de 5 minutos ou mais separa o grupo, mesmo sendo o mesmo autor',
-    () {
-      final items = messageItems(
-        buildChatItems([
-          m('a', minute: 0),
-          m('b', minute: 4),
-          m('c', minute: 10),
-        ], meId: meId),
-      );
-      expect(items.map((i) => i.firstInGroup), [true, false, true]);
-      expect(items.map((i) => i.lastInGroup), [false, true, true]);
-    },
-  );
+  test('the pause of 5 minutes or more separates the group, same being the same author', () {
+    final items = messageItems(
+      buildChatItems([
+        m('a', minute: 0),
+        m('b', minute: 4),
+        m('c', minute: 10),
+      ], meId: meId),
+    );
+    expect(items.map((i) => i.firstInGroup), [true, false, true]);
+    expect(items.map((i) => i.lastInGroup), [false, true, true]);
+  });
 
-  test('há um separador de dia no começo e a cada mudança de dia', () {
+  test('there is the day separator at the beginning and each day change', () {
     final items = buildChatItems([
       m('a', at: DateTime(2026, 6, 9, 22)),
       m('b', at: DateTime(2026, 6, 9, 23)),
@@ -71,7 +68,7 @@ void main() {
     );
   });
 
-  test('mensagens do mesmo autor em dias diferentes não ficam no mesmo grupo (mesmo coladas à meia-noite)', () {
+  test('messages the same author in days different does not remain the same group (same stuck to the half-night)', () {
     final items = messageItems(
       buildChatItems([
         m('a', at: DateTime(2026, 6, 9, 23, 59)),
@@ -81,16 +78,16 @@ void main() {
     expect(items.map((i) => i.firstInGroup), [true, true]);
   });
 
-  test('lista vazia gera nada', () {
+  test('list empty generates nothing', () {
     expect(buildChatItems(const [], meId: meId), isEmpty);
   });
 
-  test('uma mensagem sozinha é primeira e última do grupo', () {
+  test('the standalone message is first and last in its group', () {
     final item = messageItems(buildChatItems([m('a')], meId: meId)).single;
     expect((item.firstInGroup, item.lastInGroup), (true, true));
   });
 
-  test('rótulos de dia', () {
+  test('labels of day', () {
     final now = DateTime(2026, 6, 10, 15);
     expect(dayLabel(DateTime(2026, 6, 10), now: now), 'Hoje');
     expect(dayLabel(DateTime(2026, 6, 9), now: now), 'Ontem');
@@ -98,7 +95,7 @@ void main() {
     expect(dayLabel(DateTime(2025, 12, 31), now: now), '31/12/2025');
   });
 
-  test('horário com zero à esquerda', () {
+  test('timestamp with the leading zero', () {
     expect(clockLabel(DateTime(2026, 6, 10, 9, 5)), '09:05');
   });
 }

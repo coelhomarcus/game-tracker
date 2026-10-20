@@ -40,14 +40,14 @@ Future<void> search(WidgetTester tester, String text) async {
 void main() {
   setUpAll(loadGoldenFonts);
 
-  testWidgets('estado de carregamento e depois a coleção', (tester) async {
+  testWidgets('loading state followed by the collection', (tester) async {
     final h = AppHarness(library: FakeLibraryRepository([fakeEntry()]));
     await h.pump(tester);
     expect(find.text('Jogo Fixture Um'), findsWidgets);
     expect(find.text('1 jogo · 1 registro'), findsOneWidget);
   });
 
-  testWidgets('coleção vazia convida a encontrar um jogo', (tester) async {
+  testWidgets('empty collection invites the find the game', (tester) async {
     await AppHarness().pump(tester);
     expect(find.text('Sua biblioteca começa com um jogo'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Encontrar jogo'), findsOneWidget);
@@ -63,7 +63,7 @@ void main() {
     expect(location(tester), '/explore');
   });
 
-  testWidgets('erro de rede mostra mensagem e "Tentar de novo" recarrega', (
+  testWidgets('a network error shows a message and "try again" reloads', (
     tester,
   ) async {
     final library = FakeLibraryRepository([fakeEntry()])
@@ -88,7 +88,7 @@ void main() {
     ]);
 
     testWidgets(
-      'dois registros do mesmo jogo são um cartão só, com contexto textual',
+      'two entries for the same game become one card with text context',
       (tester) async {
         await AppHarness(library: twoRecords).pump(tester);
         expect(find.byType(GameCard), findsOneWidget);
@@ -98,28 +98,29 @@ void main() {
       },
     );
 
-    testWidgets('a grade mostra título, status e contexto sem horas ou nota', (
-      tester,
-    ) async {
-      await AppHarness(
-        library: FakeLibraryRepository([
-          fakeEntry(
-            id: 'a',
-            status: GameStatus.completed,
-            platform: 'PC',
-            hours: 20,
-            rating: 8,
-          ),
-        ]),
-      ).pump(tester);
-      expect(find.text('Jogo Fixture Um'), findsWidgets);
-      expect(find.text('Concluído'), findsOneWidget);
-      expect(find.text('PC'), findsOneWidget);
-      expect(find.textContaining('20'), findsNothing);
-      expect(find.textContaining('8/10'), findsNothing);
-    });
+    testWidgets(
+      'the grid shows title, status and context without hours or note',
+      (tester) async {
+        await AppHarness(
+          library: FakeLibraryRepository([
+            fakeEntry(
+              id: 'a',
+              status: GameStatus.completed,
+              platform: 'PC',
+              hours: 20,
+              rating: 8,
+            ),
+          ]),
+        ).pump(tester);
+        expect(find.text('Jogo Fixture Um'), findsWidgets);
+        expect(find.text('Concluído'), findsOneWidget);
+        expect(find.text('PC'), findsOneWidget);
+        expect(find.textContaining('20'), findsNothing);
+        expect(find.textContaining('8/10'), findsNothing);
+      },
+    );
 
-    testWidgets('o rótulo de acessibilidade diz status e registros', (
+    testWidgets('the label of accessibility says status and entries', (
       tester,
     ) async {
       final handle = tester.ensureSemantics();
@@ -131,26 +132,34 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('na lista: vários status, "2 registros" e horas somadas', (
+    testWidgets(
+      'in the list: multiple statuses, "2 entries", and summed hours',
+      (tester) async {
+        await AppHarness(
+          library: FakeLibraryRepository([
+            fakeEntry(
+              id: 'a',
+              status: GameStatus.completed,
+              hours: 4,
+              rating: 9,
+            ),
+            fakeEntry(id: 'b', status: GameStatus.backlog, hours: 6, rating: 5),
+          ]),
+        ).pump(tester, prefs: {'library.grid': false});
+        expect(find.text('Vários status'), findsOneWidget);
+        expect(find.text('2 registros'), findsOneWidget);
+        expect(find.text('10,0 h'), findsOneWidget);
+        expect(
+          find.textContaining('Nota'),
+          findsNothing,
+          reason: 'a nota é de um registro, não do jogo',
+        );
+      },
+    );
+
+    testWidgets('in the list, one entry only shows the note his', (
       tester,
     ) async {
-      await AppHarness(
-        library: FakeLibraryRepository([
-          fakeEntry(id: 'a', status: GameStatus.completed, hours: 4, rating: 9),
-          fakeEntry(id: 'b', status: GameStatus.backlog, hours: 6, rating: 5),
-        ]),
-      ).pump(tester, prefs: {'library.grid': false});
-      expect(find.text('Vários status'), findsOneWidget);
-      expect(find.text('2 registros'), findsOneWidget);
-      expect(find.text('10,0 h'), findsOneWidget);
-      expect(
-        find.textContaining('Nota'),
-        findsNothing,
-        reason: 'a nota é de um registro, não do jogo',
-      );
-    });
-
-    testWidgets('na lista, um registro só mostra a nota dele', (tester) async {
       await AppHarness(
         library: FakeLibraryRepository([fakeEntry(rating: 8, hours: 0)]),
       ).pump(tester, prefs: {'library.grid': false});
@@ -158,23 +167,25 @@ void main() {
       expect(find.text('0,0 h'), findsOneWidget, reason: 'zero é um valor');
     });
 
-    testWidgets('plataforma vazia é ausência, não texto em branco', (
-      tester,
-    ) async {
+    testWidgets('empty platform means absence, not blank text', (tester) async {
       await AppHarness(
         library: FakeLibraryRepository([fakeEntry(platform: '')]),
       ).pump(tester);
       expect(find.text('Plataforma não informada'), findsOneWidget);
     });
 
-    testWidgets('tocar na capa abre o jogo em "Meu progresso"', (tester) async {
+    testWidgets('tapping the cover opens the game in "my progress"', (
+      tester,
+    ) async {
       await AppHarness(library: twoRecords).pump(tester);
       await openLibraryGame(tester, 'Jogo Fixture Um');
       expect(location(tester), '/games/900001');
       expect(find.byType(EntryMenuButton), findsNWidgets(2));
     });
 
-    testWidgets('menu do jogo: Ver registros e Novo registro', (tester) async {
+    testWidgets('game menu: view entries and create a new entry', (
+      tester,
+    ) async {
       await AppHarness(library: twoRecords).pump(tester);
       await tester.ensureVisible(libraryGame('Jogo Fixture Um'));
       await tapAndSettle(tester, find.byType(GameMenuButton));
@@ -191,7 +202,7 @@ void main() {
   });
 
   testWidgets(
-    'novo registro pelo menu volta à Biblioteca e atualiza o resumo',
+    'new entry through the menu returns to the Library and updates the summary',
     (tester) async {
       final library = FakeLibraryRepository([fakeEntry(id: 'a')]);
       await AppHarness(library: library)
@@ -221,7 +232,7 @@ void main() {
     },
   );
 
-  group('filtros', () {
+  group('filters', () {
     final data = [
       fakeEntry(id: 'a', status: GameStatus.completed, platform: 'PC'),
       fakeEntry(id: 'b', status: GameStatus.playing, platform: 'PS5'),
@@ -243,7 +254,7 @@ void main() {
         AppHarness(library: FakeLibraryRepository(data))
             .pump(tester, size: const Size(400, 1400));
 
-    testWidgets('o menu de status conta jogos distintos e filtra', (
+    testWidgets('the menu of status account games distinct and filters', (
       tester,
     ) async {
       await pumpData(tester);
@@ -273,27 +284,28 @@ void main() {
       expect(statusButtonText('Status'), findsOneWidget);
     });
 
-    testWidgets('busca ignora caixa e acentos; "Limpar busca" volta a tudo', (
-      tester,
-    ) async {
-      await pumpData(tester);
-      await search(tester, 'pokemon onix');
-      expect(find.text('1 jogo encontrado'), findsOneWidget);
-      expect(libraryGame('Pokémon Ônix'), findsOneWidget);
-      await tapAndSettle(tester, statusMenu);
-      expect(
-        find.text('Todos (1)'),
-        findsOneWidget,
-        reason: 'a busca vale para as contagens do menu',
-      );
-      await tester.tapAt(const Offset(2, 2));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'search ignores box and accents; "clear search" returns the everything',
+      (tester) async {
+        await pumpData(tester);
+        await search(tester, 'pokemon onix');
+        expect(find.text('1 jogo encontrado'), findsOneWidget);
+        expect(libraryGame('Pokémon Ônix'), findsOneWidget);
+        await tapAndSettle(tester, statusMenu);
+        expect(
+          find.text('Todos (1)'),
+          findsOneWidget,
+          reason: 'a busca vale para as contagens do menu',
+        );
+        await tester.tapAt(const Offset(2, 2));
+        await tester.pumpAndSettle();
 
-      await tapAndSettle(tester, find.byTooltip('Limpar busca'));
-      expect(find.text('3 jogos encontrados'), findsOneWidget);
-    });
+        await tapAndSettle(tester, find.byTooltip('Limpar busca'));
+        expect(find.text('3 jogos encontrados'), findsOneWidget);
+      },
+    );
 
-    testWidgets('plataforma: uma por vez, a partir dos registros', (
+    testWidgets('platform: the by time, the from of the entries', (
       tester,
     ) async {
       await pumpData(tester);
@@ -314,9 +326,7 @@ void main() {
       expect(find.text('3 jogos encontrados'), findsOneWidget);
     });
 
-    testWidgets('status e plataforma valem para o mesmo registro', (
-      tester,
-    ) async {
+    testWidgets('status and platform count for the same entry', (tester) async {
       // Hades: concluído no PC e jogando no PS5. "Jogando" + "PC" não o encontra.
       await pumpData(tester);
       await chooseStatus(tester, 'Jogando (1)');
@@ -333,7 +343,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('na lista, o filtro parcial mostra "1 de 2 registros"', (
+    testWidgets('in the list, the filter partial shows "1 of 2 entries"', (
       tester,
     ) async {
       await AppHarness(library: FakeLibraryRepository(data)).pump(
@@ -349,7 +359,7 @@ void main() {
     });
 
     testWidgets(
-      '"Limpar" e "Limpar filtros" removem busca, status e plataforma',
+      '"clear" and "clear filters" remove search, status and platform',
       (tester) async {
         await AppHarness(library: FakeLibraryRepository(data)).pump(
           tester,
@@ -376,7 +386,9 @@ void main() {
       },
     );
 
-    testWidgets('busca e filtros sobrevivem à troca de aba', (tester) async {
+    testWidgets('search and filters survive to the switches of tab', (
+      tester,
+    ) async {
       await pumpData(tester);
       await search(tester, 'celeste');
       await tapAndSettle(tester, find.text('Explorar').last);
@@ -385,7 +397,7 @@ void main() {
       expect(find.text('1 jogo encontrado'), findsOneWidget);
     });
 
-    testWidgets('busca e filtros são descartados ao sair da conta', (
+    testWidgets('search and filters are discarded when leaving the account', (
       tester,
     ) async {
       await AppHarness(library: FakeLibraryRepository(data))
@@ -404,8 +416,8 @@ void main() {
     });
   });
 
-  group('Jogando agora', () {
-    testWidgets('mostra os jogos em andamento e some com busca ou filtro', (
+  group('currently playing', () {
+    testWidgets('shows the games in progress and some with search or filter', (
       tester,
     ) async {
       await AppHarness(
@@ -437,45 +449,47 @@ void main() {
       expect(find.text('Jogando agora'), findsNothing);
     });
 
-    testWidgets('some ao focar a busca vazia e volta ao perder o foco', (
-      tester,
-    ) async {
-      await AppHarness(
-        library: FakeLibraryRepository([
-          fakeEntry(id: 'a', status: GameStatus.playing),
-        ]),
-      ).pump(tester, size: const Size(400, 1000));
-      expect(find.text('Jogando agora'), findsOneWidget);
+    testWidgets(
+      'some to the focus the search empty and returns to the lose the focus',
+      (tester) async {
+        await AppHarness(
+          library: FakeLibraryRepository([
+            fakeEntry(id: 'a', status: GameStatus.playing),
+          ]),
+        ).pump(tester, size: const Size(400, 1000));
+        expect(find.text('Jogando agora'), findsOneWidget);
 
-      await tester.tap(searchField);
-      await tester.pumpAndSettle();
-      expect(find.text('Jogando agora'), findsNothing);
+        await tester.tap(searchField);
+        await tester.pumpAndSettle();
+        expect(find.text('Jogando agora'), findsNothing);
 
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pumpAndSettle();
-      expect(find.text('Jogando agora'), findsOneWidget);
-    });
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        expect(find.text('Jogando agora'), findsOneWidget);
+      },
+    );
 
-    testWidgets('"Ver todos" filtra por Jogando e esconde a prateleira', (
-      tester,
-    ) async {
-      await AppHarness(
-        library: FakeLibraryRepository([
-          fakeEntry(id: 'a', status: GameStatus.playing),
-          fakeEntry(
-            id: 'b',
-            game: fakeGame(igdbId: 2, name: 'Celeste'),
-            status: GameStatus.completed,
-          ),
-        ]),
-      ).pump(tester, size: const Size(400, 1400));
-      await tapAndSettle(tester, find.text('Ver todos'));
-      expect(find.text('Jogando agora'), findsNothing);
-      expect(find.text('1 jogo encontrado'), findsOneWidget);
-      expect(statusButtonText('Jogando (1)'), findsOneWidget);
-    });
+    testWidgets(
+      '"show all" filters by currently playing and preserves the shelf',
+      (tester) async {
+        await AppHarness(
+          library: FakeLibraryRepository([
+            fakeEntry(id: 'a', status: GameStatus.playing),
+            fakeEntry(
+              id: 'b',
+              game: fakeGame(igdbId: 2, name: 'Celeste'),
+              status: GameStatus.completed,
+            ),
+          ]),
+        ).pump(tester, size: const Size(400, 1400));
+        await tapAndSettle(tester, find.text('Ver todos'));
+        expect(find.text('Jogando agora'), findsNothing);
+        expect(find.text('1 jogo encontrado'), findsOneWidget);
+        expect(statusButtonText('Jogando (1)'), findsOneWidget);
+      },
+    );
 
-    testWidgets('no máximo 6 itens identificados', (tester) async {
+    testWidgets('at most 6 items identified', (tester) async {
       await AppHarness(
         library: FakeLibraryRepository([
           for (var i = 0; i < 9; i++)
@@ -495,7 +509,7 @@ void main() {
       );
     });
 
-    testWidgets('resume várias plataformas sem escolher uma arbitrariamente', (
+    testWidgets('shows multiple platforms without arbitrarily choosing one', (
       tester,
     ) async {
       await AppHarness(
@@ -508,7 +522,7 @@ void main() {
     });
   });
 
-  group('composição (golden)', () {
+  group('composition (golden)', () {
     List<GameEntry> sample() => [
       fakeEntry(
         id: 'a',
@@ -563,9 +577,9 @@ void main() {
     ];
 
     for (final (name, size, grid) in [
-      ('grade_390', const Size(390, 1000), true),
-      ('lista_390', const Size(390, 1000), false),
-      ('grade_1280', const Size(1280, 900), true),
+      ('grid_390', const Size(390, 1000), true),
+      ('list_390', const Size(390, 1000), false),
+      ('grid_1280', const Size(1280, 900), true),
     ]) {
       testWidgets(name, skip: goldenSkip, (tester) async {
         await AppHarness(library: FakeLibraryRepository(sample())).pump(
@@ -582,9 +596,11 @@ void main() {
     }
   });
 
-  group('exibição', () {
+  group('display', () {
     for (final width in [360.0, 390.0, 600.0, 840.0, 1280.0, 1440.0]) {
-      testWidgets('layout sem overflow em ${width.toInt()} dp', (tester) async {
+      testWidgets('layout without overflow in ${width.toInt()} dp', (
+        tester,
+      ) async {
         await AppHarness(
           library: FakeLibraryRepository([
             for (var i = 0; i < 6; i++)
@@ -605,7 +621,7 @@ void main() {
       });
     }
 
-    testWidgets('grade: duas colunas em 360 dp', (tester) async {
+    testWidgets('grid: two columns in 360 dp', (tester) async {
       await AppHarness(
         library: FakeLibraryRepository([
           for (var i = 0; i < 4; i++)
@@ -623,30 +639,31 @@ void main() {
       expect(lefts, hasLength(2));
     });
 
-    testWidgets('com texto a 200% a lista assume sem mexer na preferência', (
-      tester,
-    ) async {
-      final h = AppHarness(library: FakeLibraryRepository([fakeEntry()]));
-      await h.pump(
-        tester,
-        size: const Size(360, 800),
-        textScale: 2.0,
-        prefs: {'library.grid': true},
-      );
-      await tester.scrollUntilVisible(
-        find.byType(GameListRow),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.byType(GameListRow), findsWidgets);
-      expect(
-        find.byTooltip('Mostrar como lista'),
-        findsOneWidget,
-        reason: 'a preferência salva continua sendo grade',
-      );
-    });
+    testWidgets(
+      'with text at 200% text, the list adapts without changing the preference',
+      (tester) async {
+        final h = AppHarness(library: FakeLibraryRepository([fakeEntry()]));
+        await h.pump(
+          tester,
+          size: const Size(360, 800),
+          textScale: 2.0,
+          prefs: {'library.grid': true},
+        );
+        await tester.scrollUntilVisible(
+          find.byType(GameListRow),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.byType(GameListRow), findsWidgets);
+        expect(
+          find.byTooltip('Mostrar como lista'),
+          findsOneWidget,
+          reason: 'a preferência salva continua sendo grade',
+        );
+      },
+    );
 
-    testWidgets('ordena por Nome A–Z e por horas', (tester) async {
+    testWidgets('sorts by name A–Z and by hours', (tester) async {
       await AppHarness(
         library: FakeLibraryRepository([
           fakeEntry(
@@ -684,7 +701,7 @@ void main() {
     });
   });
 
-  testWidgets('lista/grade e ordenação persistem entre aberturas do app', (
+  testWidgets('list/grid and sorting persist across app launches', (
     tester,
   ) async {
     final library = FakeLibraryRepository([
@@ -707,7 +724,7 @@ void main() {
     );
   });
 
-  testWidgets('alternar grade/lista grava a preferência', (tester) async {
+  testWidgets('switching grid/list saves the preference', (tester) async {
     await AppHarness(library: FakeLibraryRepository([fakeEntry()]))
         .pump(tester);
     expect(find.byType(GameListRow), findsNothing);
@@ -721,38 +738,39 @@ void main() {
     );
   });
 
-  testWidgets('abrir e voltar do detalhe preserva a posição da Biblioteca', (
-    tester,
-  ) async {
-    await AppHarness(
-      library: FakeLibraryRepository([
-        for (var i = 0; i < 30; i++)
-          fakeEntry(
-            id: 'e$i',
-            game: fakeGame(igdbId: 100 + i, name: 'Jogo $i'),
-          ),
-      ]),
-    ).pump(tester, size: const Size(400, 800));
-    final scroll = tester.widget<CustomScrollView>(
-      find.byType(CustomScrollView),
-    );
-    final target = find.byWidgetPredicate(
-      (widget) => widget is GameCard && widget.title == 'Jogo 20',
-    );
-    await tester.scrollUntilVisible(
-      target,
-      600,
-      scrollable: verticalScroll.first,
-    );
-    final before = scroll.controller!.offset;
-    expect(before, greaterThan(0));
+  testWidgets(
+    'opening and returning from detail preserves the Library position',
+    (tester) async {
+      await AppHarness(
+        library: FakeLibraryRepository([
+          for (var i = 0; i < 30; i++)
+            fakeEntry(
+              id: 'e$i',
+              game: fakeGame(igdbId: 100 + i, name: 'Jogo $i'),
+            ),
+        ]),
+      ).pump(tester, size: const Size(400, 800));
+      final scroll = tester.widget<CustomScrollView>(
+        find.byType(CustomScrollView),
+      );
+      final target = find.byWidgetPredicate(
+        (widget) => widget is GameCard && widget.title == 'Jogo 20',
+      );
+      await tester.scrollUntilVisible(
+        target,
+        600,
+        scrollable: verticalScroll.first,
+      );
+      final before = scroll.controller!.offset;
+      expect(before, greaterThan(0));
 
-    await openLibraryGame(tester, 'Jogo 20');
-    await tapAndSettle(tester, find.byType(BackButton));
-    expect(scroll.controller!.offset, closeTo(before, 1));
-  });
+      await openLibraryGame(tester, 'Jogo 20');
+      await tapAndSettle(tester, find.byType(BackButton));
+      expect(scroll.controller!.offset, closeTo(before, 1));
+    },
+  );
 
-  testWidgets('uma nova sessão começa a Biblioteca no topo', (tester) async {
+  testWidgets('the new session starts the Library in the top', (tester) async {
     final h = AppHarness(
       library: FakeLibraryRepository([
         for (var i = 0; i < 30; i++)
@@ -796,7 +814,7 @@ void main() {
   });
 
   testWidgets(
-    'alterar status de um registro (página do jogo) envia só essa mudança',
+    'change status of one entry (page of the game) sends only that change',
     (tester) async {
       final library = FakeLibraryRepository([
         fakeEntry(id: 'a', status: GameStatus.backlog, hours: 3),
@@ -819,65 +837,67 @@ void main() {
     },
   );
 
-  testWidgets('alterar um replay não mexe nos outros registros do jogo', (
-    tester,
-  ) async {
-    final library = FakeLibraryRepository([
-      fakeEntry(
-        id: 'a',
-        status: GameStatus.completed,
-        createdAt: DateTime.utc(2026, 3, 1),
-      ),
-      fakeEntry(
-        id: 'b',
-        status: GameStatus.backlog,
-        createdAt: DateTime.utc(2026, 1, 1),
-      ),
-    ]);
-    await AppHarness(library: library).pump(tester);
-    // O primeiro card da página do jogo é o registro mais novo ('a').
-    await openMenu(tester, 0, 'Alterar status');
-    await tapAndSettle(tester, find.widgetWithText(ListTile, 'Abandonado'));
-    expect(library.updated, hasLength(1), reason: 'só um registro é enviado');
-    expect(library.updated.single.$1, 'a');
-    expect(library.updated.single.$2.status, GameStatus.dropped);
-  });
+  testWidgets(
+    'change the replay does not moves in the other entries of the game',
+    (tester) async {
+      final library = FakeLibraryRepository([
+        fakeEntry(
+          id: 'a',
+          status: GameStatus.completed,
+          createdAt: DateTime.utc(2026, 3, 1),
+        ),
+        fakeEntry(
+          id: 'b',
+          status: GameStatus.backlog,
+          createdAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      await AppHarness(library: library).pump(tester);
+      // O primeiro card da página do jogo é o registro mais novo ('a').
+      await openMenu(tester, 0, 'Alterar status');
+      await tapAndSettle(tester, find.widgetWithText(ListTile, 'Abandonado'));
+      expect(library.updated, hasLength(1), reason: 'só um registro é enviado');
+      expect(library.updated.single.$1, 'a');
+      expect(library.updated.single.$2.status, GameStatus.dropped);
+    },
+  );
 
-  testWidgets('remover pede confirmação, remove só o registro escolhido', (
-    tester,
-  ) async {
-    final library = FakeLibraryRepository([
-      fakeEntry(id: 'a'),
-      fakeEntry(id: 'b'),
-    ]);
-    await AppHarness(library: library).pump(tester);
+  testWidgets(
+    'removes asks for confirmation and removes only the chosen entry',
+    (tester) async {
+      final library = FakeLibraryRepository([
+        fakeEntry(id: 'a'),
+        fakeEntry(id: 'b'),
+      ]);
+      await AppHarness(library: library).pump(tester);
 
-    await openMenu(tester, 0, 'Remover');
-    expect(find.text('Remover registro?'), findsOneWidget);
-    // Identifica o jogo e o registro, não só "um registro".
-    expect(find.textContaining('Jogo Fixture Um'), findsWidgets);
-    // A data é a do aparelho (o registro guarda um instante).
-    final created = DateOnly.fromLocal(DateTime.utc(2026, 1, 1).toLocal());
-    expect(
-      find.textContaining('PC · Na fila · criado em ${created.format()}'),
-      findsOneWidget,
-    );
-    await tapAndSettle(tester, find.widgetWithText(TextButton, 'Cancelar'));
-    expect(library.deleted, isEmpty);
+      await openMenu(tester, 0, 'Remover');
+      expect(find.text('Remover registro?'), findsOneWidget);
+      // Identifica o jogo e o registro, não só "um registro".
+      expect(find.textContaining('Jogo Fixture Um'), findsWidgets);
+      // A data é a do aparelho (o registro guarda um instante).
+      final created = DateOnly.fromLocal(DateTime.utc(2026, 1, 1).toLocal());
+      expect(
+        find.textContaining('PC · Na fila · criado em ${created.format()}'),
+        findsOneWidget,
+      );
+      await tapAndSettle(tester, find.widgetWithText(TextButton, 'Cancelar'));
+      expect(library.deleted, isEmpty);
 
-    await tapAndSettle(tester, find.byType(EntryMenuButton).at(0));
-    await tapAndSettle(tester, find.text('Remover').last);
-    await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Remover'));
-    expect(library.deleted.length, 1);
-    await tapAndSettle(tester, find.byType(BackButton));
-    expect(
-      find.text('1 jogo · 1 registro'),
-      findsOneWidget,
-      reason: 'o outro playthrough continua',
-    );
-  });
+      await tapAndSettle(tester, find.byType(EntryMenuButton).at(0));
+      await tapAndSettle(tester, find.text('Remover').last);
+      await tapAndSettle(tester, find.widgetWithText(FilledButton, 'Remover'));
+      expect(library.deleted.length, 1);
+      await tapAndSettle(tester, find.byType(BackButton));
+      expect(
+        find.text('1 jogo · 1 registro'),
+        findsOneWidget,
+        reason: 'o outro playthrough continua',
+      );
+    },
+  );
 
-  testWidgets('falha ao remover mantém o registro e avisa', (tester) async {
+  testWidgets('fails to the removes keeps the entry and warns', (tester) async {
     final library = FakeLibraryRepository([fakeEntry(id: 'a')])
       ..mutationError = const NetworkException();
     await AppHarness(library: library).pump(tester);
@@ -888,27 +908,28 @@ void main() {
     expect(find.text('1 jogo · 1 registro'), findsOneWidget);
   });
 
-  testWidgets('muitos registros a 360 px e texto 200% não estouram o layout', (
-    tester,
-  ) async {
-    final entries = [
-      for (var i = 0; i < 12; i++)
-        fakeEntry(
-          id: 'e$i',
-          game: fakeGame(
-            igdbId: i,
-            name: 'Um jogo com nome extremamente comprido número $i',
+  testWidgets(
+    'many entries the 360 px and text 200% does not overflow the layout',
+    (tester) async {
+      final entries = [
+        for (var i = 0; i < 12; i++)
+          fakeEntry(
+            id: 'e$i',
+            game: fakeGame(
+              igdbId: i,
+              name: 'Um jogo com nome extremamente comprido número $i',
+            ),
+            status: GameStatus.values[i % 4],
+            platform: 'PlayStation 5',
           ),
-          status: GameStatus.values[i % 4],
-          platform: 'PlayStation 5',
-        ),
-    ];
-    await AppHarness(library: FakeLibraryRepository(entries))
-        .pump(tester, size: const Size(360, 800), textScale: 2.0);
-    expect(tester.takeException(), isNull);
-  });
+      ];
+      await AppHarness(library: FakeLibraryRepository(entries))
+          .pump(tester, size: const Size(360, 800), textScale: 2.0);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('puxar para atualizar refaz a consulta', (tester) async {
+  testWidgets('drag for update retries the query', (tester) async {
     final library = FakeLibraryRepository([fakeEntry()]);
     await AppHarness(library: library).pump(tester);
     expect(library.listCalls, 1);
@@ -921,49 +942,49 @@ void main() {
     expect(library.listCalls, 2);
   });
 
+  testWidgets('update failure keeps the list and warns that it is stale', (
+    tester,
+  ) async {
+    final library = FakeLibraryRepository([fakeEntry()]);
+    await AppHarness(library: library).pump(tester);
+
+    library.listError = const NetworkException();
+    await tester.fling(
+      find.byType(Scrollable).last,
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Jogo Fixture Um'),
+      findsWidgets,
+      reason: 'a lista continua na tela',
+    );
+    expect(find.textContaining('Mostrando os dados salvos'), findsOneWidget);
+    expect(find.text('Sua biblioteca começa com um jogo'), findsNothing);
+
+    library.listError = null;
+    await tapAndSettle(tester, find.text('Tentar de novo'));
+    expect(find.textContaining('Mostrando os dados salvos'), findsNothing);
+    expect(find.text('Jogo Fixture Um'), findsWidgets);
+  });
+
   testWidgets(
-    'falha ao atualizar mantém a lista e avisa que está desatualizada',
+    'the collection does not appear from another account after logout',
     (tester) async {
-      final library = FakeLibraryRepository([fakeEntry()]);
-      await AppHarness(library: library).pump(tester);
-
-      library.listError = const NetworkException();
-      await tester.fling(
-        find.byType(Scrollable).last,
-        const Offset(0, 400),
-        1000,
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('Jogo Fixture Um'),
-        findsWidgets,
-        reason: 'a lista continua na tela',
-      );
-      expect(find.textContaining('Mostrando os dados salvos'), findsOneWidget);
-      expect(find.text('Sua biblioteca começa com um jogo'), findsNothing);
-
-      library.listError = null;
-      await tapAndSettle(tester, find.text('Tentar de novo'));
-      expect(find.textContaining('Mostrando os dados salvos'), findsNothing);
+      final h = AppHarness(library: FakeLibraryRepository([fakeEntry()]));
+      await h.pump(tester);
       expect(find.text('Jogo Fixture Um'), findsWidgets);
+      await tapAndSettle(tester, find.text('Perfil').last);
+      await tapAndSettle(tester, find.byTooltip('Configurações'));
+      await tapSignOut(tester);
+      expect(find.text('Jogo Fixture Um'), findsNothing);
+      expect(find.text('Entrar'), findsWidgets);
     },
   );
 
-  testWidgets('a coleção não aparece de outra conta depois de sair', (
-    tester,
-  ) async {
-    final h = AppHarness(library: FakeLibraryRepository([fakeEntry()]));
-    await h.pump(tester);
-    expect(find.text('Jogo Fixture Um'), findsWidgets);
-    await tapAndSettle(tester, find.text('Perfil').last);
-    await tapAndSettle(tester, find.byTooltip('Configurações'));
-    await tapSignOut(tester);
-    expect(find.text('Jogo Fixture Um'), findsNothing);
-    expect(find.text('Entrar'), findsWidgets);
-  });
-
-  testWidgets('voltar do detalhe recupera a posição de rolagem', (
+  testWidgets('returning from detail restores the scroll position', (
     tester,
   ) async {
     final h = AppHarness(

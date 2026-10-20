@@ -16,19 +16,16 @@ import '../../support/fake_api.dart';
 }
 
 void main() {
-  test(
-    'feed envia o escopo explicitamente (o padrão do servidor é "following")',
-    () async {
-      final m = make({'items': <Object>[], 'nextCursor': null});
-      await m.repo.feed(FeedScope.general);
-      final q = m.adapter.requests.single.queryParameters;
-      expect(q['scope'], 'general');
-      expect(q['limit'], 20);
-      expect(q.containsKey('cursor'), isFalse);
-    },
-  );
+  test('feed sends the scope explicitly (the default from the server is "following")', () async {
+    final m = make({'items': <Object>[], 'nextCursor': null});
+    await m.repo.feed(FeedScope.general);
+    final q = m.adapter.requests.single.queryParameters;
+    expect(q['scope'], 'general');
+    expect(q['limit'], 20);
+    expect(q.containsKey('cursor'), isFalse);
+  });
 
-  test('feed repassa o cursor opaco sem alterá-lo', () async {
+  test('feed forwards the opaque cursor without changing it', () async {
     final m = make({'items': <Object>[], 'nextCursor': null});
     await m.repo.feed(
       FeedScope.following,
@@ -39,44 +36,41 @@ void main() {
     expect(q['cursor'], 'MjAyNi0xMC0wNFQxNTo0NToxNS4xMzZaX2Jk');
   });
 
-  test(
-    'posts do jogo usam o UUID interno, 20 por página, e repassam o cursor',
-    () async {
-      final m = make({'items': <Object>[], 'nextCursor': null});
-      await m.repo.gamePosts('uuid-do-jogo');
-      await m.repo.gamePosts('uuid-do-jogo', cursor: 'opaco==');
-      final first = m.adapter.requests.first;
-      expect(first.method, 'GET');
-      expect(first.path, '/games/uuid-do-jogo/posts');
-      expect(first.queryParameters['limit'], 20);
-      expect(first.queryParameters.containsKey('cursor'), isFalse);
-      expect(m.adapter.requests.last.queryParameters['cursor'], 'opaco==');
-    },
-  );
-
-  test('posts do jogo: a página traz itens e o próximo cursor', () async {
-    final m = make({
-      'items': [_postJson()],
-      'nextCursor': 'c1',
-    });
-    final page = await m.repo.gamePosts('g');
-    expect(page.items, hasLength(1));
-    expect(page.nextCursor, 'c1');
+  test('posts of the game use the UUID internal, 20 by page, and forward the cursor', () async {
+    final m = make({'items': <Object>[], 'nextCursor': null});
+    await m.repo.gamePosts('uuid-do-jogo');
+    await m.repo.gamePosts('uuid-do-jogo', cursor: 'opaco==');
+    final first = m.adapter.requests.first;
+    expect(first.method, 'GET');
+    expect(first.path, '/games/uuid-do-jogo/posts');
+    expect(first.queryParameters['limit'], 20);
+    expect(first.queryParameters.containsKey('cursor'), isFalse);
+    expect(m.adapter.requests.last.queryParameters['cursor'], 'opaco==');
   });
 
   test(
-    'criar post com registro envia só o registro (o backend deriva o jogo)',
+    'posts of the game: the page brings items and the next cursor',
     () async {
-      final m = make(_postJson());
-      await m.repo.create(content: 'Zerei!', gameId: 'g1', gameEntryId: 'e1');
-      expect(m.adapter.requests.single.data, {
-        'content': 'Zerei!',
-        'gameEntryId': 'e1',
+      final m = make({
+        'items': [_postJson()],
+        'nextCursor': 'c1',
       });
+      final page = await m.repo.gamePosts('g');
+      expect(page.items, hasLength(1));
+      expect(page.nextCursor, 'c1');
     },
   );
 
-  test('criar post com jogo, mas sem registro, envia o jogo', () async {
+  test('create post with entry sends only the entry (the backend derives the game)', () async {
+    final m = make(_postJson());
+    await m.repo.create(content: 'Zerei!', gameId: 'g1', gameEntryId: 'e1');
+    expect(m.adapter.requests.single.data, {
+      'content': 'Zerei!',
+      'gameEntryId': 'e1',
+    });
+  });
+
+  test('create post with game, but without entry, sends the game', () async {
     final m = make(_postJson());
     await m.repo.create(content: 'Quero jogar', gameId: 'g1');
     expect(m.adapter.requests.single.data, {
@@ -85,13 +79,13 @@ void main() {
     });
   });
 
-  test('criar post sem vínculo envia só o texto', () async {
+  test('create post without link sends only the text', () async {
     final m = make(_postJson());
     await m.repo.create(content: 'Oi');
     expect(m.adapter.requests.single.data, {'content': 'Oi'});
   });
 
-  test('curtir usa POST e descurtir usa DELETE', () async {
+  test('like uses post and unlike uses DELETE', () async {
     final m = make(null, status: 204);
     await m.repo.setLike('p1', liked: true);
     await m.repo.setLike('p1', liked: false);
@@ -101,7 +95,7 @@ void main() {
     ]);
   });
 
-  test('curtir comentário usa a rota do comentário', () async {
+  test('like comment uses the route of the comment', () async {
     final m = make(null, status: 204);
     await m.repo.setCommentLike('c9', liked: true);
     await m.repo.setCommentLike('c9', liked: false);
@@ -111,7 +105,7 @@ void main() {
     ]);
   });
 
-  test('comentário raiz não envia parentCommentId; resposta envia', () async {
+  test('comment root does not send parentCommentId; reply sends', () async {
     final m = make(null, status: 201);
     await m.repo.addComment('p1', 'raiz');
     await m.repo.addComment('p1', 'resposta', parentCommentId: 'c1');

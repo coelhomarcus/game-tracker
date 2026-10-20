@@ -54,27 +54,28 @@ Future<void> typeAndSend(WidgetTester tester, String text) async {
 }
 
 void main() {
-  group('lista de conversas', () {
-    testWidgets('mostra a pessoa, a prévia (com "Você:" nas minhas) e a hora', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      h.chat.list = [
-        conversation(id: 'a', last: last('oi, tudo bem?')),
-        conversation(
-          id: 'b',
-          other: ana,
-          last: last('combinado', from: meId, minute: 40),
-        ),
-      ];
-      await openMessages(tester, harness: h);
-      expect(find.text('beto'), findsOneWidget);
-      expect(find.text('oi, tudo bem?'), findsOneWidget);
-      expect(find.text('Você: combinado'), findsOneWidget);
-      expect(find.text('há 5 min'), findsOneWidget);
-    });
+  group('list of conversations', () {
+    testWidgets(
+      'shows the person, the preview (with "You:" in the my) and the hour',
+      (tester) async {
+        final h = AppHarness();
+        h.chat.list = [
+          conversation(id: 'a', last: last('oi, tudo bem?')),
+          conversation(
+            id: 'b',
+            other: ana,
+            last: last('combinado', from: meId, minute: 40),
+          ),
+        ];
+        await openMessages(tester, harness: h);
+        expect(find.text('beto'), findsOneWidget);
+        expect(find.text('oi, tudo bem?'), findsOneWidget);
+        expect(find.text('Você: combinado'), findsOneWidget);
+        expect(find.text('há 5 min'), findsOneWidget);
+      },
+    );
 
-    testWidgets('não lida: ponto na linha e selo com a contagem na aba', (
+    testWidgets('unread: dot in the line and badge with the count in the tab', (
       tester,
     ) async {
       final h = AppHarness();
@@ -102,7 +103,9 @@ void main() {
       expect(find.byType(Badge), findsOneWidget);
     });
 
-    testWidgets('sem conversas: estado vazio com ação', (tester) async {
+    testWidgets('without conversations: state empty with action', (
+      tester,
+    ) async {
       final h = AppHarness();
       h.chat.list = [];
       await openMessages(tester, harness: h);
@@ -114,7 +117,7 @@ void main() {
       expect(find.byType(Badge), findsNothing);
     });
 
-    testWidgets('erro ao carregar não é lista vazia e permite tentar de novo', (
+    testWidgets('error to the load is not list empty and allows try of new', (
       tester,
     ) async {
       final h = AppHarness();
@@ -127,7 +130,7 @@ void main() {
       expect(find.text('beto'), findsOneWidget);
     });
 
-    testWidgets('tocar abre a conversa', (tester) async {
+    testWidgets('tap opens the conversation', (tester) async {
       final h = AppHarness();
       h.chat.history[convId] = [serverMessage('m1', text: 'olá!', minute: 1)];
       await openMessages(tester, harness: h);
@@ -137,7 +140,7 @@ void main() {
     });
 
     testWidgets(
-      'em tela larga: lista e conversa lado a lado, sem botão de voltar',
+      'in screen wide: list and conversation side the side, without button of return',
       (tester) async {
         final h = AppHarness();
         h.chat.history[convId] = [serverMessage('m1', text: 'olá!', minute: 1)];
@@ -160,7 +163,7 @@ void main() {
       },
     );
 
-    testWidgets('puxar para atualizar refaz a consulta', (tester) async {
+    testWidgets('drag for update retries the query', (tester) async {
       final h = await openMessages(tester);
       final before = h.chat.conversationsCalls;
       await tester.fling(
@@ -173,8 +176,8 @@ void main() {
     });
   });
 
-  group('nova conversa', () {
-    testWidgets('escolher uma pessoa abre (ou reaproveita) a conversa', (
+  group('new conversation', () {
+    testWidgets('choose the person opens (or reuses) the conversation', (
       tester,
     ) async {
       final h = AppHarness();
@@ -213,22 +216,23 @@ void main() {
       );
     });
 
-    testWidgets('o botão Mensagem no perfil abre a conversa com a pessoa', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
-      await h.pump(tester);
-      await goTo(tester, '/users/u-beto');
-      await tapAndSettle(
-        tester,
-        find.widgetWithText(OutlinedButton, 'Mensagem'),
-      );
-      expect(h.chat.opened, ['u-beto']);
-      expect(find.widgetWithText(TextField, 'Mensagem'), findsOneWidget);
-    });
+    testWidgets(
+      'the button message in the profile opens the conversation with the person',
+      (tester) async {
+        final h = AppHarness();
+        h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
+        await h.pump(tester);
+        await goTo(tester, '/users/u-beto');
+        await tapAndSettle(
+          tester,
+          find.widgetWithText(OutlinedButton, 'Mensagem'),
+        );
+        expect(h.chat.opened, ['u-beto']);
+        expect(find.widgetWithText(TextField, 'Mensagem'), findsOneWidget);
+      },
+    );
 
-    testWidgets('o perfil próprio não tem botão Mensagem', (tester) async {
+    testWidgets('the profile own does not has button message', (tester) async {
       final h = AppHarness();
       h.profiles.profiles['u1'] = fakeProfile(
         id: 'u1',
@@ -240,24 +244,27 @@ void main() {
       expect(find.widgetWithText(OutlinedButton, 'Mensagem'), findsNothing);
     });
 
-    testWidgets('falha ao abrir a conversa avisa e não navega', (tester) async {
-      final h = AppHarness();
-      h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
-      await h.pump(tester);
-      await goTo(tester, '/users/u-beto');
-      h.chat.conversationsError = const NetworkException();
-      await tapAndSettle(
-        tester,
-        find.widgetWithText(OutlinedButton, 'Mensagem'),
-      );
-      expect(find.textContaining('Sem conexão'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Mensagem'), findsNothing);
-    });
+    testWidgets(
+      'fails when opening the conversation warns and does not navigate',
+      (tester) async {
+        final h = AppHarness();
+        h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
+        await h.pump(tester);
+        await goTo(tester, '/users/u-beto');
+        h.chat.conversationsError = const NetworkException();
+        await tapAndSettle(
+          tester,
+          find.widgetWithText(OutlinedButton, 'Mensagem'),
+        );
+        expect(find.textContaining('Sem conexão'), findsOneWidget);
+        expect(find.widgetWithText(TextField, 'Mensagem'), findsNothing);
+      },
+    );
   });
 
-  group('conversa: histórico', () {
+  group('conversation: history', () {
     testWidgets(
-      'mostra as mensagens com separador de dia e a hora do fim do grupo',
+      'shows the messages with separator of day and the hour of the end of the group',
       (tester) async {
         final h = AppHarness();
         h.chat.history[convId] = [
@@ -277,13 +284,13 @@ void main() {
       },
     );
 
-    testWidgets('conversa nova: convida a dizer oi', (tester) async {
+    testWidgets('conversation new: invites the say oi', (tester) async {
       await openRoom(tester);
       expect(find.text('Diga oi para beto'), findsOneWidget);
     });
 
     testWidgets(
-      'histórico longo carrega mais antigas ao rolar para cima, sem duplicar',
+      'history long loads more old to the scroll for top, without duplicates',
       (tester) async {
         final h = AppHarness();
         h.chat.pageSize = 10;
@@ -331,7 +338,7 @@ void main() {
       },
     );
 
-    testWidgets('conversa inexistente mostra erro com saída', (tester) async {
+    testWidgets('conversation missing shows error with exit', (tester) async {
       final h = AppHarness();
       h.chat.list = [];
       await h.pump(tester);
@@ -340,9 +347,9 @@ void main() {
     });
   });
 
-  group('conversa: enviar', () {
+  group('conversation: send', () {
     testWidgets(
-      'a mensagem aparece na hora, a caixa limpa, e o horário vem com o ACK',
+      'message appears immediately, input clears, and timestamp arrives with ACK',
       (tester) async {
         final h = AppHarness();
         await openRoom(tester, harness: h);
@@ -356,7 +363,7 @@ void main() {
       },
     );
 
-    testWidgets('enviar fica desabilitado sem texto e com só espaços', (
+    testWidgets('send is disabled without text and with spaces only', (
       tester,
     ) async {
       await openRoom(tester);
@@ -369,50 +376,52 @@ void main() {
       expect(tester.widget<IconButton>(sendButton).onPressed, isNotNull);
     });
 
-    testWidgets('perto do limite aparece o contador', (tester) async {
+    testWidgets('near of the limit appears the counter', (tester) async {
       await openRoom(tester);
       await tester.enterText(composer, 'x' * 1850);
       await tester.pumpAndSettle();
       expect(find.text('1850/2000'), findsOneWidget);
     });
 
-    testWidgets('evento antes do ACK não duplica a mensagem na tela', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      await openRoom(tester, harness: h);
-      h.chatServer.eventBeforeAck = true;
-      await typeAndSend(tester, 'uma só');
-      expect(find.text('uma só'), findsOneWidget);
-    });
-
-    testWidgets('ACK perdido: mostra "Confirmando…" e confirma sem duplicar', (
-      tester,
-    ) async {
-      final h = AppHarness();
-      await openRoom(tester, harness: h);
-      h.chatServer.dropAcks = 1;
-      await tester.enterText(composer, 'importante');
-      await tester.pumpAndSettle();
-      await tester.tap(sendButton);
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('Confirmando…'), findsOneWidget);
-
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpAndSettle();
-      expect(find.text('Confirmando…'), findsNothing);
-      expect(find.text('importante'), findsOneWidget);
-      expect(
-        h.chatServer.stored,
-        1,
-        reason: 'o reenvio não duplicou no servidor',
-      );
-      expect(h.chatServer.sends.length, 2);
-    });
+    testWidgets(
+      'event before of the ACK does not duplicates the message in the screen',
+      (tester) async {
+        final h = AppHarness();
+        await openRoom(tester, harness: h);
+        h.chatServer.eventBeforeAck = true;
+        await typeAndSend(tester, 'uma só');
+        expect(find.text('uma só'), findsOneWidget);
+      },
+    );
 
     testWidgets(
-      'não entregue: o texto continua, com "Tentar de novo" e "Descartar"',
+      'a lost ACK shows "confirming…" and confirms without duplicates',
+      (tester) async {
+        final h = AppHarness();
+        await openRoom(tester, harness: h);
+        h.chatServer.dropAcks = 1;
+        await tester.enterText(composer, 'importante');
+        await tester.pumpAndSettle();
+        await tester.tap(sendButton);
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Confirmando…'), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        expect(find.text('Confirmando…'), findsNothing);
+        expect(find.text('importante'), findsOneWidget);
+        expect(
+          h.chatServer.stored,
+          1,
+          reason: 'o reenvio não duplicou no servidor',
+        );
+        expect(h.chatServer.sends.length, 2);
+      },
+    );
+
+    testWidgets(
+      'an undelivered message keeps its text, with "try again" and "discard" actions',
       (tester) async {
         final h = AppHarness();
         await openRoom(tester, harness: h);
@@ -436,7 +445,9 @@ void main() {
       },
     );
 
-    testWidgets('descartar remove a mensagem não entregue', (tester) async {
+    testWidgets('discard removes the message does not delivered', (
+      tester,
+    ) async {
       final h = AppHarness();
       await openRoom(tester, harness: h);
       h.chatServer.ignoreSends = 3;
@@ -447,7 +458,9 @@ void main() {
       expect(find.text('descartar'), findsNothing);
     });
 
-    testWidgets('recusa do servidor aparece como não enviada', (tester) async {
+    testWidgets('rejects from the server appears the does not send', (
+      tester,
+    ) async {
       final h = AppHarness();
       await openRoom(tester, harness: h);
       h.chatServer.rejectWith = 'Conversa não encontrada';
@@ -456,7 +469,7 @@ void main() {
       expect(find.text('Não enviada'), findsOneWidget);
     });
 
-    testWidgets('o rascunho sobrevive a sair e voltar da conversa', (
+    testWidgets('the draft survives the leave and return of the conversation', (
       tester,
     ) async {
       final h = AppHarness();
@@ -473,7 +486,7 @@ void main() {
       );
     });
 
-    testWidgets('depois de enviar, o rascunho some', (tester) async {
+    testWidgets('after send, the draft some', (tester) async {
       final h = AppHarness();
       await openRoom(tester, harness: h);
       await typeAndSend(tester, 'enviada');
@@ -483,9 +496,9 @@ void main() {
     });
   });
 
-  group('conversa: conexão', () {
+  group('conversation: connection', () {
     testWidgets(
-      'sem conexão: aviso, mensagem na fila e entrega única ao reconectar',
+      'without connection: warning, message queued, and delivered once after reconnecting',
       (tester) async {
         final h = AppHarness();
         await openRoom(tester, harness: h);
@@ -511,7 +524,7 @@ void main() {
       },
     );
 
-    testWidgets('o que chegou durante a queda aparece depois de reconectar', (
+    testWidgets('the that arrived during the drop appears after reconnect', (
       tester,
     ) async {
       final h = AppHarness();
@@ -527,8 +540,10 @@ void main() {
     });
   });
 
-  group('conversa: ao vivo', () {
-    testWidgets('mensagem da outra pessoa aparece na hora', (tester) async {
+  group('conversation: to the live', () {
+    testWidgets('message of the another person appears immediately', (
+      tester,
+    ) async {
       final h = AppHarness();
       await openRoom(tester, harness: h);
       h.chatServer.incoming('chegou agora');
@@ -537,7 +552,7 @@ void main() {
     });
 
     testWidgets(
-      'digitando e online aparecem sob o nome; desconhecido não afirma offline',
+      'typing and online appear under the name; unknown does not asserts offline',
       (tester) async {
         final h = AppHarness();
         await openRoom(tester, harness: h);
@@ -572,14 +587,14 @@ void main() {
       },
     );
 
-    testWidgets('snapshot de presença inicial mostra online', (tester) async {
+    testWidgets('snapshot of presence initial shows online', (tester) async {
       final h = AppHarness();
       h.transport.online = ['u-beto'];
       await openRoom(tester, harness: h);
       expect(find.text('online'), findsOneWidget);
     });
 
-    testWidgets('escrever avisa a outra pessoa (uma vez na janela)', (
+    testWidgets('write warns the another person (the time in the window)', (
       tester,
     ) async {
       final h = AppHarness();
@@ -592,7 +607,7 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
     });
 
-    testWidgets('abrir a conversa marca como lida e zera o selo', (
+    testWidgets('open the conversation marks the read and clears the badge', (
       tester,
     ) async {
       final h = AppHarness();
@@ -609,7 +624,7 @@ void main() {
       expect(find.byType(Badge), findsNothing);
     });
 
-    testWidgets('titular leva ao perfil da outra pessoa', (tester) async {
+    testWidgets('title opens profile of the another person', (tester) async {
       final h = AppHarness();
       h.profiles.profiles['u-beto'] = fakeProfile(name: 'Beto');
       await openRoom(tester, harness: h);
@@ -618,7 +633,9 @@ void main() {
     });
   });
 
-  testWidgets('layout a 360 px com texto 200% não estoura', (tester) async {
+  testWidgets('layout the 360 px with text 200% does not overflows', (
+    tester,
+  ) async {
     final h = AppHarness();
     h.chat.history[convId] = [
       serverMessage('m1', text: 'Uma mensagem bem comprida ' * 6, minute: 1),

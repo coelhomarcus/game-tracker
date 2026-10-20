@@ -59,7 +59,7 @@ bool isBlue(img.Pixel p) => p.b > 200 && p.r < 80;
 void main() {
   group('prepare', () {
     test(
-      'aplica a orientação EXIF antes da prévia (foto de celular em pé)',
+      'applies EXIF orientation before preview (photo of phone in upright)',
       () {
         // Guardada deitada (300×100) com orientação 6: deve ser exibida em pé (100×300).
         final bytes = withOrientation(
@@ -79,7 +79,7 @@ void main() {
       },
     );
 
-    test('orientação 3 gira 180° e mantém as dimensões', () {
+    test('orientation 3 rotates 180° and keeps dimensions', () {
       final bytes = withOrientation(
         img.encodeJpg(halves(200, 100), quality: 95),
         3,
@@ -91,7 +91,7 @@ void main() {
       expect(isRed(out.getPixel(180, 50)), isTrue);
     });
 
-    test('sem orientação, mantém a imagem como está', () {
+    test('without orientation, keeps the image unchanged', () {
       final prepared = prepareProfileImageSync(
         img.encodeJpg(halves(200, 100), quality: 95),
       );
@@ -99,19 +99,22 @@ void main() {
       expect(prepared.animatedSource, isFalse);
     });
 
-    test('limita o maior lado a 2048 px mantendo a proporção', () {
-      final wide = prepareProfileImageSync(img.encodePng(halves(3000, 1500)));
-      expect((wide.width, wide.height), (2048, 1024));
-      final tall = prepareProfileImageSync(img.encodePng(halves(1000, 4000)));
-      expect((tall.width, tall.height), (512, 2048));
-    });
+    test(
+      'limits the longest side to 2048 px while preserving the aspect ratio',
+      () {
+        final wide = prepareProfileImageSync(img.encodePng(halves(3000, 1500)));
+        expect((wide.width, wide.height), (2048, 1024));
+        final tall = prepareProfileImageSync(img.encodePng(halves(1000, 4000)));
+        expect((tall.width, tall.height), (512, 2048));
+      },
+    );
 
-    test('não amplia imagem menor que o limite', () {
+    test('does not expands image smaller that the limit', () {
       final p = prepareProfileImageSync(img.encodePng(halves(120, 80)));
       expect((p.width, p.height), (120, 80));
     });
 
-    test('GIF animado usa o primeiro quadro e avisa', () {
+    test('GIF animated uses the first board and warns', () {
       final gif = img.Image(width: 40, height: 20, numChannels: 3);
       img.fill(gif, color: img.ColorRgb8(255, 0, 0));
       final second = img.Image(width: 40, height: 20, numChannels: 3);
@@ -125,7 +128,7 @@ void main() {
       expect(isRed(img.decodePng(prepared.bytes)!.getPixel(10, 10)), isTrue);
     });
 
-    test('aceita PNG e WebP (com e sem perdas)', () {
+    test('accepts PNG and WebP (with and without losses)', () {
       final source = halves(80, 60);
       expect(prepareProfileImageSync(img.encodePng(source)).width, 80);
       for (final bytes in [
@@ -139,7 +142,7 @@ void main() {
       }
     });
 
-    test('recusa acima de 24 milhões de pixels sem decodificar', () {
+    test('rejects more than 24 million pixels without decoding', () {
       final huge = img.Image(width: 5000, height: 5000, numChannels: 1);
       final bytes = img.encodePng(huge, level: 1);
       expect(bytes.length, lessThan(PickedImage.maxBytes));
@@ -155,7 +158,7 @@ void main() {
       );
     });
 
-    test('aceita exatamente no teto de pixels', () {
+    test('accepts exactly in the ceiling of pixels', () {
       final edge = img.Image(width: 4000, height: 6000, numChannels: 1);
       expect(
         prepareProfileImageSync(img.encodePng(edge, level: 1)).height,
@@ -163,7 +166,7 @@ void main() {
       );
     });
 
-    test('recusa arquivo acima de 8 MiB antes de abrir', () {
+    test('rejects file above of 8 MiB before open', () {
       expect(
         () => prepareProfileImageSync(Uint8List(PickedImage.maxBytes + 1)),
         throwsA(
@@ -176,7 +179,7 @@ void main() {
       );
     });
 
-    test('HEIC e lixo recebem a orientação de usar JPG, PNG ou WebP', () {
+    test('HEIC and unsupported files recommend using JPG, PNG, or WebP', () {
       // Cabeçalho "ftyp heic" de um HEIC; o decodificador não o reconhece.
       final heic = Uint8List.fromList([
         0,
@@ -210,7 +213,7 @@ void main() {
       }
     });
 
-    test('formatos fora da lista (BMP) também são recusados', () {
+    test('formats outside the list (BMP) also are rejected', () {
       expect(
         () => prepareProfileImageSync(img.encodeBmp(halves(20, 20))),
         throwsA(isA<ImageProcessingException>()),
@@ -223,7 +226,7 @@ void main() {
       (ProfileImageKind.avatar, 400, 400),
       (ProfileImageKind.banner, 1500, 500),
     ]) {
-      test('${kind.name}: JPEG de exatamente $w×$h', () {
+      test('${kind.name}: JPEG of exactly $w×$h', () {
         // Recorte de tamanho "estranho", como sai do editor.
         final cropped = img.encodePng(halves(1234, 1233));
         final out = exportProfileImageSync(cropped, w, h);
@@ -246,7 +249,7 @@ void main() {
       });
     }
 
-    test('amplia recorte pequeno em vez de recusar', () {
+    test('expands crop small in time of reject', () {
       final out = exportProfileImageSync(
         img.encodePng(halves(50, 50)),
         400,
@@ -258,7 +261,7 @@ void main() {
       );
     });
 
-    test('transparência vira fundo branco', () {
+    test('transparency becomes the white background', () {
       final transparent = img.Image(width: 20, height: 20, numChannels: 4);
       img.fill(transparent, color: img.ColorRgba8(255, 0, 0, 0));
       final out = img.decodeJpg(
@@ -268,7 +271,7 @@ void main() {
       expect([p.r, p.g, p.b].every((c) => c > 245), isTrue);
     });
 
-    test('pixels semi-transparentes compõem com o branco', () {
+    test('semi-transparent pixels composite against white', () {
       final half = halves(40, 40, alpha: 128);
       final p = img
           .decodeJpg(exportProfileImageSync(img.encodePng(half), 40, 40))!
@@ -278,7 +281,7 @@ void main() {
       expect(p.g, inInclusiveRange(100, 160));
     });
 
-    test('bytes que não são imagem falham com mensagem', () {
+    test('non-image bytes fails with the message', () {
       expect(
         () => exportProfileImageSync(Uint8List.fromList([1, 2, 3]), 400, 400),
         throwsA(isA<ImageProcessingException>()),
@@ -286,8 +289,8 @@ void main() {
     });
   });
 
-  group('especificação', () {
-    test('tamanhos e proporções do plano', () {
+  group('specification', () {
+    test('planned sizes and ratios', () {
       expect(ProfileImageKind.avatar.outputWidth, 400);
       expect(ProfileImageKind.avatar.aspectRatio, 1);
       expect(ProfileImageKind.banner.outputWidth, 1500);
@@ -296,8 +299,8 @@ void main() {
     });
   });
 
-  group('processador (compute)', () {
-    test('export devolve PickedImage com nome e MIME coerentes', () async {
+  group('processor (compute)', () {
+    test('export returns PickedImage with name and MIME consistent', () async {
       final out = await const ImagePackageProcessor().export(
         img.encodePng(halves(300, 100)),
         ProfileImageKind.banner,
