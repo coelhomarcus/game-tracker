@@ -69,6 +69,7 @@ export function SessionGate() {
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="games" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ title: '', headerBackButtonDisplayMode: 'minimal' }} />
       </Stack.Protected>
     </Stack>

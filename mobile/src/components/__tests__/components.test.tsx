@@ -37,6 +37,12 @@ describe('Button', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('can speak a different name than its visible label', async () => {
+    await render(<Button label="Hoje" accessibilityLabel="Preencher início com hoje" onPress={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Preencher início com hoje' })).toBeOnTheScreen();
+    expect(screen.getByText('Hoje')).toBeOnTheScreen();
+  });
+
   it('uses accent background and onAccent label for primary', async () => {
     await render(<Button label="Entrar" onPress={() => {}} />);
     expect(screen.getByRole('button', { name: 'Entrar' })).toHaveStyle({
@@ -78,6 +84,19 @@ describe('TextField', () => {
     const input = screen.getByLabelText('Senha');
     expect(input.props.accessibilityHint).toBe('Use pelo menos 8 caracteres');
     expect(input).toHaveStyle({ borderColor: colors.danger });
+  });
+
+  it('shows a helper until there is an error, and passes input props through', async () => {
+    const { rerender } = await render(
+      <TextField label="Notas" value="" onChangeText={() => {}} helper="Só você vê." placeholder="Ex.: PC" maxLength={9} multiline />,
+    );
+    expect(screen.getByText('Só você vê.')).toBeOnTheScreen();
+    const input = screen.getByLabelText('Notas');
+    expect(input.props).toMatchObject({ placeholder: 'Ex.: PC', maxLength: 9, multiline: true });
+
+    await rerender(<TextField label="Notas" value="" onChangeText={() => {}} helper="Só você vê." error="Muito longo" />);
+    expect(screen.queryByText('Só você vê.')).toBeNull();
+    expect(screen.getByText('Muito longo')).toBeOnTheScreen();
   });
 
   it('renders the label and reports text changes', async () => {

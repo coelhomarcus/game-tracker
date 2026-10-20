@@ -10,14 +10,23 @@ export type ButtonProps = {
   variant?: ButtonVariant;
   loading?: boolean;
   disabled?: boolean;
+  /** Spoken name when it must differ from the visible label. */
+  accessibilityLabel?: string;
 };
 
-export function Button({ label, onPress, variant = 'primary', loading = false, disabled = false }: ButtonProps) {
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  loading = false,
+  disabled = false,
+  accessibilityLabel,
+}: ButtonProps) {
   const inactive = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
