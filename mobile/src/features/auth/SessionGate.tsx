@@ -35,7 +35,7 @@ export function SessionGate() {
           message="Sua sessão está guardada. Verifique a conexão e tente de novo."
           action={{ label: 'Tentar novamente', onPress: () => void bootstrap() }}
         />
-        <Button label="Sair da conta" variant="text" onPress={() => void signOut()} />
+        <Button label="Sair da conta" variant="secondary" onPress={() => void signOut()} />
       </View>
     );
   }

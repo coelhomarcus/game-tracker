@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { renderRouter } from 'expo-router/testing-library';
 
 import { useSession } from '@/features/auth';
+import { colors } from '@/theme/tokens';
 
 jest.mock('@/features/auth', () => {
   const { create } = jest.requireActual('zustand');
@@ -74,7 +75,9 @@ test('unreachable offers retry and sign out', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
   expect(bootstrap).toHaveBeenCalledTimes(1);
 
-  await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
+  const signOutButton = screen.getByRole('button', { name: 'Sair da conta' });
+  expect(signOutButton).toHaveStyle({ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border });
+  await fireEvent.press(signOutButton);
   expect(signOut).toHaveBeenCalledTimes(1);
 });
 
