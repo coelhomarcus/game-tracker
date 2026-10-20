@@ -94,6 +94,19 @@ describe('Pill', () => {
     await render(<Pill tone="accent">Jogando</Pill>);
     expect(screen.getByText('Jogando')).toBeOnTheScreen();
   });
+
+  it('keeps accent tone contrast: active fill, accent border, strong label', async () => {
+    await render(<Pill tone="accent">Jogando</Pill>);
+    const label = screen.getByText('Jogando');
+    expect(label).toHaveStyle({ color: colors.textStrong, fontWeight: 'bold' });
+    const container = label.parent!;
+    expect(container).toHaveStyle({
+      backgroundColor: colors.active,
+      borderWidth: 1,
+      borderColor: colors.accent,
+    });
+    expect(container).not.toHaveStyle({ backgroundColor: colors.accent });
+  });
 });
 
 describe('Avatar', () => {

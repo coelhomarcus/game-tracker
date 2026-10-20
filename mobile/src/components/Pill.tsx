@@ -25,8 +25,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   default: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  accent: { backgroundColor: colors.accent },
+  accent: { backgroundColor: colors.active, borderWidth: 1, borderColor: colors.accent },
   label: { fontSize: fontSize.xs },
   defaultLabel: { color: colors.text },
-  accentLabel: { color: colors.onAccent, fontWeight: 'bold' },
+  accentLabel: { color: colors.textStrong, fontWeight: 'bold' },
 });
