@@ -1,9 +1,3 @@
-import { EmptyState, Screen } from '@/components';
+import { ExploreScreen } from "@/features/games/ExploreScreen";
 
-export default function ExploreScreen() {
-  return (
-    <Screen>
-      <EmptyState title="Explorar" message="Em construção" />
-    </Screen>
-  );
-}
+export default ExploreScreen;
