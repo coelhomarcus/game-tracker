@@ -1,3 +1,4 @@
+import { apiOrigin } from '../env';
 import { resolveImageUrl } from '../imageUrl';
 
 const origin = 'https://gt.example.com';
@@ -32,8 +33,12 @@ describe('resolveImageUrl', () => {
   });
 
   it('defaults to the API origin from the environment', () => {
-    const resolved = resolveImageUrl('http://other.test/uploads/a.png');
-    expect(resolved).toMatch(/\/uploads\/a\.png$/);
-    expect(resolved).not.toContain('/api/uploads');
+    expect(resolveImageUrl('http://other.test/uploads/a.png')).toBe(`${apiOrigin}/uploads/a.png`);
+  });
+
+  it('tolerates an origin with a trailing slash', () => {
+    expect(resolveImageUrl('http://localhost:3000/uploads/a.png', 'https://gt.example.com/')).toBe(
+      'https://gt.example.com/uploads/a.png',
+    );
   });
 });
