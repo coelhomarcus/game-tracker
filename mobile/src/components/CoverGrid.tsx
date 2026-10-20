@@ -54,19 +54,23 @@ export function CoverGrid<T>({
       {grid ? (
         // The list is GAP wider than the container and each cell pads GAP / 2 per side, so the
         // gutters sit between columns and the covers line up with the page edges.
-        <View style={styles.list}>
+        <View testID="cover-grid-list" style={styles.list}>
           <FlashList
             key={grid.columns}
             data={data}
             numColumns={grid.columns}
             keyExtractor={keyExtractor}
             renderItem={({ item }) => (
-              <View style={styles.cell}>{renderItem(item, grid.itemWidth)}</View>
+              <View testID="cover-grid-cell" style={styles.cell}>
+                {renderItem(item, grid.itemWidth)}
+              </View>
             )}
             onRefresh={onRefresh}
             refreshing={refreshing}
             ListHeaderComponent={ListHeaderComponent}
+            ListHeaderComponentStyle={styles.slot}
             ListEmptyComponent={ListEmptyComponent}
+            ListEmptyComponentStyle={styles.slot}
           />
         </View>
       ) : null}
@@ -77,5 +81,7 @@ export function CoverGrid<T>({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { flex: 1, marginHorizontal: -GAP / 2 },
+  // The header and empty slots live inside the widened list; undo the overhang.
+  slot: { marginHorizontal: GAP / 2 },
   cell: { paddingHorizontal: GAP / 2, paddingBottom: GAP },
 });

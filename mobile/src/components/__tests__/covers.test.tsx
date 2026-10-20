@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 
 import { CoverFooter, CoverGrid, GameCover, RatingStars, StatusIcon } from '..';
@@ -142,6 +142,10 @@ describe('CoverGrid', () => {
     await fireEvent(screen.getByTestId('cover-grid'), 'layout', {
       nativeEvent: { layout: { width, height: 800 } },
     });
+    // FlashList flags itself as loaded from a zero-delay timer; let it settle inside act.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   }
 
   it('renders nothing until it is measured', async () => {
@@ -183,6 +187,42 @@ describe('CoverGrid', () => {
     await layout(358);
     await screen.findByText('item a');
     expect(new Set(widths)).toEqual(new Set([(358 - 2 * 8) / 3]));
+  });
+
+  /** Horizontal margin of the closest ancestor of `node` that has one. */
+  function slotMargin(node: ReturnType<typeof screen.getByText>): number | undefined {
+    for (let current = node.parent; current; current = current.parent) {
+      const margin = StyleSheet.flatten(current.props.style)?.marginHorizontal;
+      if (margin !== undefined) return margin;
+    }
+    return undefined;
+  }
+
+  it('keeps header and empty slots aligned with the page edges', async () => {
+    await render(
+      <CoverGrid
+        data={[] as { id: string }[]}
+        keyExtractor={(i) => i.id}
+        renderItem={() => <Text>item</Text>}
+        ListHeaderComponent={<Text>Cabecalho</Text>}
+        ListEmptyComponent={<Text>Nada aqui</Text>}
+      />,
+    );
+    await layout(358);
+    expect(slotMargin(await screen.findByText('Cabecalho'))).toBe(4);
+    expect(slotMargin(await screen.findByText('Nada aqui'))).toBe(4);
+  });
+
+  it('widens the list by the gap and pads each cell for the gutters', async () => {
+    await render(
+      <CoverGrid data={items} keyExtractor={(i) => i.id} renderItem={() => <Text>item</Text>} />,
+    );
+    await layout(358);
+    const list = StyleSheet.flatten((await screen.findByTestId('cover-grid-list')).props.style);
+    expect(list.marginHorizontal).toBe(-4);
+    const cell = StyleSheet.flatten(screen.getAllByTestId('cover-grid-cell')[0].props.style);
+    expect(cell.paddingHorizontal).toBe(4);
+    expect(cell.paddingBottom).toBe(8);
   });
 
   it('renders the empty component when there is no data', async () => {
