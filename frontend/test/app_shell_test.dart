@@ -61,11 +61,7 @@ void main() {
   }
 
   testWidgets('large text at 600 dp uses compact navigation', (tester) async {
-    await signedIn().pump(
-      tester,
-      size: const Size(600, 800),
-      textScale: 1.5,
-    );
+    await signedIn().pump(tester, size: const Size(600, 800), textScale: 1.5);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
     expect(tester.takeException(), isNull);
