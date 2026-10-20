@@ -21,3 +21,6 @@ export const apiBaseUrl: string = resolveApiBaseUrl(
   process.env.EXPO_PUBLIC_API_URL,
   currentPlatform(),
 );
+
+/** The server origin: `apiBaseUrl` without the trailing `/api`. */
+export const apiOrigin: string = apiBaseUrl.replace(/\/api$/, '');

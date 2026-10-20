@@ -15,3 +15,9 @@ test('defaults per platform when unset or blank', () => {
   expect(r('  ', 'web')).toBe('http://localhost:3000/api');
   expect(r(undefined, 'ios')).toBe('http://localhost:3000/api');
 });
+
+test('apiOrigin is the API base URL without /api', () => {
+  const { apiBaseUrl, apiOrigin } = jest.requireActual<typeof import('../env')>('../env');
+  expect(apiBaseUrl.endsWith('/api')).toBe(true);
+  expect(apiOrigin).toBe(apiBaseUrl.slice(0, -'/api'.length));
+});
