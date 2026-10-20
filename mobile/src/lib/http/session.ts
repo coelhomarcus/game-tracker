@@ -19,6 +19,9 @@ export class SessionManager {
   onExpired?: () => void;
 
   private inFlight: Promise<RefreshOutcome> | null = null;
+  // Native stores do not guarantee that operations finish in the order they
+  // were issued, so every store access runs through this chain.
+  private storeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly store: TokenStore,
@@ -29,7 +32,7 @@ export class SessionManager {
     this.generation += 1;
     this.inFlight = null;
     this.accessToken = tokens.accessToken;
-    await this.store.write(tokens.refreshToken).catch(() => undefined);
+    await this.enqueue(() => this.store.write(tokens.refreshToken)).catch(() => undefined);
   }
 
   restore(): Promise<RefreshOutcome> {
@@ -46,9 +49,19 @@ export class SessionManager {
     this.generation += 1;
     this.inFlight = null;
     this.accessToken = null;
-    const previous = await this.store.read().catch(() => null);
-    await this.store.clear().catch(() => undefined);
-    return previous;
+    // Read and delete run as one queued step so a write issued by a newer
+    // `start` cannot land between them and be wiped.
+    return this.enqueue(async () => {
+      const previous = await this.store.read().catch(() => null);
+      await this.store.clear().catch(() => undefined);
+      return previous;
+    }).catch(() => null);
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.storeQueue.then(operation);
+    this.storeQueue = result.catch(() => undefined);
+    return result;
   }
 
   private refresh(): Promise<RefreshOutcome> {
@@ -64,7 +77,7 @@ export class SessionManager {
   private async runRefresh(): Promise<RefreshOutcome> {
     const generation = this.generation;
 
-    const stored = await this.store.read().catch(() => null);
+    const stored = await this.enqueue(() => this.store.read()).catch(() => null);
     if (generation !== this.generation) return 'discarded';
     if (!stored) return 'noSession';
 
@@ -83,7 +96,7 @@ export class SessionManager {
 
     if (generation !== this.generation) return 'discarded';
     this.accessToken = tokens.accessToken;
-    await this.store.write(tokens.refreshToken).catch(() => undefined);
+    await this.enqueue(() => this.store.write(tokens.refreshToken)).catch(() => undefined);
     return 'refreshed';
   }
 }

@@ -207,6 +207,39 @@ describe('SessionManager', () => {
     expect(session.generation).toBe(before + 1);
   });
 
+  it('clear waits for a pending refresh-token write and wipes it', async () => {
+    const { session, store, refreshCall } = setup();
+    const write = deferred<void>();
+    store.write = (token) => write.promise.then(() => void (store.value = token));
+    refreshCall.mockResolvedValue(tokens(2));
+
+    const outcome = session.restore();
+    while (session.accessToken === null) await new Promise((r) => setImmediate(r));
+    const cleared = session.clear();
+    await new Promise((r) => setImmediate(r));
+    write.resolve();
+
+    expect(await cleared).toBe('r2');
+    expect(await outcome).toBe('refreshed');
+    expect(store.value).toBeNull();
+    expect(session.accessToken).toBeNull();
+  });
+
+  it('clear waits for the write issued by start', async () => {
+    const { session, store } = setup(null);
+    const write = deferred<void>();
+    store.write = (token) => write.promise.then(() => void (store.value = token));
+
+    const started = session.start(tokens(1));
+    const cleared = session.clear();
+    await new Promise((r) => setImmediate(r));
+    write.resolve();
+    await started;
+
+    expect(await cleared).toBe('r1');
+    expect(store.value).toBeNull();
+  });
+
   it('allows a new refresh after the previous one settled', async () => {
     const { session, refreshCall } = setup();
     refreshCall.mockResolvedValueOnce(tokens(2)).mockResolvedValueOnce(tokens(3));
