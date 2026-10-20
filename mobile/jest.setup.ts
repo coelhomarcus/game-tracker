@@ -6,3 +6,7 @@ jest.mock('expo-font', () => ({
   loadAsync: jest.fn().mockResolvedValue(undefined),
   isLoaded: jest.fn().mockReturnValue(true),
 }));
+
+// Node 26 warns when the global `localStorage` getter is touched without --localstorage-file, and
+// Zustand's `persist` touches it while building its default storage. Native has no localStorage.
+Object.defineProperty(globalThis, 'localStorage', { value: undefined, configurable: true });
