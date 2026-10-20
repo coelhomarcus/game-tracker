@@ -4,7 +4,7 @@ React Native client built with Expo, Expo Router and TypeScript.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22.13+, 24.3+ or 26+
 - An Android emulator or device for `npm run android`
 
 ## Setup
@@ -21,7 +21,7 @@ Browser preview against the production API:
 EXPO_PUBLIC_API_URL=https://gt.marcuscoelho.com npm run web
 ```
 
-Android emulator (the API defaults to `http://10.0.2.2:3100`):
+Android emulator (the API defaults to `http://10.0.2.2:3000`):
 
 ```bash
 npm run android

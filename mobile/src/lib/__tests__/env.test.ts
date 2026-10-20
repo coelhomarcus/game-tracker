@@ -11,7 +11,7 @@ test('tolerates a trailing slash or an /api suffix', () => {
 });
 
 test('defaults per platform when unset or blank', () => {
-  expect(r(undefined, 'android')).toBe('http://10.0.2.2:3100/api');
-  expect(r('  ', 'web')).toBe('http://localhost:3100/api');
-  expect(r(undefined, 'ios')).toBe('http://localhost:3100/api');
+  expect(r(undefined, 'android')).toBe('http://10.0.2.2:3000/api');
+  expect(r('  ', 'web')).toBe('http://localhost:3000/api');
+  expect(r(undefined, 'ios')).toBe('http://localhost:3000/api');
 });
