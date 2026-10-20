@@ -439,7 +439,7 @@ Copy (exact):
 - `login shows field errors without calling the server` — press `Entrar` empty → two `Campo obrigatório`, `signIn` not called.
 - `login shows the server message` — `signIn` rejects `ApiError(401, 'invalid_credentials')` → `getByText('E-mail, username ou senha incorretos.')`.
 - `button is disabled while submitting` — pending `signIn` → `Entrar` button disabled.
-- `register submits all fields` → `signUp({ username: 'ana_1', name: 'Ana', email: 'ana@x.com', password: 'longpassword' })`.
+- `register submits all fields` → `signUp({ username: 'ana_1', name: 'Ana', email: 'ana@example.com', password: 'longpassword' })`.
 
 - [ ] **Step 2: Run to verify failure** — `npx jest src/features/auth` → FAIL.
 
