@@ -40,6 +40,8 @@ export const useSession = create<SessionState>((set) => ({
       // The session changed while the profile was loading; that change owns the status.
       if (error instanceof ApiError && error.code === 'cancelled') return;
       if (error instanceof ApiError && error.status === 401) {
+        // Drop the in-memory access token and the stored refresh token too.
+        await sessionManager.clear();
         set({ status: 'signedOut', user: null });
         return;
       }

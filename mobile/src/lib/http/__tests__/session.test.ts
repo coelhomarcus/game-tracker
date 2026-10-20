@@ -192,7 +192,7 @@ describe('SessionManager', () => {
     expect(await session.restore()).toBe('refreshed');
     expect(session.accessToken).toBe('a2');
 
-    await expect(session.clear()).resolves.toBe('r1');
+    await expect(session.clear()).resolves.toBe('r2');
     expect(session.accessToken).toBeNull();
   });
 
@@ -250,5 +250,50 @@ describe('SessionManager', () => {
     expect(refreshCall).toHaveBeenCalledTimes(2);
     expect(refreshCall).toHaveBeenLastCalledWith('r2');
     expect(session.accessToken).toBe('a3');
+  });
+
+  it('refreshes with the in-memory token when the store never persists', async () => {
+    const { session, store, refreshCall } = setup(null);
+    store.read = async () => null;
+    refreshCall.mockResolvedValueOnce(tokens(2)).mockResolvedValueOnce(tokens(3));
+    await session.start(tokens(1));
+
+    expect(await session.refreshAfterUnauthorized('a1')).toBe('refreshed');
+    expect(refreshCall).toHaveBeenLastCalledWith('r1');
+    expect(session.accessToken).toBe('a2');
+
+    expect(await session.refreshAfterUnauthorized('a2')).toBe('refreshed');
+    expect(refreshCall).toHaveBeenLastCalledWith('r2');
+    await expect(session.clear()).resolves.toBe('r3');
+  });
+
+  it('forgets the in-memory token on clear', async () => {
+    const { session, store, refreshCall } = setup(null);
+    store.read = async () => null;
+    await session.start(tokens(1));
+    await session.clear();
+
+    expect(await session.restore()).toBe('noSession');
+    expect(refreshCall).not.toHaveBeenCalled();
+  });
+
+  it('ends the session when a 401 finds no refresh token at all', async () => {
+    const { session } = setup(null);
+    const onExpired = jest.fn();
+    session.onExpired = onExpired;
+    session.accessToken = 'a1';
+
+    expect(await session.refreshAfterUnauthorized('a1')).toBe('noSession');
+    expect(session.accessToken).toBeNull();
+    expect(onExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report expiry when no access token was set', async () => {
+    const { session } = setup(null);
+    const onExpired = jest.fn();
+    session.onExpired = onExpired;
+
+    expect(await session.refreshAfterUnauthorized(null)).toBe('noSession');
+    expect(onExpired).not.toHaveBeenCalled();
   });
 });

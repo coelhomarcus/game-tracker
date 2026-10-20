@@ -106,7 +106,19 @@ describe('bootstrap', () => {
 
     await useSession.getState().bootstrap();
 
+    expect(mocked.session.clear).toHaveBeenCalledTimes(1);
     expect(useSession.getState().status).toBe('signedOut');
+    expect(useSession.getState().user).toBeNull();
+  });
+
+  test('bootstrap leaves the status alone when the profile request was cancelled', async () => {
+    mocked.session.restore.mockResolvedValue('refreshed');
+    mocked.authApi.me.mockRejectedValue(new ApiError(0, 'cancelled', 'x'));
+
+    await useSession.getState().bootstrap();
+
+    expect(useSession.getState().status).toBe('restoring');
+    expect(mocked.session.clear).not.toHaveBeenCalled();
   });
 
   test('bootstrap is unreachable when the profile request has no network', async () => {

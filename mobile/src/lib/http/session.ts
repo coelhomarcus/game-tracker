@@ -12,12 +12,17 @@ export type RefreshOutcome = 'refreshed' | 'invalid' | 'unavailable' | 'discarde
  * `generation` identifies the current session: it changes on `start` and
  * `clear`, so work that began under an older session can detect it is stale
  * and drop its result instead of applying it.
+ *
+ * The refresh token is kept in memory for the life of the session; the store
+ * only persists it across app restarts, so a store that fails to persist does
+ * not break refreshing.
  */
 export class SessionManager {
   accessToken: string | null = null;
   generation = 0;
   onExpired?: () => void;
 
+  private refreshToken: string | null = null;
   private inFlight: Promise<RefreshOutcome> | null = null;
   // Native stores do not guarantee that operations finish in the order they
   // were issued, so every store access runs through this chain.
@@ -32,6 +37,7 @@ export class SessionManager {
     this.generation += 1;
     this.inFlight = null;
     this.accessToken = tokens.accessToken;
+    this.refreshToken = tokens.refreshToken;
     await this.enqueue(() => this.store.write(tokens.refreshToken)).catch(() => undefined);
   }
 
@@ -42,17 +48,25 @@ export class SessionManager {
   async refreshAfterUnauthorized(usedToken: string | null): Promise<RefreshOutcome> {
     // Another request already replaced the token this one was rejected with.
     if (this.accessToken !== usedToken) return 'refreshed';
-    return this.refresh();
+    const outcome = await this.refresh();
+    // A 401 with no refresh token anywhere: the session cannot be renewed.
+    if (outcome === 'noSession' && this.accessToken !== null) {
+      await this.clear();
+      this.onExpired?.();
+    }
+    return outcome;
   }
 
   async clear(): Promise<string | null> {
     this.generation += 1;
     this.inFlight = null;
     this.accessToken = null;
+    const inMemory = this.refreshToken;
+    this.refreshToken = null;
     // Read and delete run as one queued step so a write issued by a newer
     // `start` cannot land between them and be wiped.
     return this.enqueue(async () => {
-      const previous = await this.store.read().catch(() => null);
+      const previous = inMemory ?? (await this.store.read().catch(() => null));
       await this.store.clear().catch(() => undefined);
       return previous;
     }).catch(() => null);
@@ -77,13 +91,15 @@ export class SessionManager {
   private async runRefresh(): Promise<RefreshOutcome> {
     const generation = this.generation;
 
-    const stored = await this.enqueue(() => this.store.read()).catch(() => null);
+    // Cold start has nothing in memory yet and restores from the store.
+    const current =
+      this.refreshToken ?? (await this.enqueue(() => this.store.read()).catch(() => null));
     if (generation !== this.generation) return 'discarded';
-    if (!stored) return 'noSession';
+    if (!current) return 'noSession';
 
     let tokens: SessionTokens;
     try {
-      tokens = await this.refreshCall(stored);
+      tokens = await this.refreshCall(current);
     } catch (error) {
       if (generation !== this.generation) return 'discarded';
       if (error instanceof ApiError && (error.status === 401 || error.status === 400)) {
@@ -96,6 +112,7 @@ export class SessionManager {
 
     if (generation !== this.generation) return 'discarded';
     this.accessToken = tokens.accessToken;
+    this.refreshToken = tokens.refreshToken;
     await this.enqueue(() => this.store.write(tokens.refreshToken)).catch(() => undefined);
     return 'refreshed';
   }

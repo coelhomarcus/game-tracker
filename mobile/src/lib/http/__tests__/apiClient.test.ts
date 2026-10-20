@@ -62,6 +62,34 @@ describe('createApiClient', () => {
     expect(seen).toEqual(['Bearer a1', 'Bearer a2']);
   });
 
+  it('refreshes with the in-memory token when the store never persists', async () => {
+    const refreshBodies: unknown[] = [];
+    server.use(
+      http.get(`${BASE}/feed`, ({ request: req }) =>
+        req.headers.get('authorization') === 'Bearer a2'
+          ? HttpResponse.json({ ok: true })
+          : unauthorized(),
+      ),
+      http.post(`${BASE}/auth/refresh`, async ({ request: req }) => {
+        refreshBodies.push(await req.json());
+        return HttpResponse.json({ accessToken: 'a2', refreshToken: 'r2' });
+      }),
+    );
+    const blackHole: TokenStore = {
+      read: async () => null,
+      write: async () => undefined,
+      clear: async () => undefined,
+    };
+    const session = new SessionManager(blackHole, (refreshToken) =>
+      request<SessionTokens>(BASE, '/auth/refresh', { method: 'POST', body: { refreshToken } }),
+    );
+    await session.start({ accessToken: 'a1', refreshToken: 'r1' });
+    const api = createApiClient(session, BASE);
+
+    await expect(api.get('/feed')).resolves.toEqual({ ok: true });
+    expect(refreshBodies).toEqual([{ refreshToken: 'r1' }]);
+  });
+
   it('parallel 401s refresh once', async () => {
     let refreshes = 0;
     server.use(
