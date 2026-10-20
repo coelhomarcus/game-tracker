@@ -13,6 +13,14 @@ jest.mock('@/features/auth', () => {
   };
 });
 
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+jest.mock('@/features/library/queries', () => ({
+  useLibrary: () => ({ data: [], isPending: false, isError: false, isRefetching: false, refetch: jest.fn() }),
+}));
+
 type Status = 'restoring' | 'signedOut' | 'signedIn' | 'unreachable';
 
 const bootstrap = jest.fn();
@@ -135,4 +143,12 @@ test('double-tapping the bell opens notifications only once', async () => {
 
   await act(async () => router.back());
   expect(app.getPathname()).toBe('/');
+});
+
+test('the library header adds a game by opening explore', async () => {
+  setStatus('signedIn');
+  const app = await renderApp('/library');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Adicionar jogo' }));
+  expect(await screen.findByRole('button', { name: /^Explorar, tab/, selected: true })).toBeOnTheScreen();
+  expect(app.getPathname()).toBe('/explore');
 });

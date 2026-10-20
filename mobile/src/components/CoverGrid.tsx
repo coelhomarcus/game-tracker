@@ -65,6 +65,7 @@ export function CoverGrid<T>({
                 {renderItem(item, grid.itemWidth)}
               </View>
             )}
+            keyboardShouldPersistTaps="handled"
             onRefresh={onRefresh}
             refreshing={refreshing}
             ListHeaderComponent={ListHeaderComponent}

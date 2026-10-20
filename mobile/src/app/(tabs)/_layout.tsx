@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import type { ComponentProps } from 'react';
-import type { ColorValue } from 'react-native';
+import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 
 import { HeaderBell } from '@/components';
 import { colors } from '@/theme/tokens';
@@ -22,6 +22,28 @@ const SearchIcon = makeIcon('search');
 const ChatIcon = makeIcon('chatbubbles');
 const PersonIcon = makeIcon('person');
 
+function LibraryHeaderRight() {
+  const router = useRouter();
+  return (
+    <View style={styles.headerRight}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Adicionar jogo"
+        onPress={() => router.push('/explore')}
+        style={styles.addButton}
+      >
+        <Ionicons name="add" size={26} color={colors.text} />
+      </Pressable>
+      <HeaderBell />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
+  addButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+});
+
 export default function TabsLayout() {
   return (
     <Tabs
@@ -37,7 +59,10 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Início', tabBarIcon: HomeIcon }} />
-      <Tabs.Screen name="library" options={{ title: 'Biblioteca', tabBarIcon: LibraryIcon }} />
+      <Tabs.Screen
+        name="library"
+        options={{ title: 'Biblioteca', tabBarIcon: LibraryIcon, headerRight: LibraryHeaderRight }}
+      />
       <Tabs.Screen name="explore" options={{ title: 'Explorar', tabBarIcon: SearchIcon }} />
       <Tabs.Screen
         name="messages"
