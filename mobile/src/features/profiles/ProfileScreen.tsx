@@ -43,25 +43,28 @@ type TopProps = {
  */
 function ProfileTop({ profile, own, tab, onSelectTab }: TopProps) {
   const router = useRouter();
+  const name = displayName(profile);
+  // Two buttons beside the name would squeeze it; somebody else's profile gets its own row.
   const actions = own ? (
     <Button
       label="Editar perfil"
       variant="secondary"
       onPress={() => router.push('/me/edit' as Href)}
     />
-  ) : (
-    <View style={styles.actions}>
-      <MessageButton userId={profile.id} />
-      <FollowButton
-        userId={profile.id}
-        following={profile.isFollowedByMe}
-        name={displayName(profile)}
-      />
+  ) : undefined;
+  const actionsRow = own ? undefined : (
+    <View testID="profile-actions" style={styles.actions}>
+      <View style={styles.action}>
+        <FollowButton userId={profile.id} following={profile.isFollowedByMe} name={name} />
+      </View>
+      <View style={styles.action}>
+        <MessageButton userId={profile.id} name={name} />
+      </View>
     </View>
   );
   return (
     <View>
-      <ProfileHeader profile={profile} actions={actions} />
+      <ProfileHeader profile={profile} actions={actions} actionsRow={actionsRow} />
       <View style={styles.tabs}>
         <Tabs items={TABS} selected={tab} onSelect={onSelectTab} />
       </View>
@@ -174,7 +177,8 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  actions: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg },
+  action: { flex: 1 },
   tabs: { paddingVertical: space.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

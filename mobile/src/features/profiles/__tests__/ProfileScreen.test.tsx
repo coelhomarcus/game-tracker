@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import UserRoute from '@/app/users/[id]';
@@ -260,17 +260,41 @@ describe('actions', () => {
 });
 
 describe('Mensagem', () => {
+  it('shares a full-width row under the name with the follow button', async () => {
+    await renderProfile('u1');
+
+    const row = screen.getByTestId('profile-actions');
+    expect(
+      within(row).getByRole('button', { name: 'Enviar mensagem para Ana Souza' }),
+    ).toBeOnTheScreen();
+    expect(within(row).getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
+    expect(within(row).getByText('Mensagem')).toBeOnTheScreen();
+  });
+
+  it('is absent while the profile loads', async () => {
+    mockProfile({ data: undefined, isPending: true });
+    await renderProfile('u1');
+    expect(screen.queryByText('Mensagem')).toBeNull();
+  });
+
+  it('is absent when the profile failed to load', async () => {
+    mockProfile({ data: undefined, isError: true, error: new ApiError(500, 'boom', 'x') });
+    await renderProfile('u1');
+    expect(screen.queryByText('Mensagem')).toBeNull();
+  });
+
   it('is not offered on the own profile', async () => {
     signInAs('u1');
     await renderProfile('u1');
 
-    expect(screen.queryByRole('button', { name: 'Mensagem' })).toBeNull();
+    expect(screen.queryByText('Mensagem')).toBeNull();
+    expect(screen.queryByTestId('profile-actions')).toBeNull();
   });
 
   it('opens the conversation with the user', async () => {
     await renderProfile('u1');
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
 
     expect(startConversation).toHaveBeenCalledWith('u1');
     expect(mockRouter.push).toHaveBeenCalledWith('/chat/c9');
@@ -281,8 +305,8 @@ describe('Mensagem', () => {
     startConversation.mockReturnValue(new Promise<string>((resolve) => (release = resolve)));
     await renderProfile('u1');
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
     expect(startConversation).toHaveBeenCalledTimes(1);
 
     await act(async () => release('c9'));
@@ -293,19 +317,19 @@ describe('Mensagem', () => {
     mockStart({ isPending: true });
     await renderProfile('u1');
 
-    expect(screen.getByRole('button', { name: 'Mensagem' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' })).toBeDisabled();
   });
 
   it('tells the user when the conversation cannot start and allows trying again', async () => {
     startConversation.mockRejectedValueOnce(new ApiError(500, 'boom', 'x'));
     await renderProfile('u1');
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
 
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(mockRouter.push).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
     expect(mockRouter.push).toHaveBeenCalledWith('/chat/c9');
   });
 });

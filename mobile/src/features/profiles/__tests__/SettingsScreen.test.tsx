@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
@@ -120,6 +120,36 @@ describe('SettingsScreen', () => {
 
     expect(
       screen.getByText('Você tem uma mensagem escrita e não enviada. Ela será descartada.'),
+    ).toBeOnTheScreen();
+  });
+
+  it('keeps the count it read when the dialog opened', async () => {
+    useChatStore.setState({ drafts: { c1: 'oi' } });
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    await act(async () => {
+      useChatStore.setState({ drafts: { c1: 'oi', c2: 'a', c3: 'b' } });
+    });
+
+    expect(
+      screen.getByText('Você tem uma mensagem escrita e não enviada. Ela será descartada.'),
+    ).toBeOnTheScreen();
+  });
+
+  it('reads the count again when the dialog is reopened after cancelling', async () => {
+    useChatStore.setState({ drafts: { c1: 'oi' } });
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Continuar no app' }));
+    await act(async () => {
+      useChatStore.setState({ drafts: { c1: 'oi', c2: 'a' } });
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(
+      screen.getByText('Você tem 2 mensagens escritas e não enviadas. Elas serão descartadas.'),
     ).toBeOnTheScreen();
   });
 

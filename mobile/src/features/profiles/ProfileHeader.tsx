@@ -16,9 +16,11 @@ export type ProfileHeaderProps = {
   profile: UserProfile;
   /** Rendered at the right of the name row (follow or edit button). */
   actions?: ReactNode;
+  /** Rendered on a full-width row under the name row (follow and message on somebody else). */
+  actionsRow?: ReactNode;
 };
 
-export function ProfileHeader({ profile, actions }: ProfileHeaderProps) {
+export function ProfileHeader({ profile, actions, actionsRow }: ProfileHeaderProps) {
   const name = displayName(profile);
   const bannerUrl = resolveImageUrl(profile.bannerUrl);
   const avatarUrl = resolveImageUrl(profile.avatarUrl);
@@ -57,6 +59,7 @@ export function ProfileHeader({ profile, actions }: ProfileHeaderProps) {
           </View>
           {actions}
         </View>
+        {actionsRow}
         {bio ? (
           <Text testID="profile-bio" style={styles.bio}>
             {bio}
