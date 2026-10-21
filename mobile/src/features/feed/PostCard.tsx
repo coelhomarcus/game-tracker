@@ -52,7 +52,7 @@ export function PostCard({ post, onPress, hideGame = false }: PostCardProps) {
       </Pressable>
       <View style={styles.footer}>
         {post.game && !hideGame ? <PostGameLink game={post.game} /> : null}
-        <PostActions post={post} />
+        <PostActions post={post} onComment={onPress} />
       </View>
     </View>
   );

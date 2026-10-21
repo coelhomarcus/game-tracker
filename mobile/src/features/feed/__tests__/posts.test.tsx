@@ -112,6 +112,17 @@ describe('PostCard', () => {
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it('opens the post from the comment counter only when the card is pressable', async () => {
+    const onPress = jest.fn();
+    await render(<PostCard post={post()} onPress={onPress} />);
+    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    await screen.rerender(<PostCard post={post()} />);
+    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
+    expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
+  });
 });
 
 describe('PostGameLink', () => {
@@ -157,12 +168,22 @@ describe('PostActions', () => {
     expect(screen.getByLabelText('0 comentários')).toBeOnTheScreen();
   });
 
-  it('opens the post from the comment count', async () => {
+  it('calls onComment from the comment counter', async () => {
+    const onComment = jest.fn();
+    await render(<PostActions post={post()} onComment={onComment} />);
+
+    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+
+    expect(onComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the comment counter as plain text without onComment', async () => {
     await render(<PostActions post={post()} />);
 
+    expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
     await fireEvent.press(screen.getByLabelText('2 comentários'));
-
-    expect(mockPush).toHaveBeenCalledWith('/posts/p1');
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
@@ -217,6 +238,18 @@ describe('ActivityCard', () => {
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it('opens the post from the comment counter only when the card is pressable', async () => {
+    const onPress = jest.fn();
+    const activity = post({ type: 'activity' });
+    await render(<ActivityCard post={activity} onPress={onPress} />);
+    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    await screen.rerender(<ActivityCard post={activity} />);
+    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
+    expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
+  });
 });
 
 type FeedQuery = UseInfiniteQueryResult<InfiniteData<PostPage>>;
@@ -262,6 +295,14 @@ describe('PostList', () => {
     await render(<PostList query={feedQuery()} />);
 
     await fireEvent.press(screen.getByLabelText(POST_LABEL));
+
+    expect(mockPush).toHaveBeenCalledWith('/posts/p1');
+  });
+
+  it('opens the post from the comment counter in the feed', async () => {
+    await render(<PostList query={feedQuery()} />);
+
+    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
 
     expect(mockPush).toHaveBeenCalledWith('/posts/p1');
   });

@@ -192,6 +192,15 @@ describe('PostDetailScreen post', () => {
     expect(screen.queryByRole('button', { name: /^Ana Souza zerou/ })).toBeNull();
   });
 
+  it('shows the comment counter of the header post as inert text', async () => {
+    await renderScreen();
+
+    expect(screen.getByLabelText('3 comentários')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: '3 comentários' })).toBeNull();
+    await fireEvent.press(screen.getByLabelText('3 comentários'));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it('shows the comment count under the post', async () => {
     await renderScreen();
 

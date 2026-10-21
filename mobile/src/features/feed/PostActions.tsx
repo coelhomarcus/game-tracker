@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, space } from '@/theme/tokens';
@@ -16,14 +15,22 @@ function plural(count: number, one: string, many: string): string {
 export type PostActionsProps = {
   /** The post as the parent read it from the cache, so the toggle never works on a stale copy. */
   post: Post;
+  /** Opens the post. Without it the comment counter is plain text, e.g. on the post's own page. */
+  onComment?: () => void;
 };
 
 /** Like and comment counters of a post. */
-export function PostActions({ post }: PostActionsProps) {
-  const router = useRouter();
+export function PostActions({ post, onComment }: PostActionsProps) {
   const toggleLike = useTogglePostLike();
   const liked = post.likedByMe;
   const likes = plural(post.likeCount, 'curtida', 'curtidas');
+  const comments = plural(post.commentCount, 'comentário', 'comentários');
+  const commentContent = (
+    <>
+      <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMuted} />
+      <Text style={styles.count}>{post.commentCount}</Text>
+    </>
+  );
 
   return (
     <View style={styles.row}>
@@ -41,16 +48,21 @@ export function PostActions({ post }: PostActionsProps) {
         />
         <Text style={styles.count}>{post.likeCount}</Text>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={plural(post.commentCount, 'comentário', 'comentários')}
-        hitSlop={space.sm}
-        onPress={() => router.push(`/posts/${post.id}` as Href)}
-        style={styles.action}
-      >
-        <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMuted} />
-        <Text style={styles.count}>{post.commentCount}</Text>
-      </Pressable>
+      {onComment ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={comments}
+          hitSlop={space.sm}
+          onPress={onComment}
+          style={styles.action}
+        >
+          {commentContent}
+        </Pressable>
+      ) : (
+        <View accessible accessibilityLabel={comments} style={styles.action}>
+          {commentContent}
+        </View>
+      )}
     </View>
   );
 }
