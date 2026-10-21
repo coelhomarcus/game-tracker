@@ -6,6 +6,8 @@ import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 import { HeaderBell } from '@/components';
 import { colors } from '@/theme/tokens';
 
+const EXPLORE_GAMES = '/explore?tab=games' as Href;
+
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type TabIconProps = { color: ColorValue; size: number };
 
@@ -29,7 +31,7 @@ function LibraryHeaderRight() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Adicionar jogo"
-        onPress={() => router.push('/explore')}
+        onPress={() => router.push(EXPLORE_GAMES)}
         style={styles.addButton}
       >
         <Ionicons name="add" size={26} color={colors.text} />

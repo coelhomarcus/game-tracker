@@ -39,6 +39,8 @@ const MIN_ITEM_WIDTH = 110;
 
 type ExploreTab = "games" | "people";
 
+const REQUESTABLE: ExploreTab[] = ["games", "people"];
+
 const TABS: { value: ExploreTab; label: string }[] = [
   { value: "games", label: "Jogos" },
   { value: "people", label: "Pessoas" },
@@ -205,18 +207,24 @@ function GamesSearch({ term, onChangeTerm, tabs }: GamesSearchProps) {
 }
 
 export function ExploreScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
-  const requested = params.tab === "people" ? "people" : undefined;
+  const requested = REQUESTABLE.find((value) => value === params.tab);
   const [tab, setTab] = useState<ExploreTab>(requested ?? "games");
   const [gameTerm, setGameTerm] = useState("");
   const [peopleTerm, setPeopleTerm] = useState("");
 
-  // The screen stays mounted in the tab bar, so a later link to the people tab arrives as a change.
+  // The screen stays mounted in the tab bar, so a link to a tab arrives as a change of the param.
   const [seenRequest, setSeenRequest] = useState(requested);
   if (requested !== seenRequest) {
     setSeenRequest(requested);
     if (requested) setTab(requested);
   }
+
+  // Once applied the request is consumed, so the same link works again after a manual switch.
+  useEffect(() => {
+    if (requested) router.setParams({ tab: undefined });
+  }, [requested, router]);
 
   const tabs = <Tabs items={TABS} selected={tab} onSelect={setTab} />;
 

@@ -1,5 +1,5 @@
 import type { FlashListRef } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -24,6 +24,8 @@ import { LibraryCard } from './LibraryCard';
 import { useLibraryPrefs, type LibrarySort } from './prefsStore';
 import { useLibrary } from './queries';
 import { STATUSES, statusLabel } from './status';
+
+const EXPLORE_GAMES = '/explore?tab=games' as Href;
 
 const SKELETON_COUNT = 8;
 const SKELETON_ITEMS = Array.from({ length: SKELETON_COUNT }, (_, index) => String(index));
@@ -180,7 +182,7 @@ export function LibraryScreen() {
     <EmptyState
       title="Sua biblioteca começa com um jogo"
       message="Adicione os jogos que você joga, quer jogar ou já zerou."
-      action={{ label: 'Encontrar jogo', onPress: () => router.push('/explore') }}
+      action={{ label: 'Encontrar jogo', onPress: () => router.push(EXPLORE_GAMES) }}
     />
   );
 

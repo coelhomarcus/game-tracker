@@ -18,10 +18,12 @@ jest.mock("@/features/profiles/queries", () => ({
 }));
 
 const mockPush = jest.fn();
+const mockSetParams = jest.fn();
 const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
+const mockRouter = { push: mockPush, setParams: mockSetParams };
 let mockParams: { tab?: string } = {};
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
   useNavigation: () => mockNavigation,
 }));
@@ -116,6 +118,7 @@ async function type(text: string) {
 beforeEach(() => {
   mockParams = {};
   mockPush.mockReset();
+  mockSetParams.mockReset();
   refetch.mockReset();
   mockNavigation.addListener.mockReset();
   mockNavigation.addListener.mockReturnValue(jest.fn());
@@ -221,12 +224,14 @@ describe("ExploreScreen", () => {
   });
 
   describe("tabs", () => {
+    const explore = () => (
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ExploreScreen />
+      </SafeAreaProvider>
+    );
+
     async function renderPlain() {
-      await render(
-        <SafeAreaProvider initialMetrics={metrics}>
-          <ExploreScreen />
-        </SafeAreaProvider>,
-      );
+      await render(explore());
     }
 
     it("opens on the games tab by default", async () => {
@@ -251,12 +256,39 @@ describe("ExploreScreen", () => {
       expect(screen.getByLabelText("Buscar jogos")).toBeOnTheScreen();
 
       mockParams = { tab: "people" };
-      await screen.rerender(
-        <SafeAreaProvider initialMetrics={metrics}>
-          <ExploreScreen />
-        </SafeAreaProvider>,
-      );
+      await screen.rerender(explore());
       expect(screen.getByLabelText("Buscar pessoas")).toBeOnTheScreen();
+    });
+
+    it("consumes the tab parameter so the same link works again", async () => {
+      mockParams = { tab: "people" };
+      await renderPlain();
+      expect(mockSetParams).toHaveBeenCalledWith({ tab: undefined });
+
+      // The router drops the parameter, the user goes back to games, then the link is followed again.
+      mockParams = {};
+      await screen.rerender(explore());
+      await fireEvent.press(screen.getByRole("tab", { name: "Jogos" }));
+      await layoutGrid();
+      expect(screen.getByLabelText("Buscar jogos")).toBeOnTheScreen();
+
+      mockParams = { tab: "people" };
+      await screen.rerender(explore());
+      expect(screen.getByLabelText("Buscar pessoas")).toBeOnTheScreen();
+    });
+
+    it("opens the games tab when asked, after leaving it on people", async () => {
+      mockParams = { tab: "people" };
+      await renderPlain();
+      mockParams = {};
+      await screen.rerender(explore());
+      expect(screen.getByLabelText("Buscar pessoas")).toBeOnTheScreen();
+
+      mockParams = { tab: "games" };
+      await screen.rerender(explore());
+      await layoutGrid();
+      expect(screen.getByLabelText("Buscar jogos")).toBeOnTheScreen();
+      expect(mockSetParams).toHaveBeenLastCalledWith({ tab: undefined });
     });
 
     it("keeps the search text of each tab when switching", async () => {

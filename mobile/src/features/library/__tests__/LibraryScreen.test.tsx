@@ -322,7 +322,7 @@ describe('states', () => {
     expect(screen.getByText('Sua biblioteca começa com um jogo')).toBeOnTheScreen();
     expect(screen.getByText('Adicione os jogos que você joga, quer jogar ou já zerou.')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Encontrar jogo' }));
-    expect(mockPush).toHaveBeenCalledWith('/explore');
+    expect(mockPush).toHaveBeenCalledWith('/explore?tab=games');
   });
 
   it('offers to clear filters that match nothing', async () => {
