@@ -11,15 +11,26 @@ const backend = process.env.GT_BACKEND?.trim();
 // The suites create and edit data, so they only run against a local disposable test API
 // (`npm run dev:test` in backend/), never a development or production one.
 if (backend) {
-  let host: string;
+  let url: URL;
   try {
-    host = new URL(backend).hostname;
+    url = new URL(backend);
   } catch {
     throw new Error(`GT_BACKEND is not a URL: ${backend}`);
   }
-  if (!LOCAL_HOSTS.has(host)) {
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`GT_BACKEND must be an http: or https: URL, not "${url.protocol}".`);
+  }
+  if (!LOCAL_HOSTS.has(url.hostname)) {
     throw new Error(
-      `GT_BACKEND must point at the local test API (e.g. http://localhost:3100), not "${host}".`,
+      'GT_BACKEND must point at the local test API (e.g. http://localhost:3100), ' +
+        `not "${url.hostname}".`,
+    );
+  }
+  // The app adds `/api` itself (and the realtime socket uses the bare origin).
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+    throw new Error(
+      'GT_BACKEND must be the API origin without a path (e.g. http://localhost:3100, no /api), ' +
+        `not "${backend}".`,
     );
   }
 }

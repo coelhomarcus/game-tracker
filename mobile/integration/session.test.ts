@@ -132,6 +132,5 @@ describeBackend('session against the test API', () => {
 
     expect(app.useSession.getState().status).toBe('unreachable');
     expect(await tokenStore.read()).toBe('qualquer.token');
-    await tokenStore.clear();
   });
 });

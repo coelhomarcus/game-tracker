@@ -86,53 +86,105 @@ export type AppInstance = {
   apiBaseUrl: string;
 };
 
+/** Runs `load` in a fresh module registry; `apiUrl` overrides the server for that registry. */
+function inFreshRegistry<T>(load: () => T, apiUrl?: string): T {
+  const previous = process.env.EXPO_PUBLIC_API_URL;
+  if (apiUrl) process.env.EXPO_PUBLIC_API_URL = apiUrl;
+  try {
+    let loaded: { value: T } | undefined;
+    jest.isolateModules(() => {
+      loaded = { value: load() };
+    });
+    if (!loaded) throw new Error('the app modules did not load');
+    return loaded.value;
+  } finally {
+    process.env.EXPO_PUBLIC_API_URL = previous;
+  }
+}
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+function loadSession(): AppInstance {
+  const auth = require('@/features/auth') as typeof import('@/features/auth');
+  const env = require('@/lib/env') as typeof import('@/lib/env');
+  return {
+    useSession: auth.useSession,
+    sessionManager: auth.sessionManager,
+    api: auth.api,
+    apiBaseUrl: env.apiBaseUrl,
+  };
+}
+
 /**
  * Loads the session modules again in a fresh module registry, like a new app process: nothing in
  * memory survives, only what the secure store holds. `apiUrl` overrides the server for this
  * instance only.
  */
 export function restartApp(apiUrl?: string): AppInstance {
-  const previous = process.env.EXPO_PUBLIC_API_URL;
-  if (apiUrl) process.env.EXPO_PUBLIC_API_URL = apiUrl;
-  try {
-    let app: AppInstance | undefined;
-    jest.isolateModules(() => {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const auth = require('@/features/auth') as typeof import('@/features/auth');
-      const env = require('@/lib/env') as typeof import('@/lib/env');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      app = {
-        useSession: auth.useSession,
-        sessionManager: auth.sessionManager,
-        api: auth.api,
-        apiBaseUrl: env.apiBaseUrl,
-      };
-    });
-    if (!app) throw new Error('the app modules did not load');
-    return app;
-  } finally {
-    process.env.EXPO_PUBLIC_API_URL = previous;
-  }
+  return inFreshRegistry(loadSession, apiUrl);
 }
 
-/** Awaits a call that must fail with the backend's error envelope and returns that error. */
+/** The app's feature API modules, all bound to one app instance's session. */
+function loadFeatures() {
+  return {
+    app: loadSession(),
+    feed: (require('@/features/feed/api') as typeof import('@/features/feed/api')).feedApi,
+    games: (require('@/features/games/api') as typeof import('@/features/games/api')).gamesApi,
+    library: (require('@/features/library/api') as typeof import('@/features/library/api'))
+      .libraryApi,
+    profiles: (require('@/features/profiles/api') as typeof import('@/features/profiles/api'))
+      .profilesApi,
+    notifications: (
+      require('@/features/notifications/api') as typeof import('@/features/notifications/api')
+    ).notificationsApi,
+    push: (require('@/features/push/api') as typeof import('@/features/push/api')).pushApi,
+  };
+}
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+/** A signed-in user with an app instance of their own, for tests where two people take turns. */
+export type Account = Omit<SignedInUser, 'accessToken' | 'refreshToken'> &
+  ReturnType<typeof loadFeatures>;
+
+/**
+ * Registers a new user in an app instance of its own (a fresh module registry, like another
+ * phone), so several accounts can act side by side through the app's real feature API modules.
+ * Only the secure store is shared with the other instances, and nothing here restores from it.
+ */
+export async function signUpAccount(prefix = 'int'): Promise<Account> {
+  const features = inFreshRegistry(loadFeatures);
+  const input = newUserInput(prefix);
+  await features.app.useSession.getState().signUp(input);
+  const { status, user } = features.app.useSession.getState();
+  if (status !== 'signedIn' || !user) {
+    throw new Error(`sign-up of ${input.username} did not leave a signed-in session`);
+  }
+  return { ...features, user, input };
+}
+
+/**
+ * Awaits a call that must fail with the backend's error envelope and returns that error. An app
+ * instance from `signUpAccount` has its own copy of the `ApiError` class, so it is matched by name.
+ */
 export async function apiErrorOf(call: Promise<unknown>): Promise<ApiError> {
   try {
     await call;
   } catch (error) {
     if (error instanceof ApiError) return error;
+    if (error instanceof Error && error.name === 'ApiError' && 'status' in error) {
+      return error as ApiError;
+    }
     throw error;
   }
   throw new Error('expected the call to fail with an ApiError, but it succeeded');
 }
 
-/** Polls `condition` until it holds; fails with `reason` after `timeoutMs`. */
+/** Polls `condition` (it may fetch) until it holds; fails with `reason` after `timeoutMs`. */
 export async function eventually(
-  condition: () => boolean,
+  condition: () => boolean | Promise<boolean>,
   { timeoutMs = 12_000, reason }: { timeoutMs?: number; reason?: string | (() => string) } = {},
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
+  while (!(await condition())) {
     if (Date.now() > deadline) {
       const text = typeof reason === 'function' ? reason() : reason;
       throw new Error(text ?? `condition not met in ${timeoutMs} ms`);

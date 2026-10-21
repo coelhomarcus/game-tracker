@@ -18,7 +18,8 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/'],
   // Appended to the preset's setup files; no UI setup (jest.setup.ts) is needed here.
   setupFiles: ['<rootDir>/integration/setup.ts'],
-  setupFilesAfterEnv: [],
+  // A shared afterEach that signs the app out and clears the secure store after every test.
+  setupFilesAfterEnv: ['<rootDir>/integration/reset.ts'],
   // One shared test database: suites that count rows (game stats) must not interleave.
   maxWorkers: 1,
   testTimeout: 30_000,
