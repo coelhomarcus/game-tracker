@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
 import { FlatList } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,6 +23,8 @@ jest.mock('@/features/chat/api', () => ({
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn() };
 let mockParams: Record<string, string | string[]> = {};
+/** Every options object the screen handed to the header, in order. */
+const mockHeaderOptions: Record<string, unknown>[] = [];
 jest.mock('expo-router', () => {
   const { useEffect } = jest.requireActual('react');
   return {
@@ -34,6 +36,7 @@ jest.mock('expo-router', () => {
     Stack: {
       Screen: ({ options }: { options?: { title?: string; headerTitle?: unknown } }) => {
         const { Text, View } = jest.requireActual('react-native');
+        if (options && mockHeaderOptions.at(-1) !== options) mockHeaderOptions.push(options);
         const Title = options?.headerTitle as ComponentType<{ children: string }> | undefined;
         return (
           <View testID="header">
@@ -177,6 +180,8 @@ beforeEach(() => {
 afterEach(async () => {
   await cleanup();
   jest.useRealTimers();
+  jest.restoreAllMocks();
+  mockHeaderOptions.length = 0;
   realtimeBridge.stop();
   chatSocket.reset();
   useChatStore.getState().clear();
@@ -204,6 +209,37 @@ describe('ChatRoomScreen: opening and leaving', () => {
     expect(mocked.list).not.toHaveBeenCalled();
     const list = queryClient.getQueryData<Conversation[]>(conversationsKey);
     expect(list?.find((item) => item.id === CONV)?.unread).toBe(false);
+  });
+
+  it('opens the room only once the first page has loaded', async () => {
+    let release: (value: MessagePage) => void = () => undefined;
+    mocked.messages.mockReturnValueOnce(new Promise<MessagePage>((done) => (release = done)));
+    queryClient.setQueryData(conversationsKey, [withAna]);
+    await renderRoom();
+
+    expect(useChatStore.getState().openConversationId).toBeNull();
+    expect(chatSocket.ackLog).toEqual([]);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+
+    await act(async () => release(page([message('m1', 'u1', 'Oi', today(9, 5))])));
+    await screen.findByTestId('message-list');
+    await waitFor(() => expect(useChatStore.getState().openConversationId).toBe(CONV));
+    expect(chatSocket.ackLog).toContainEqual({
+      event: 'conversation:join',
+      payload: { conversationId: CONV },
+    });
+    expect(mocked.markRead).toHaveBeenCalledWith(CONV);
+  });
+
+  it('does not set the header again while scrolling or when messages arrive', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    const before = mockHeaderOptions.length;
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(0));
+    await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));
+    await screen.findByText('Chegou');
+
+    expect(mockHeaderOptions).toHaveLength(before);
   });
 
   it('leaves the room and clears the open conversation when it closes', async () => {
@@ -288,13 +324,19 @@ describe('ChatRoomScreen: not found', () => {
     expect(mockRouter.back).toHaveBeenCalled();
   });
 
-  it('treats a 404 from the messages request as not found and leaves the room', async () => {
+  it('treats a 404 from the messages request as not found without opening the room', async () => {
     mocked.messages.mockRejectedValueOnce(new ApiError(404, 'not_found', 'Não encontrada'));
     mockRouter.canGoBack.mockReturnValue(false);
+    queryClient.setQueryData(conversationsKey, [withAna]);
     await renderRoom();
 
     expect(await screen.findByText('Conversa não encontrada')).toBeOnTheScreen();
     expect(useChatStore.getState().openConversationId).toBeNull();
+    expect(chatSocket.ackLog).toEqual([]);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+    // The header loses the room's avatar and name.
+    expect(mockHeaderOptions.at(-1)).toEqual({ title: '', headerTitle: '' });
+    expect(screen.queryByText('Ana Souza')).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
     expect(mockRouter.replace).toHaveBeenCalledWith('/messages');
   });
@@ -345,22 +387,51 @@ describe('ChatRoomScreen: history', () => {
     expect(mocked.messages).toHaveBeenCalledTimes(2);
     expect(screen.getByText('Novo')).toBeOnTheScreen();
 
-    mocked.messages.mockResolvedValueOnce(page([message('m1', 'u1', 'Antigo', today(9, 5))]));
-    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    let release: (value: MessagePage) => void = () => undefined;
+    mocked.messages.mockReturnValueOnce(new Promise<MessagePage>((done) => (release = done)));
+    const retryButton = screen.getByRole('button', { name: 'Tentar de novo' });
+    await fireEvent.press(retryButton);
+    await fireEvent.press(retryButton);
+    // The retry in flight shows as loading, not as the old error.
+    expect(await screen.findByLabelText('Carregando mensagens')).toBeOnTheScreen();
+    expect(
+      screen.queryByText('Não foi possível carregar mensagens mais antigas.'),
+    ).not.toBeOnTheScreen();
+
+    await act(async () => release(page([message('m1', 'u1', 'Antigo', today(9, 5))])));
     expect(await screen.findByText('Antigo')).toBeOnTheScreen();
     expect(screen.getByText('Início da conversa')).toBeOnTheScreen();
+    expect(mocked.messages).toHaveBeenCalledTimes(3);
   });
 
-  it('separates days as Hoje, Ontem and the date', async () => {
+  it('separates days as Hoje, Ontem and the date, above the oldest message of each day', async () => {
     await renderLoaded([
-      message('m3', 'u1', 'Hoje cedo', today(0, 1)),
-      message('m2', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m5', 'u1', 'Hoje tarde', today(23, 59)),
+      message('m4', 'u1', 'Hoje cedo', today(0, 1)),
+      message('m3', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m2', 'u1', 'Ontem cedo', yesterday(8, 0)),
       message('m1', 'u1', 'Faz tempo', new Date(2020, 0, 15, 10, 30)),
     ]);
 
     expect(screen.getByText('Hoje')).toBeOnTheScreen();
     expect(screen.getByText('Ontem')).toBeOnTheScreen();
     expect(screen.getByText('15/01/2020')).toBeOnTheScreen();
+    // Inverted list data, newest first: a separator follows the oldest message of its day, so it
+    // shows above that day on screen.
+    type Item = { kind: 'day'; label: string } | { kind: 'message'; row: { content: string } };
+    const data = screen.getByTestId('message-list').props.data as Item[];
+    expect(data.map((item) => (item.kind === 'day' ? `[${item.label}]` : item.row.content))).toEqual(
+      [
+        'Hoje tarde',
+        'Hoje cedo',
+        '[Hoje]',
+        'Ontem à noite',
+        'Ontem cedo',
+        '[Ontem]',
+        'Faz tempo',
+        '[15/01/2020]',
+      ],
+    );
   });
 
   it('shows the empty conversation copy', async () => {
@@ -522,7 +593,6 @@ describe('ChatRoomScreen: connection banner', () => {
     expect(screen.getByText('Sem conexão. As mensagens saem quando voltar.')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar agora' }));
     expect(reconnect).toHaveBeenCalled();
-    reconnect.mockRestore();
   });
 });
 
@@ -539,7 +609,6 @@ describe('ChatRoomScreen: new messages pill', () => {
     await fireEvent.press(pill);
     expect(scrollTo).toHaveBeenCalledWith({ offset: 0, animated: true });
     expect(screen.queryByRole('button', { name: 'Novas mensagens' })).not.toBeOnTheScreen();
-    scrollTo.mockRestore();
   });
 
   it('does not appear at the bottom, and hides when scrolled back down', async () => {
@@ -565,6 +634,51 @@ describe('ChatRoomScreen: new messages pill', () => {
 
     expect(screen.queryByRole('button', { name: 'Novas mensagens' })).not.toBeOnTheScreen();
     expect(scrollTo).toHaveBeenCalledWith({ offset: 0, animated: true });
-    scrollTo.mockRestore();
+  });
+
+  it('still appears while a failed message of mine sits at the bottom', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Falhou');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
+    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
+
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));
+
+    expect(await screen.findByText('Chegou')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Novas mensagens' })).toBeOnTheScreen();
+  });
+
+  it('does not appear for older pages loaded while scrolled away', async () => {
+    await renderLoaded([message('m2', 'me', 'Minha', today(9, 6))], 'cursor-1');
+    mocked.messages.mockResolvedValueOnce(page([message('m1', 'u1', 'Antiga', today(9, 5))]));
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    await act(async () => screen.getByTestId('message-list').props.onEndReached());
+
+    expect(await screen.findByText('Antiga')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Novas mensagens' })).not.toBeOnTheScreen();
+  });
+
+  it('does not follow my messages from another device or a discard', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Primeira');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
+    await type('Segunda');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
+
+    const scrollTo = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    // Discarding the newest reveals the older failed one at the bottom.
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Descartar' })[0]);
+    expect(screen.queryByText('Segunda')).not.toBeOnTheScreen();
+    // Written on another device: no pending copy here.
+    await act(async () => chatSocket.fire('message:receive', payload('m2', 'me', 'Do outro')));
+    expect(await screen.findByText('Do outro')).toBeOnTheScreen();
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Novas mensagens' })).not.toBeOnTheScreen();
   });
 });

@@ -40,6 +40,7 @@ const CONVERSATION_ID_PATTERN =
 const NEAR_BOTTOM = 80;
 const HEADER_AVATAR_SIZE = 32;
 const NO_PENDING: PendingMessage[] = [];
+const NOT_FOUND_OPTIONS = { title: '', headerTitle: '' };
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -57,7 +58,8 @@ function ConversationNotFound() {
   const router = useRouter();
   return (
     <Screen>
-      <Stack.Screen options={{ title: '' }} />
+      {/* Also replaces a room's avatar and name when its first page answers 404. */}
+      <Stack.Screen options={NOT_FOUND_OPTIONS} />
       <View style={styles.center}>
         <EmptyState
           title="Conversa não encontrada"
@@ -230,10 +232,16 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const typing = useTypingSignal(conversationId);
   const stopTyping = typing.stop;
 
+  const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = messages;
+  // Opened only once the conversation is known to exist: the first page loaded, or failed with
+  // something other than a 404 (the loader shows a 404 as not found instead of this room).
+  const ready = data !== undefined || messages.isError;
+
   // Open while on screen: the realtime bridge joins the room (and asks who is online) and leaves
   // it when this clears. Typing stops before leaving, since the room is needed to send it.
   useFocusEffect(
     useCallback(() => {
+      if (!ready) return;
       useChatStore.getState().setOpenConversation(conversationId);
       markRead();
       return () => {
@@ -241,10 +249,19 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
         const store = useChatStore.getState();
         if (store.openConversationId === conversationId) store.setOpenConversation(null);
       };
-    }, [conversationId, markRead, stopTyping]),
+    }, [ready, conversationId, markRead, stopTyping]),
   );
 
-  const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = messages;
+  // Stable across scrolls and new messages, so the header is not set again on each render. The
+  // title reads typing and presence from the store itself.
+  const headerOptions = useMemo(
+    () => ({
+      headerBackButtonDisplayMode: 'minimal' as const,
+      headerTitle: () => <ChatHeaderTitle conversationId={conversationId} otherUser={otherUser} />,
+    }),
+    [conversationId, otherUser],
+  );
+
   const rows = useMemo(
     () =>
       buildRows(data?.pages.flatMap((item) => item.items) ?? [], pending, selfId, otherName),
@@ -253,30 +270,41 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const items = useMemo(() => withDays(rows, new Date()), [rows]);
 
   const listRef = useRef<FlatList<RoomItem>>(null);
-  const newest = rows[0];
-  const newestKey = newest?.key;
-  const newestMine = newest?.mine ?? false;
-  // Set while the person reads older messages: the newest message when they scrolled away. The
-  // list keeps their place, so someone else's message arriving meanwhile is announced instead.
-  const [away, setAway] = useState<{ seenKey: string | undefined } | null>(null);
-  const newBelow = away !== null && newestKey !== away.seenKey && !newestMine;
+  // Pending rows sit above the server's, so the newest incoming message is looked up on its own.
+  const newestIncoming = rows.find((row) => !row.mine);
+  const newestServerAt = rows.find((row) => row.status === 'sent')?.createdAt.getTime();
+  // Set while the person reads older messages: the newest incoming message and the newest server
+  // time when they scrolled away. The list keeps their place, so someone else's message arriving
+  // meanwhile is announced instead. Older pages are earlier than `seenAt` and announce nothing.
+  const [away, setAway] = useState<{ seenKey: string | undefined; seenAt: number } | null>(null);
+  const newBelow =
+    away !== null &&
+    newestIncoming !== undefined &&
+    newestIncoming.key !== away.seenKey &&
+    newestIncoming.createdAt.getTime() > away.seenAt;
 
   function scrollToNewest() {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
     setAway(null);
   }
 
-  // What I send always shows: follow it to the bottom.
+  // What I just sent from here always shows: follow it to the bottom. Only a newer pending
+  // message counts, not a discard revealing an older one, nor my messages from another device.
+  const lastSentAt = pending.length > 0 ? pending[pending.length - 1].createdAt.getTime() : undefined;
+  const followedAt = useRef(lastSentAt);
   useEffect(() => {
-    if (newestKey !== undefined && newestMine) {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }
-  }, [newestKey, newestMine]);
+    if (lastSentAt === undefined) return;
+    if (followedAt.current !== undefined && lastSentAt <= followedAt.current) return;
+    followedAt.current = lastSentAt;
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [lastSentAt]);
 
   function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     // Inverted: offset 0 is the newest message.
     if (event.nativeEvent.contentOffset.y > NEAR_BOTTOM) {
-      if (away === null) setAway({ seenKey: newestKey });
+      if (away === null) {
+        setAway({ seenKey: newestIncoming?.key, seenAt: newestServerAt ?? -Infinity });
+      }
     } else if (away !== null) {
       setAway(null);
     }
@@ -288,7 +316,6 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
       void fetchNextPage({ cancelRefetch: false });
     }
   }
-
 
   const renderItem = ({ item }: { item: RoomItem }) => {
     if (item.kind === 'day') return <DaySeparator label={item.label} />;
@@ -305,17 +332,22 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
 
   // In the inverted list the footer sits at the top, above the oldest message.
   let older: ReactElement | null = null;
-  if (isFetchNextPageError) {
-    older = (
-      <View style={styles.older}>
-        <Text style={styles.olderText}>Não foi possível carregar mensagens mais antigas.</Text>
-        <Button label="Tentar de novo" variant="text" onPress={() => void fetchNextPage()} />
-      </View>
-    );
-  } else if (isFetchingNextPage) {
+  // A retry in flight keeps the error flag until it settles: loading wins.
+  if (isFetchingNextPage) {
     older = (
       <View style={styles.older}>
         <ActivityIndicator accessibilityLabel="Carregando mensagens" color={colors.textMuted} />
+      </View>
+    );
+  } else if (isFetchNextPageError) {
+    older = (
+      <View style={styles.older}>
+        <Text style={styles.olderText}>Não foi possível carregar mensagens mais antigas.</Text>
+        <Button
+          label="Tentar de novo"
+          variant="text"
+          onPress={() => void fetchNextPage({ cancelRefetch: false })}
+        />
       </View>
     );
   } else if (!hasNextPage) {
@@ -389,14 +421,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
 
   return (
     <Screen>
-      <Stack.Screen
-        options={{
-          headerBackButtonDisplayMode: 'minimal',
-          headerTitle: () => (
-            <ChatHeaderTitle conversationId={conversationId} otherUser={otherUser} />
-          ),
-        }}
-      />
+      <Stack.Screen options={headerOptions} />
       <KeyboardAvoidingView behavior="padding" style={styles.fill}>
         {body}
         <ConnectionBanner />
