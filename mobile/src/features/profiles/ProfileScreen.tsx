@@ -177,7 +177,7 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg },
+  actions: { flexDirection: 'row', gap: space.sm },
   action: { flex: 1 },
   tabs: { paddingVertical: space.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
