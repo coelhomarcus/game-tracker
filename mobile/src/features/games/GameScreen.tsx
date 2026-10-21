@@ -47,6 +47,9 @@ export function GameScreen() {
 function GameLoader({ igdbId, initialTab }: { igdbId: number; initialTab: TabValue }) {
   const game = useGame(igdbId);
 
+  // A failed background refetch keeps the previous data, so the loaded page stays.
+  if (game.data) return <GameBody game={game.data} initialTab={initialTab} />;
+
   if (game.isError) {
     if (game.error instanceof ApiError && game.error.status === 404) return <GameNotFound />;
     return (
@@ -61,16 +64,13 @@ function GameLoader({ igdbId, initialTab }: { igdbId: number; initialTab: TabVal
       </Screen>
     );
   }
-  if (!game.data) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
-        </View>
-      </Screen>
-    );
-  }
-  return <GameBody game={game.data} initialTab={initialTab} />;
+  return (
+    <Screen>
+      <View style={styles.center}>
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+      </View>
+    </Screen>
+  );
 }
 
 function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {

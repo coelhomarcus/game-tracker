@@ -158,6 +158,21 @@ describe('GameScreen', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  it('keeps the loaded game when a background refetch fails', async () => {
+    jest.mocked(useGame).mockReturnValue({
+      data: hades,
+      isPending: false,
+      isError: true,
+      error: new ApiError(404, 'NOT_FOUND', 'x'),
+      refetch: jest.fn(),
+    } as never);
+    await renderScreen();
+
+    expect(screen.getByRole('header', { name: 'Hades' })).toBeOnTheScreen();
+    expect(screen.queryByText('Jogo não encontrado')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Não foi possível carregar')).not.toBeOnTheScreen();
+  });
+
   it('shows the header and the about tab by default', async () => {
     await renderScreen();
 
