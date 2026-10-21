@@ -94,11 +94,18 @@ describe('useLibrary', () => {
     });
     expect(useLibraryFilter.getState().query).toBe('');
 
-    mocked.listMine.mockResolvedValueOnce([entry('new')]);
+    // Held until released: a resolved mock would deliver the data inside the render's act.
+    let release!: (entries: GameEntry[]) => void;
+    mocked.listMine.mockReturnValueOnce(
+      new Promise<GameEntry[]>((resolve) => {
+        release = resolve;
+      }),
+    );
     const second = await renderHook(() => useLibrary(), {
       wrapper: wrapperFor(sharedQueryClient),
     });
     expect(second.result.current.data).toBeUndefined();
+    await act(async () => release([entry('new')]));
     await waitFor(() => expect(second.result.current.data).toEqual([entry('new')]));
     expect(mocked.listMine).toHaveBeenCalledTimes(2);
     await second.unmount();
