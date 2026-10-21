@@ -5,19 +5,26 @@ import {
   useQuery,
   useQueryClient,
   type InfiniteData,
-} from '@tanstack/react-query';
+} from "@tanstack/react-query";
 
-import { feedApi } from './api';
-import { cancelPostQueries, restoreSnapshot, updatePostEverywhere, type Snapshot } from './postCache';
-import type { Comment, FeedScope, Post, PostPage } from './types';
+import { feedApi } from "./api";
+import { beginLike, runInLane, settleLike } from "./likeLanes";
+import { cancelPostQueries, updatePostEverywhere } from "./postCache";
+import type { Comment, FeedScope, Post, PostPage } from "./types";
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
 const nextPage = (last: PostPage) => last.nextCursor ?? undefined;
 
 export function useFeed(scope: FeedScope) {
-  return useInfiniteQuery<PostPage, Error, PostPages, readonly unknown[], string | undefined>({
-    queryKey: ['feed', scope],
+  return useInfiniteQuery<
+    PostPage,
+    Error,
+    PostPages,
+    readonly unknown[],
+    string | undefined
+  >({
+    queryKey: ["feed", scope],
     queryFn: ({ pageParam }) => feedApi.feed(scope, pageParam),
     initialPageParam: undefined,
     getNextPageParam: nextPage,
@@ -25,8 +32,14 @@ export function useFeed(scope: FeedScope) {
 }
 
 export function useGamePosts(gameId?: string) {
-  return useInfiniteQuery<PostPage, Error, PostPages, readonly unknown[], string | undefined>({
-    queryKey: ['gamePosts', gameId],
+  return useInfiniteQuery<
+    PostPage,
+    Error,
+    PostPages,
+    readonly unknown[],
+    string | undefined
+  >({
+    queryKey: ["gamePosts", gameId],
     queryFn:
       gameId === undefined
         ? skipToken
@@ -37,45 +50,70 @@ export function useGamePosts(gameId?: string) {
 }
 
 export function usePost(id: string) {
-  return useQuery({ queryKey: ['post', id], queryFn: () => feedApi.post(id) });
+  return useQuery({ queryKey: ["post", id], queryFn: () => feedApi.post(id) });
 }
 
 export function useComments(postId: string) {
-  return useQuery({ queryKey: ['comments', postId], queryFn: () => feedApi.comments(postId) });
+  return useQuery({
+    queryKey: ["comments", postId],
+    queryFn: () => feedApi.comments(postId),
+  });
 }
+
+const postLane = (id: string) => `post:${id}`;
+const commentLane = (id: string) => `comment:${id}`;
 
 /** Moves the post to `liked`, adjusting the count only when the cached copy differs. */
 function withLike(liked: boolean) {
   return (p: Post): Post =>
     p.likedByMe === liked
       ? p
-      : { ...p, likedByMe: liked, likeCount: Math.max(0, p.likeCount + (liked ? 1 : -1)) };
+      : {
+          ...p,
+          likedByMe: liked,
+          likeCount: Math.max(0, p.likeCount + (liked ? 1 : -1)),
+        };
 }
 
-/** Optimistic everywhere the post is cached; no refetch on success. */
+/**
+ * Optimistic everywhere the post is cached. Requests of one post run in order; a failure
+ * reverts only that post, and only once no later tap of it is pending.
+ */
 export function useTogglePostLike() {
   const client = useQueryClient();
-  return useMutation<void, Error, Post, Snapshot>({
-    mutationFn: (post) => feedApi.setLike(post.id, !post.likedByMe),
+  const settle = (post: Post, ok: boolean) => {
+    const to = settleLike(postLane(post.id), !post.likedByMe, ok);
+    if (to !== undefined) updatePostEverywhere(client, post.id, withLike(to));
+  };
+  return useMutation<void, Error, Post>({
+    mutationFn: (post) =>
+      runInLane(postLane(post.id), () =>
+        feedApi.setLike(post.id, !post.likedByMe),
+      ),
     onMutate: async (post) => {
+      beginLike(postLane(post.id), post.likedByMe);
       await cancelPostQueries(client, post.id);
-      return updatePostEverywhere(client, post.id, withLike(!post.likedByMe));
+      updatePostEverywhere(client, post.id, withLike(!post.likedByMe));
     },
-    onError: (_error, _post, snapshot) => {
-      if (snapshot) restoreSnapshot(client, snapshot);
-    },
+    onSuccess: (_data, post) => settle(post, true),
+    onError: (_error, post) => settle(post, false),
   });
 }
 
 export function useCreatePost() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { content: string; gameId?: string; gameEntryId?: string }) =>
-      feedApi.create(input),
+    mutationFn: (input: {
+      content: string;
+      gameId?: string;
+      gameEntryId?: string;
+    }) => feedApi.create(input),
     onSuccess: (post) => {
-      const invalidations = [client.invalidateQueries({ queryKey: ['feed'] })];
+      const invalidations = [client.invalidateQueries({ queryKey: ["feed"] })];
       if (post.game) {
-        invalidations.push(client.invalidateQueries({ queryKey: ['gamePosts', post.game.id] }));
+        invalidations.push(
+          client.invalidateQueries({ queryKey: ["gamePosts", post.game.id] }),
+        );
       }
       return Promise.all(invalidations);
     },
@@ -86,16 +124,28 @@ export function useCreatePost() {
 export function useAddComment(postId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ content, parentCommentId }: { content: string; parentCommentId?: string }) =>
-      feedApi.addComment(postId, content, parentCommentId),
+    mutationFn: ({
+      content,
+      parentCommentId,
+    }: {
+      content: string;
+      parentCommentId?: string;
+    }) => feedApi.addComment(postId, content, parentCommentId),
     onSuccess: () => {
-      updatePostEverywhere(client, postId, (p) => ({ ...p, commentCount: p.commentCount + 1 }));
-      return client.invalidateQueries({ queryKey: ['comments', postId] });
+      updatePostEverywhere(client, postId, (p) => ({
+        ...p,
+        commentCount: p.commentCount + 1,
+      }));
+      return client.invalidateQueries({ queryKey: ["comments", postId] });
     },
   });
 }
 
-function mapComment(comments: Comment[], id: string, update: (c: Comment) => Comment): Comment[] {
+function mapComment(
+  comments: Comment[],
+  id: string,
+  update: (c: Comment) => Comment,
+): Comment[] {
   let changed = false;
   const mapped = comments.map((comment) => {
     const replies = mapComment(comment.replies, id, update);
@@ -111,27 +161,35 @@ function withCommentLike(liked: boolean) {
   return (c: Comment): Comment =>
     c.likedByMe === liked
       ? c
-      : { ...c, likedByMe: liked, likeCount: Math.max(0, c.likeCount + (liked ? 1 : -1)) };
+      : {
+          ...c,
+          likedByMe: liked,
+          likeCount: Math.max(0, c.likeCount + (liked ? 1 : -1)),
+        };
 }
 
 export function useToggleCommentLike(postId: string) {
   const client = useQueryClient();
-  const queryKey = ['comments', postId];
-  return useMutation<void, Error, Comment, { previous: Comment[] | undefined }>({
-    mutationFn: (comment) => feedApi.setCommentLike(comment.id, !comment.likedByMe),
+  const queryKey = ["comments", postId];
+  const update = (id: string, liked: boolean) =>
+    client.setQueryData<Comment[]>(queryKey, (tree) =>
+      tree ? mapComment(tree, id, withCommentLike(liked)) : tree,
+    );
+  const settle = (comment: Comment, ok: boolean) => {
+    const to = settleLike(commentLane(comment.id), !comment.likedByMe, ok);
+    if (to !== undefined) update(comment.id, to);
+  };
+  return useMutation<void, Error, Comment>({
+    mutationFn: (comment) =>
+      runInLane(commentLane(comment.id), () =>
+        feedApi.setCommentLike(comment.id, !comment.likedByMe),
+      ),
     onMutate: async (comment) => {
+      beginLike(commentLane(comment.id), comment.likedByMe);
       await client.cancelQueries({ queryKey });
-      const previous = client.getQueryData<Comment[]>(queryKey);
-      if (previous) {
-        client.setQueryData(
-          queryKey,
-          mapComment(previous, comment.id, withCommentLike(!comment.likedByMe)),
-        );
-      }
-      return { previous };
+      update(comment.id, !comment.likedByMe);
     },
-    onError: (_error, _comment, context) => {
-      if (context?.previous) client.setQueryData(queryKey, context.previous);
-    },
+    onSuccess: (_data, comment) => settle(comment, true),
+    onError: (_error, comment) => settle(comment, false),
   });
 }
