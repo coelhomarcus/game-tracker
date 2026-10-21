@@ -482,6 +482,137 @@ function deferred(): Deferred {
   return { promise, resolve, reject };
 }
 
+/** Reading the flags inside the hook subscribes the observer to them. */
+function useFeedAndLike() {
+  const feed = useFeed("general");
+  const like = useTogglePostLike();
+  return { feed, like, loadingMore: feed.isFetchingNextPage, fetching: feed.isFetching };
+}
+
+describe("likes while a fetch is in flight", () => {
+  const page1 = { items: [post("a")], nextCursor: "c1" };
+  const page2 = { items: [post("b")], nextCursor: null };
+
+  it("keeps the next page that was loading when a post is liked", async () => {
+    const stuck = new Promise<PostPage>(() => {});
+    mocked.feed
+      .mockResolvedValueOnce(page1)
+      .mockReturnValueOnce(stuck)
+      .mockResolvedValueOnce(page2);
+    let finishLike!: () => void;
+    mocked.setLike.mockReturnValue(new Promise<void>((r) => (finishLike = r)));
+    const client = freshClient();
+    const { result } = await renderHook(useFeedAndLike, { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(1));
+
+    await act(async () => {
+      void result.current.feed.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.loadingMore).toBe(true));
+    await act(async () => {
+      result.current.like.mutate(post("a"));
+    });
+    // The optimistic write is in place and the fetch waits for the like to settle.
+    expect(cachedPost(client, ["feed", "general"]).likedByMe).toBe(true);
+    expect(mocked.feed).toHaveBeenCalledTimes(2);
+
+    await act(async () => finishLike());
+
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(2));
+    expect(mocked.feed).toHaveBeenLastCalledWith("general", "c1");
+    expect(result.current.feed.data?.pages.map((p) => p.items[0].id)).toEqual(["a", "b"]);
+    expect(cachedPost(client, ["feed", "general"]).likedByMe).toBe(true);
+  });
+
+  it("resumes the fetch when the like fails too", async () => {
+    mocked.feed
+      .mockResolvedValueOnce(page1)
+      .mockReturnValueOnce(new Promise<PostPage>(() => {}))
+      .mockResolvedValueOnce(page2);
+    mocked.setLike.mockRejectedValue(new Error("offline"));
+    const client = freshClient();
+    const { result } = await renderHook(useFeedAndLike, { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(1));
+    await act(async () => {
+      void result.current.feed.fetchNextPage();
+    });
+
+    await act(async () => {
+      result.current.like.mutate(post("a"));
+    });
+
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(2));
+    expect(cachedPost(client, ["feed", "general"]).likedByMe).toBe(false);
+  });
+
+  it("refetches a feed that was refreshing when a post is liked", async () => {
+    mocked.feed
+      .mockResolvedValueOnce(page1)
+      .mockReturnValueOnce(new Promise<PostPage>(() => {}))
+      .mockResolvedValueOnce({ items: [post("a", { likedByMe: true, likeCount: 3 })], nextCursor: null });
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const { result } = await renderHook(useFeedAndLike, { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(1));
+    await act(async () => {
+      void result.current.feed.refetch();
+    });
+
+    await act(async () => {
+      result.current.like.mutate(post("a"));
+    });
+
+    await waitFor(() => expect(mocked.feed).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(cachedPost(client, ["feed", "general"])).toMatchObject({ likedByMe: true, likeCount: 3 });
+  });
+
+  it("keeps the comment added while the comments were refetching when a comment is liked", async () => {
+    const mine = comment("c1");
+    mocked.comments
+      .mockResolvedValueOnce([mine])
+      .mockReturnValueOnce(new Promise<Comment[]>(() => {}))
+      .mockResolvedValueOnce([comment("c1", [], { likedByMe: true, likeCount: 1 }), comment("new")]);
+    mocked.setCommentLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const { result } = await renderHook(
+      () => {
+        const comments = useComments("p1");
+        return { comments, like: useToggleCommentLike("p1"), fetching: comments.isFetching };
+      },
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.comments.data).toHaveLength(1));
+    await act(async () => {
+      void result.current.comments.refetch();
+    });
+    await waitFor(() => expect(result.current.fetching).toBe(true));
+
+    await act(async () => {
+      result.current.like.mutate(mine);
+    });
+
+    await waitFor(() => expect(result.current.comments.data).toHaveLength(2));
+    expect(result.current.comments.data![1].id).toBe("new");
+    expect(result.current.comments.data![0]).toMatchObject({ likedByMe: true, likeCount: 1 });
+  });
+
+  it("does not refetch anything when nothing was loading", async () => {
+    mocked.feed.mockResolvedValueOnce(page1);
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const { result } = await renderHook(useFeedAndLike, { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.feed.data?.pages).toHaveLength(1));
+
+    await act(async () => {
+      result.current.like.mutate(post("a"));
+    });
+    await waitFor(() => expect(result.current.like.isSuccess).toBe(true));
+
+    expect(mocked.feed).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("rapid and concurrent likes", () => {
   it("reverts only the failed post and keeps another post liked in the same feed", async () => {
     const a = deferred();

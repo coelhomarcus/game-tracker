@@ -54,3 +54,8 @@ export function settleLike(
   lanes.delete(key);
   return ok ? undefined : lane.confirmed;
 }
+
+/** Whether any like request, of any post or comment, is still in flight. */
+export function anyLikeInFlight(): boolean {
+  return lanes.size > 0;
+}

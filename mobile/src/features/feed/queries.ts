@@ -11,8 +11,13 @@ import { authErrorMessage } from "@/features/auth";
 import { showToast } from "@/lib/toast";
 
 import { feedApi } from "./api";
-import { beginLike, runInLane, settleLike } from "./likeLanes";
-import { cancelPostQueries, updatePostEverywhere } from "./postCache";
+import { anyLikeInFlight, beginLike, runInLane, settleLike } from "./likeLanes";
+import {
+  cancelCommentQueries,
+  cancelPostQueries,
+  resumeInterrupted,
+  updatePostEverywhere,
+} from "./postCache";
 import type { Comment, FeedScope, Post, PostPage } from "./types";
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
@@ -86,9 +91,11 @@ export function useTogglePostLike() {
   const client = useQueryClient();
   const settle = (post: Post, error?: Error) => {
     const to = settleLike(postLane(post.id), !post.likedByMe, !error);
-    if (to === undefined) return;
-    updatePostEverywhere(client, post.id, withLike(to));
-    if (error) showToast(authErrorMessage(error));
+    if (to !== undefined) {
+      updatePostEverywhere(client, post.id, withLike(to));
+      if (error) showToast(authErrorMessage(error));
+    }
+    if (!anyLikeInFlight()) resumeInterrupted(client);
   };
   return useMutation<void, Error, Post>({
     mutationFn: (post) =>
@@ -182,9 +189,11 @@ export function useToggleCommentLike(postId: string) {
     );
   const settle = (comment: Comment, error?: Error) => {
     const to = settleLike(commentLane(comment.id), !comment.likedByMe, !error);
-    if (to === undefined) return;
-    update(comment.id, to);
-    if (error) showToast(authErrorMessage(error));
+    if (to !== undefined) {
+      update(comment.id, to);
+      if (error) showToast(authErrorMessage(error));
+    }
+    if (!anyLikeInFlight()) resumeInterrupted(client);
   };
   return useMutation<void, Error, Comment>({
     mutationFn: (comment) =>
@@ -193,7 +202,7 @@ export function useToggleCommentLike(postId: string) {
       ),
     onMutate: async (comment) => {
       beginLike(commentLane(comment.id), comment.likedByMe);
-      await client.cancelQueries({ queryKey });
+      await cancelCommentQueries(client, postId);
       update(comment.id, !comment.likedByMe);
     },
     onSuccess: (_data, comment) => settle(comment),
