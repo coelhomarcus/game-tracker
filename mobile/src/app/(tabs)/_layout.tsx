@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter, type Href } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 
@@ -39,6 +39,25 @@ function LibraryHeaderRight() {
   );
 }
 
+function ProfileHeaderRight() {
+  const router = useRouter();
+  return (
+    <View style={styles.headerRight}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Configurações"
+        hitSlop={4}
+        // The settings route arrives in a later change, so it is not a typed route yet.
+        onPress={() => router.push('/settings' as Href)}
+        style={styles.addButton}
+      >
+        <Ionicons name="settings-outline" size={24} color={colors.text} />
+      </Pressable>
+      <HeaderBell />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center' },
   addButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
@@ -68,7 +87,10 @@ export default function TabsLayout() {
         name="messages"
         options={{ title: 'Mensagens', tabBarIcon: ChatIcon, headerRight: () => null }}
       />
-      <Tabs.Screen name="profile" options={{ title: 'Perfil', tabBarIcon: PersonIcon }} />
+      <Tabs.Screen
+        name="profile"
+        options={{ title: 'Perfil', tabBarIcon: PersonIcon, headerRight: ProfileHeaderRight }}
+      />
     </Tabs>
   );
 }

@@ -251,6 +251,24 @@ describe('CoverGrid', () => {
     expect(cell.paddingBottom).toBe(8);
   });
 
+  it('sizes the columns for the width left after the inset', async () => {
+    const widths: number[] = [];
+    await render(
+      <CoverGrid
+        data={items}
+        inset={16}
+        keyExtractor={(i) => i.id}
+        renderItem={(item, width) => {
+          widths.push(width);
+          return <Text>{`item ${item.id}`}</Text>;
+        }}
+      />,
+    );
+    await layout(390);
+    await screen.findByText('item a');
+    expect(new Set(widths)).toEqual(new Set([(358 - 3 * 8) / 4]));
+  });
+
   it('renders the empty component when there is no data', async () => {
     await render(
       <CoverGrid

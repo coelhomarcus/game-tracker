@@ -97,20 +97,12 @@ test('bell opens notifications', async () => {
   expect(await screen.findByText('Notificações')).toBeOnTheScreen();
 });
 
-test('signing out from the profile returns to login', async () => {
-  setStatus('signedIn');
-  signOut.mockImplementation(async () => setStatus('signedOut'));
-  await renderApp('/profile');
-  await fireEvent.press(await screen.findByRole('button', { name: 'Sair da conta' }));
-  expect(signOut).toHaveBeenCalledTimes(1);
-  expect(await screen.findByText('E-mail ou username')).toBeOnTheScreen();
-});
-
-test('profile placeholder signs out', async () => {
+test('the Perfil header has the settings button next to the bell', async () => {
   setStatus('signedIn');
   await renderApp('/profile');
-  await fireEvent.press(await screen.findByRole('button', { name: 'Sair da conta' }));
-  expect(signOut).toHaveBeenCalledTimes(1);
+  expect(await screen.findByRole('button', { name: 'Configurações' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Notificações' })).toBeOnTheScreen();
+  expect(screen.queryByRole('button', { name: 'Sair da conta' })).toBeNull();
 });
 
 test('retry shows progress and ignores taps while the restore is pending', async () => {

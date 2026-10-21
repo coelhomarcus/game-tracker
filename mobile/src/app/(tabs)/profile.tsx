@@ -1,12 +1,8 @@
-import { Button, EmptyState, Screen } from '@/components';
 import { useSession } from '@/features/auth';
+import { ProfileScreen } from '@/features/profiles/ProfileScreen';
 
-export default function ProfileScreen() {
-  const signOut = useSession((state) => state.signOut);
-  return (
-    <Screen>
-      <EmptyState title="Perfil" message="Em construção" />
-      <Button label="Sair da conta" variant="secondary" onPress={() => void signOut()} />
-    </Screen>
-  );
+export default function ProfileTab() {
+  const userId = useSession((state) => state.user?.id);
+  if (userId === undefined) return null;
+  return <ProfileScreen userId={userId} tabRoot />;
 }

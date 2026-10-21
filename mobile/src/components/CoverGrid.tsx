@@ -28,6 +28,11 @@ export type CoverGridProps<T> = {
   ListHeaderComponent?: Slot;
   ListEmptyComponent?: Slot;
   minItemWidth?: number;
+  /**
+   * Horizontal padding of the scrolling content, header and empty slots included. A header that
+   * must reach the screen edges pulls itself out with a negative margin of the same size.
+   */
+  inset?: number;
   /** Handle to the underlying list, e.g. to scroll it to the top. */
   listRef?: Ref<FlashListRef<T>>;
 };
@@ -41,6 +46,7 @@ export function CoverGrid<T>({
   ListHeaderComponent,
   ListEmptyComponent,
   minItemWidth,
+  inset = 0,
   listRef,
 }: CoverGridProps<T>) {
   const [width, setWidth] = useState<number | null>(null);
@@ -50,7 +56,7 @@ export function CoverGrid<T>({
     setWidth((current) => (current === next ? current : next));
   }
 
-  const grid = width === null ? null : gridColumns(width, minItemWidth);
+  const grid = width === null ? null : gridColumns(width - inset * 2, minItemWidth);
 
   return (
     <View testID="cover-grid" style={styles.container} onLayout={onLayout}>
@@ -69,6 +75,7 @@ export function CoverGrid<T>({
                 {renderItem(item, grid.itemWidth)}
               </View>
             )}
+            contentContainerStyle={inset > 0 ? { paddingHorizontal: inset } : undefined}
             keyboardShouldPersistTaps="handled"
             onRefresh={onRefresh}
             refreshing={refreshing}
