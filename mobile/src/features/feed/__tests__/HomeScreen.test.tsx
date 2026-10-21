@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { HomeScreen } from '../HomeScreen';
@@ -202,5 +203,40 @@ describe('HomeScreen', () => {
     await renderHome();
 
     expect(mockNavigation.addListener).toHaveBeenCalledWith('tabPress', expect.any(Function));
+  });
+
+  it('reserves space under the last card for the publish button', async () => {
+    await renderHome();
+
+    const style = StyleSheet.flatten(screen.getByTestId('post-list').props.contentContainerStyle);
+
+    expect(style.paddingBottom).toBe(56 + 2 * 16);
+  });
+
+  it('restores the scroll offset of a scope when it is selected again', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    mockedUseFeed.mockImplementation((scope) =>
+      scope === 'general'
+        ? feedResult({ data: { pages: [{ items: [post()], nextCursor: null }], pageParams: [] } })
+        : feedResult({ data: emptyPages }),
+    );
+    await renderHome();
+    await act(async () => {
+      screen.getByTestId('post-list').props.onContentSizeChange(358, 2000);
+    });
+    await fireEvent.scroll(screen.getByTestId('post-list'), {
+      nativeEvent: { contentOffset: { y: 640 } },
+    });
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Seguindo' }));
+    expect(scrollToOffset).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Para você' }));
+    await act(async () => {
+      screen.getByTestId('post-list').props.onContentSizeChange(358, 2000);
+    });
+
+    expect(scrollToOffset).toHaveBeenCalledTimes(1);
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 640, animated: false });
+    scrollToOffset.mockRestore();
   });
 });

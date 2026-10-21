@@ -7,7 +7,15 @@ import {
   type ComponentType,
   type ReactElement,
 } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import { Button } from '@/components';
 import { colors, fontSize, space } from '@/theme/tokens';
@@ -26,12 +34,25 @@ export type PostListProps = {
   onRefresh?: () => void;
   /** Defaults to opening the post's page. */
   onPressPost?: (post: Post) => void;
+  /** Bottom padding of the content, e.g. to keep the last card clear of a floating button. */
+  bottomInset?: number;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onContentSizeChange?: (width: number, height: number) => void;
 };
 
 const keyExtractor = (post: Post) => post.id;
 
 export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostList(
-  { query, ListHeaderComponent, ListEmptyComponent, onRefresh, onPressPost },
+  {
+    query,
+    ListHeaderComponent,
+    ListEmptyComponent,
+    onRefresh,
+    onPressPost,
+    bottomInset,
+    onScroll,
+    onContentSizeChange,
+  },
   ref,
 ) {
   const router = useRouter();
@@ -68,6 +89,11 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     else void refetch();
   }, [onRefresh, refetch]);
 
+  const contentStyle = useMemo(
+    () => (bottomInset === undefined ? styles.content : [styles.content, { paddingBottom: bottomInset }]),
+    [bottomInset],
+  );
+
   let footer: ReactElement | undefined;
   if (isFetchingNextPage) {
     footer = (
@@ -98,7 +124,10 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       keyExtractor={keyExtractor}
       renderItem={renderItem}
       ItemSeparatorComponent={Separator}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={contentStyle}
+      onScroll={onScroll}
+      scrollEventThrottle={onScroll ? 16 : undefined}
+      onContentSizeChange={onContentSizeChange}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       onRefresh={refresh}

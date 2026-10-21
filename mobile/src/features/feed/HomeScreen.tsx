@@ -1,7 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
-import { useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import { EmptyState, Screen, Skeleton, Tabs } from '@/components';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
@@ -48,17 +55,37 @@ function FeedSkeleton() {
   );
 }
 
-type FeedProps = HeaderProps;
+type FeedProps = HeaderProps & {
+  /** The screen remembers each scope's scroll offset across the remounts of its list. */
+  getOffset: (scope: FeedScope) => number;
+  setOffset: (scope: FeedScope, offset: number) => void;
+};
 
 /**
- * Keyed by scope in `HomeScreen`: each scope gets its own list, so it starts at its own top,
- * while TanStack keeps both queries cached and re-selecting one does not refetch fresh data.
+ * Keyed by scope in `HomeScreen`: only the selected scope's query is active. Re-selecting a
+ * loaded scope shows its cached posts instantly and refetches in the background, and the list
+ * returns to the offset the user left it at.
  */
-function Feed({ scope, onSelect }: FeedProps) {
+function Feed({ scope, onSelect, getOffset, setOffset }: FeedProps) {
   const router = useRouter();
   const query = useFeed(scope);
   const listRef = useRef<FlatList<Post>>(null);
   useScrollToTopOnTabPress(listRef);
+  const restored = useRef(false);
+
+  // Cached posts are laid out in one pass: put the list back where this scope was left.
+  const restoreOffset = (_width: number, height: number) => {
+    if (restored.current) return;
+    const offset = getOffset(scope);
+    // Items render in batches: wait until the content reaches the saved offset.
+    if (offset > 0 && height <= offset) return;
+    restored.current = true;
+    if (offset > 0) listRef.current?.scrollToOffset({ offset, animated: false });
+  };
+  // Scroll events before the restore would overwrite the saved offset with the initial 0.
+  const rememberOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (restored.current) setOffset(scope, event.nativeEvent.contentOffset.y);
+  };
 
   let empty;
   if (query.isPending) {
@@ -94,6 +121,9 @@ function Feed({ scope, onSelect }: FeedProps) {
       query={query}
       ListHeaderComponent={<FeedHeader scope={scope} onSelect={onSelect} />}
       ListEmptyComponent={empty}
+      bottomInset={FAB_SIZE + 2 * space.lg}
+      onScroll={rememberOffset}
+      onContentSizeChange={restoreOffset}
     />
   );
 }
@@ -101,11 +131,16 @@ function Feed({ scope, onSelect }: FeedProps) {
 export function HomeScreen() {
   const router = useRouter();
   const [scope, setScope] = useState<FeedScope>('general');
+  const offsets = useRef<Record<FeedScope, number>>({ general: 0, following: 0 });
+  const getOffset = useCallback((key: FeedScope) => offsets.current[key], []);
+  const setOffset = useCallback((key: FeedScope, offset: number) => {
+    offsets.current[key] = offset;
+  }, []);
 
   return (
     <Screen>
       <View style={styles.page}>
-        <Feed key={scope} scope={scope} onSelect={setScope} />
+        <Feed key={scope} scope={scope} onSelect={setScope} getOffset={getOffset} setOffset={setOffset} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Publicar"
