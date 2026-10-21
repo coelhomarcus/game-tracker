@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ChoiceChip, ConfirmDialog, EmptyState, Screen, TextField } from '@/components';
 import { authErrorMessage } from '@/features/auth';
+import { GameNotFound } from '@/features/games/GameNotFound';
 import { useGame } from '@/features/games/queries';
 import type { Game } from '@/features/games/types';
 import { todayDate, formatDate } from '@/lib/dateOnly';
@@ -82,17 +83,6 @@ function CenteredEmptyState(props: Parameters<typeof EmptyState>[0]) {
         <EmptyState {...props} />
       </View>
     </Screen>
-  );
-}
-
-function GameNotFound() {
-  const router = useRouter();
-  return (
-    <CenteredEmptyState
-      title="Jogo não encontrado"
-      message="O endereço deste jogo não é válido."
-      action={{ label: 'Ir para a Biblioteca', onPress: () => router.replace('/library') }}
-    />
   );
 }
 

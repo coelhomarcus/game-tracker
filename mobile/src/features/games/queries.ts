@@ -60,6 +60,11 @@ export function useToggleFavorite(igdbId: number) {
     onError: (_error, _variables, context) => {
       if (context?.previous) client.setQueryData(key, context.previous);
     },
-    onSettled: () => client.invalidateQueries({ queryKey: key }),
+    // The library footer heart reads `entry.game.isFavoritedByMe`, so the library is refreshed too.
+    onSettled: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: key }),
+        client.invalidateQueries({ queryKey: ['library'] }),
+      ]),
   });
 }

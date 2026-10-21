@@ -153,7 +153,7 @@ describe('useToggleFavorite', () => {
     expect(client.getQueryData<Game>(['game', 1942])?.isFavoritedByMe).toBe(false);
   });
 
-  it('invalidates the game when the request settles', async () => {
+  it('invalidates the game and the library when the request settles', async () => {
     mocked.setFavorite.mockResolvedValue(undefined);
     const client = freshClient();
     seed(client);
@@ -166,6 +166,7 @@ describe('useToggleFavorite', () => {
       await result.current.mutateAsync({ gameId: 'g1', favorite: true });
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['game', 1942] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['library'] });
   });
 });
 
