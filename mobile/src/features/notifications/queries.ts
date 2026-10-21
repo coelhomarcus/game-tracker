@@ -60,5 +60,7 @@ export function useMarkAllRead() {
       if (context?.previous) client.setQueryData(KEY, context.previous);
       showToast(authErrorMessage(error));
     },
+    // A poll that raced the request may have brought the badge back; the server is the truth.
+    onSettled: () => client.invalidateQueries({ queryKey: KEY }),
   });
 }

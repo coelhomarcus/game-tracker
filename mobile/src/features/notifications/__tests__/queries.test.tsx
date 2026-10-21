@@ -176,6 +176,24 @@ describe('useNotifications', () => {
       expect(mocked.list.mock.calls.length).toBeGreaterThanOrEqual(3);
     });
 
+    it('stops fetching once the session signs out', async () => {
+      mocked.list.mockResolvedValue(data);
+      await renderHook(() => useNotifications(), { wrapper: wrapperFor(freshClient()) });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(mocked.list).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        useSession.setState({ status: 'signedOut', user: null });
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(180_000);
+      });
+
+      expect(mocked.list).toHaveBeenCalledTimes(1);
+    });
+
     it('does not poll when it starts in the background', async () => {
       setAppState('background');
       mocked.list.mockResolvedValue(data);
@@ -211,6 +229,47 @@ describe('useMarkAllRead', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(client.getQueryData<NotificationsData>(['notifications'])?.unreadCount).toBe(0);
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('refetches the list once the request settles so a racing poll cannot revive the badge', async () => {
+    mocked.list.mockResolvedValueOnce(data);
+    const request = deferred();
+    mocked.markAllRead.mockReturnValue(request.promise);
+    const client = freshClient();
+    const { result } = await renderHook(
+      () => ({ query: useNotifications(), mark: useMarkAllRead() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.query.data).toEqual(data));
+    await act(async () => {
+      result.current.mark.mutate();
+    });
+    const allRead: NotificationsData = {
+      items: data.items.map((item) => ({ ...item, read: true })),
+      unreadCount: 0,
+    };
+    mocked.list.mockResolvedValue(allRead);
+
+    await act(async () => {
+      request.resolve();
+    });
+
+    await waitFor(() => expect(mocked.list).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.query.data).toEqual(allRead));
+  });
+
+  it('refetches the list after a failed request too', async () => {
+    mocked.markAllRead.mockRejectedValue(new Error('boom'));
+    const client = freshClient();
+    client.setQueryData(['notifications'], data);
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useMarkAllRead(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      result.current.mutate();
+    });
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notifications'] }));
   });
 
   it('restores the previous data and shows a toast when the request fails', async () => {
