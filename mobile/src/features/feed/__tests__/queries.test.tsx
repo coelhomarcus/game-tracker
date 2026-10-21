@@ -1,0 +1,402 @@
+import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
+
+import { queryClient as sharedQueryClient, useSession } from '@/features/auth';
+
+import { feedApi } from '../api';
+import {
+  useAddComment,
+  useComments,
+  useCreatePost,
+  useFeed,
+  useGamePosts,
+  useToggleCommentLike,
+  useTogglePostLike,
+} from '../queries';
+import type { Comment, Post, PostPage } from '../types';
+
+jest.mock('@/features/feed/api', () => ({
+  feedApi: {
+    feed: jest.fn(),
+    gamePosts: jest.fn(),
+    post: jest.fn(),
+    create: jest.fn(),
+    setLike: jest.fn(),
+    comments: jest.fn(),
+    addComment: jest.fn(),
+    setCommentLike: jest.fn(),
+  },
+}));
+
+const mocked = jest.mocked(feedApi);
+
+type Pages = InfiniteData<PostPage, string | undefined>;
+
+const author = { id: 'u1', username: 'ana', name: null, avatarUrl: null };
+
+function post(id: string, overrides: Partial<Post> = {}): Post {
+  return {
+    id,
+    author,
+    content: `post ${id}`,
+    type: 'status',
+    activityStatus: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    game: null,
+    entry: null,
+    imageUrl: null,
+    likeCount: 2,
+    commentCount: 1,
+    likedByMe: false,
+    ...overrides,
+  };
+}
+
+function comment(id: string, replies: Comment[] = [], overrides: Partial<Comment> = {}): Comment {
+  return {
+    id,
+    postId: 'p1',
+    author,
+    content: `comment ${id}`,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    parentCommentId: null,
+    likeCount: 0,
+    likedByMe: false,
+    replies,
+    ...overrides,
+  };
+}
+
+function singlePage(items: Post[]): Pages {
+  return { pages: [{ items, nextCursor: null }], pageParams: [undefined] };
+}
+
+function freshClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false, gcTime: Infinity },
+    },
+  });
+}
+
+function wrapperFor(client: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+}
+
+/** `target` is second in the feed, first in the game posts, and open in the detail. */
+function seedEverywhere(client: QueryClient, target: Post) {
+  client.setQueryData(['feed', 'general'], singlePage([post('other'), target]));
+  client.setQueryData(['gamePosts', 'g1'], singlePage([target]));
+  client.setQueryData(['post', target.id], target);
+}
+
+function cachedPost(client: QueryClient, key: unknown[], index = 0): Post {
+  return client.getQueryData<Pages>(key)!.pages[0].items[index];
+}
+
+function snapshotAll(client: QueryClient) {
+  return [
+    client.getQueryData(['feed', 'general']),
+    client.getQueryData(['gamePosts', 'g1']),
+    client.getQueryData(['post', 'p1']),
+  ];
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('feed queries', () => {
+  it('useFeed chains pages through nextCursor', async () => {
+    mocked.feed.mockResolvedValueOnce({ items: [post('a')], nextCursor: 'c1' });
+    mocked.feed.mockResolvedValueOnce({ items: [post('b')], nextCursor: null });
+    const { result } = await renderHook(() => useFeed('general'), {
+      wrapper: wrapperFor(freshClient()),
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+    expect(mocked.feed).toHaveBeenLastCalledWith('general', undefined);
+    expect(result.current.hasNextPage).toBe(true);
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+    expect(mocked.feed).toHaveBeenLastCalledWith('general', 'c1');
+    expect(result.current.data?.pages.map((p) => p.items[0].id)).toEqual(['a', 'b']);
+    expect(result.current.hasNextPage).toBe(false);
+  });
+
+  it('useGamePosts chains pages and stays idle without a game id', async () => {
+    mocked.gamePosts.mockResolvedValueOnce({ items: [post('a')], nextCursor: 'c1' });
+    mocked.gamePosts.mockResolvedValueOnce({ items: [post('b')], nextCursor: null });
+    const client = freshClient();
+    const { result } = await renderHook(() => useGamePosts('g1'), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+    expect(mocked.gamePosts).toHaveBeenLastCalledWith('g1', 'c1');
+
+    const idle = await renderHook(() => useGamePosts(undefined), {
+      wrapper: wrapperFor(client),
+    });
+    expect(idle.result.current.fetchStatus).toBe('idle');
+    expect(mocked.gamePosts).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the cached feed when the shared cache is cleared on sign-out', async () => {
+    mocked.feed.mockResolvedValueOnce({ items: [post('old')], nextCursor: null });
+    const first = await renderHook(() => useFeed('general'), {
+      wrapper: wrapperFor(sharedQueryClient),
+    });
+    await waitFor(() => expect(first.result.current.data?.pages).toHaveLength(1));
+    expect(sharedQueryClient.getQueryData(['feed', 'general'])).toBeDefined();
+    await first.unmount();
+
+    await act(async () => {
+      useSession.setState({ status: 'signedOut', user: null });
+      sharedQueryClient.clear();
+    });
+
+    expect(sharedQueryClient.getQueryData(['feed', 'general'])).toBeUndefined();
+  });
+});
+
+describe('useTogglePostLike', () => {
+  it('flips the like in the feed, the game posts and the detail at once', async () => {
+    let resolve!: () => void;
+    mocked.setLike.mockReturnValue(new Promise<void>((r) => (resolve = r)));
+    const client = freshClient();
+    const target = post('p1');
+    seedEverywhere(client, target);
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(target);
+    });
+
+    expect(cachedPost(client, ['feed', 'general'], 1)).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+    });
+    expect(cachedPost(client, ['gamePosts', 'g1'])).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+    });
+    expect(client.getQueryData<Post>(['post', 'p1'])).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+    });
+    expect(cachedPost(client, ['feed', 'general'])).toEqual(post('other'));
+    expect(mocked.setLike).toHaveBeenCalledWith('p1', true);
+
+    await act(async () => resolve());
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(cachedPost(client, ['feed', 'general'], 1)).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+    });
+  });
+
+  it('unlikes using the state the user saw', async () => {
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const target = post('p1', { likedByMe: true, likeCount: 5 });
+    seedEverywhere(client, target);
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(target);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mocked.setLike).toHaveBeenCalledWith('p1', false);
+    expect(client.getQueryData<Post>(['post', 'p1'])).toMatchObject({
+      likedByMe: false,
+      likeCount: 4,
+    });
+  });
+
+  it('restores all three caches when the request fails', async () => {
+    mocked.setLike.mockRejectedValue(new Error('offline'));
+    const client = freshClient();
+    seedEverywhere(client, post('p1'));
+    const before = snapshotAll(client);
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post('p1'));
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(snapshotAll(client)).toEqual(before);
+    expect(client.getQueryData<Post>(['post', 'p1'])).toMatchObject({
+      likedByMe: false,
+      likeCount: 2,
+    });
+  });
+
+  it('cancels in-flight reads so a refetch cannot overwrite the optimistic state', async () => {
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const spy = jest.spyOn(client, 'cancelQueries');
+    seedEverywhere(client, post('p1'));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post('p1'));
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['feed'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePosts'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['post', 'p1'] });
+  });
+});
+
+describe('useCreatePost', () => {
+  it('invalidates the feed and the game posts of the post game', async () => {
+    const game = {
+      id: 'g1',
+      igdbId: 1,
+      name: 'Hades',
+      coverUrl: null,
+      summary: null,
+      screenshots: [],
+      platforms: [],
+      genres: [],
+      isFavoritedByMe: false,
+    };
+    mocked.create.mockResolvedValue(post('new', { game }));
+    const client = freshClient();
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useCreatePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: 'oi', gameId: 'g1' });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mocked.create).toHaveBeenCalledWith({ content: 'oi', gameId: 'g1' });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['feed'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePosts', 'g1'] });
+  });
+
+  it('invalidates only the feed for a post without a game', async () => {
+    mocked.create.mockResolvedValue(post('new'));
+    const client = freshClient();
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useCreatePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: 'oi' });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['feed'] });
+  });
+});
+
+describe('comments', () => {
+  it('useComments loads the comment tree', async () => {
+    mocked.comments.mockResolvedValue([comment('a', [comment('b')])]);
+    const { result } = await renderHook(() => useComments('p1'), {
+      wrapper: wrapperFor(freshClient()),
+    });
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+    expect(mocked.comments).toHaveBeenCalledWith('p1');
+  });
+
+  it('useAddComment invalidates the comments and bumps the comment count everywhere', async () => {
+    mocked.addComment.mockResolvedValue(undefined);
+    const client = freshClient();
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    seedEverywhere(client, post('p1'));
+    const { result } = await renderHook(() => useAddComment('p1'), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: 'boa', parentCommentId: 'c9' });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mocked.addComment).toHaveBeenCalledWith('p1', 'boa', 'c9');
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['comments', 'p1'] });
+    expect(cachedPost(client, ['feed', 'general'], 1).commentCount).toBe(2);
+    expect(cachedPost(client, ['gamePosts', 'g1']).commentCount).toBe(2);
+    expect(client.getQueryData<Post>(['post', 'p1'])!.commentCount).toBe(2);
+    expect(cachedPost(client, ['feed', 'general']).commentCount).toBe(1);
+  });
+
+  it('useAddComment sends a root comment without a parent', async () => {
+    mocked.addComment.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useAddComment('p1'), {
+      wrapper: wrapperFor(freshClient()),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: 'boa' });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mocked.addComment).toHaveBeenCalledWith('p1', 'boa', undefined);
+  });
+
+  it('useToggleCommentLike flips a nested reply and keeps the rest of the tree', async () => {
+    mocked.setCommentLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const reply = comment('r2', [], { likeCount: 1 });
+    const tree = [comment('c1', [comment('r1', [reply])]), comment('c2')];
+    client.setQueryData(['comments', 'p1'], tree);
+    const { result } = await renderHook(() => useToggleCommentLike('p1'), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(reply);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const next = client.getQueryData<Comment[]>(['comments', 'p1'])!;
+    expect(next[0].replies[0].replies[0]).toMatchObject({ likedByMe: true, likeCount: 2 });
+    expect(next[1]).toBe(tree[1]);
+    expect(tree[0].replies[0].replies[0]).toBe(reply);
+    expect(reply.likedByMe).toBe(false);
+    expect(mocked.setCommentLike).toHaveBeenCalledWith('r2', true);
+  });
+
+  it('useToggleCommentLike rolls the tree back when the request fails', async () => {
+    mocked.setCommentLike.mockRejectedValue(new Error('offline'));
+    const client = freshClient();
+    const reply = comment('r1');
+    const tree = [comment('c1', [reply])];
+    client.setQueryData(['comments', 'p1'], tree);
+    const { result } = await renderHook(() => useToggleCommentLike('p1'), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(reply);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(client.getQueryData(['comments', 'p1'])).toEqual(tree);
+    expect(client.getQueryData<Comment[]>(['comments', 'p1'])![0].replies[0].likedByMe).toBe(false);
+  });
+});
