@@ -45,7 +45,7 @@
     "android": "expo start --android",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint",
+    "lint": "expo lint src integration",
     "test": "jest",
     "test:integration": "jest -c jest.integration.config.js"
   },
