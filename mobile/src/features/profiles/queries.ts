@@ -92,6 +92,15 @@ function setFollowEverywhere(client: QueryClient, id: string, followed: boolean)
   );
 }
 
+/** Marks the profile and the signed-in user's own profile stale; they are the same key for self. */
+function refreshProfiles(client: QueryClient, id: string) {
+  const me = useSession.getState().user?.id;
+  const ids = me === undefined || me === id ? [id] : [id, me];
+  for (const profileId of ids) {
+    void client.invalidateQueries({ queryKey: ['profile', profileId], exact: true });
+  }
+}
+
 /**
  * Optimistic everywhere the user is cached. Requests of one user run in order; a failure
  * reverts only that user, and only once no later tap of the same user is pending.
@@ -99,10 +108,15 @@ function setFollowEverywhere(client: QueryClient, id: string, followed: boolean)
 export function useToggleFollow() {
   const client = useQueryClient();
   const settle = (id: string, follow: boolean, error?: Error) => {
-    const to = followLanes.settle(followLane(id), follow, !error);
-    if (to === undefined) return;
-    setFollowEverywhere(client, id, to);
-    if (error) showToast(authErrorMessage(error));
+    const lane = followLane(id);
+    const to = followLanes.settle(lane, follow, !error);
+    if (to !== undefined) {
+      setFollowEverywhere(client, id, to);
+      if (error) showToast(authErrorMessage(error));
+    }
+    // A GET that started before the last request ended may carry pre-follow data, and the own
+    // profile's "following" count changes with every follow, so both are refetched once.
+    if (!followLanes.has(lane)) refreshProfiles(client, id);
   };
   return useMutation<void, Error, { id: string; follow: boolean }>({
     mutationFn: ({ id, follow }) =>

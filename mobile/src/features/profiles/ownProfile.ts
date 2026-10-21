@@ -9,7 +9,7 @@ import { useSession } from '@/features/auth';
  */
 export function invalidateOwnProfile(
   client: QueryClient,
-  { entries }: { entries: boolean },
+  { entries, favorites = false }: { entries: boolean; favorites?: boolean },
 ): Promise<unknown> {
   const me = useSession.getState().user?.id;
   if (me === undefined) return Promise.resolve();
@@ -19,6 +19,9 @@ export function invalidateOwnProfile(
   ];
   if (entries) {
     invalidations.push(client.invalidateQueries({ queryKey: ['userEntries', me], exact: true }));
+  }
+  if (favorites) {
+    invalidations.push(client.invalidateQueries({ queryKey: ['userFavorites', me], exact: true }));
   }
   return Promise.all(invalidations);
 }

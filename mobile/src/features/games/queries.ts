@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/features/auth';
+import { invalidateOwnProfile } from '@/features/profiles/ownProfile';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { gamesApi, type PlayersScope } from './api';
@@ -74,11 +75,13 @@ export function useToggleFavorite(igdbId: number) {
     onError: (_error, _variables, context) => {
       if (context?.previous) client.setQueryData(key, context.previous);
     },
-    // The library footer heart reads the favorites list, so it is refreshed too.
+    // The library footer heart reads the favorites list and the own profile shows its own
+    // Favoritos row, so both are refreshed too.
     onSettled: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: key }),
         client.invalidateQueries({ queryKey: ['favorites'] }),
+        invalidateOwnProfile(client, { entries: false, favorites: true }),
       ]),
   });
 }

@@ -108,6 +108,10 @@ describe('game queries', () => {
 });
 
 describe('useToggleFavorite', () => {
+  afterEach(() => {
+    useSession.setState({ status: 'signedOut', user: null });
+  });
+
   function seed(client: QueryClient) {
     client.setQueryData(['game', 1942], game);
   }
@@ -172,6 +176,26 @@ describe('useToggleFavorite', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['game', 1942] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['favorites'] });
     expect(spy).not.toHaveBeenCalledWith({ queryKey: ['library'] });
+  });
+
+  it("invalidates the signed-in user's profile favorites when the request settles", async () => {
+    mocked.setFavorite.mockResolvedValue(undefined);
+    useSession.setState({
+      status: 'signedIn',
+      user: { id: 'me' } as ReturnType<typeof useSession.getState>['user'],
+    });
+    const client = freshClient();
+    seed(client);
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useToggleFavorite(1942), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ gameId: 'g1', favorite: true });
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['userFavorites', 'me'], exact: true });
   });
 });
 

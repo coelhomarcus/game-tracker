@@ -46,6 +46,11 @@ export function createLanes() {
       return ok ? undefined : lane.confirmed;
     },
 
+    /** Whether the item still has a request in flight. */
+    has(key: string): boolean {
+      return lanes.has(key);
+    },
+
     /** Whether any item still has a request in flight. */
     anyInFlight(): boolean {
       return lanes.size > 0;

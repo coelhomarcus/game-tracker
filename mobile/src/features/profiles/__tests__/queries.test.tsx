@@ -276,6 +276,58 @@ describe('useToggleFollow', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
+  it('refreshes the profile and the own profile once the last tap of a user settles', async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setFollow.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    seed(client);
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: false });
+    });
+
+    await act(async () => {
+      first.resolve();
+    });
+    await waitFor(() => expect(mocked.setFollow).toHaveBeenCalledTimes(2));
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['profile', 'u1'], exact: true });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['profile', 'me'], exact: true });
+
+    await act(async () => {
+      second.resolve();
+    });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['profile', 'u1'], exact: true }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['profile', 'me'], exact: true });
+  });
+
+  it('refreshes both profiles after a failed follow as well', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    seed(client);
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+
+    await act(async () => {
+      request.reject(new Error('boom'));
+    });
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['profile', 'u1'], exact: true }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['profile', 'me'], exact: true });
+  });
+
   it('unfollowing lowers the follower count', async () => {
     const request = deferred();
     mocked.setFollow.mockReturnValue(request.promise);
