@@ -3,6 +3,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useLibrary } from "@/features/library/queries";
 import type { GameEntry } from "@/features/library/types";
+import { usePeopleSearch } from "@/features/profiles/queries";
+import type { PersonResult } from "@/features/profiles/types";
 
 import { ExploreScreen } from "../ExploreScreen";
 import { useGameSearch } from "../queries";
@@ -10,11 +12,17 @@ import type { Game, GameSummary } from "../types";
 
 jest.mock("../queries", () => ({ useGameSearch: jest.fn() }));
 jest.mock("@/features/library/queries", () => ({ useLibrary: jest.fn() }));
+jest.mock("@/features/profiles/queries", () => ({
+  usePeopleSearch: jest.fn(),
+  useToggleFollow: () => ({ mutate: jest.fn() }),
+}));
 
 const mockPush = jest.fn();
 const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
+let mockParams: { tab?: string } = {};
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
+  useLocalSearchParams: () => mockParams,
   useNavigation: () => mockNavigation,
 }));
 
@@ -38,6 +46,15 @@ const celeste: GameSummary = {
   genres: [],
 };
 
+const ana: PersonResult = {
+  id: "u1",
+  username: "ana",
+  name: "Ana Souza",
+  avatarUrl: null,
+  bio: null,
+  isFollowedByMe: false,
+};
+
 const refetch = jest.fn();
 
 function mockSearch(overrides: Record<string, unknown> = {}) {
@@ -50,6 +67,17 @@ function mockSearch(overrides: Record<string, unknown> = {}) {
     refetch,
     ...overrides,
   } as unknown as ReturnType<typeof useGameSearch>);
+}
+
+function mockPeople() {
+  jest.mocked(usePeopleSearch).mockReturnValue({
+    data: [ana],
+    isPending: false,
+    isError: false,
+    isFetching: false,
+    isPlaceholderData: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof usePeopleSearch>);
 }
 
 function mockLibrary(igdbIds: number[]) {
@@ -68,6 +96,11 @@ async function renderExplore() {
       <ExploreScreen />
     </SafeAreaProvider>,
   );
+  await layoutGrid();
+}
+
+/** The grid renders nothing until it has been measured. */
+async function layoutGrid() {
   await fireEvent(screen.getByTestId("cover-grid"), "layout", {
     nativeEvent: { layout: { width: 358, height: 800 } },
   });
@@ -81,11 +114,13 @@ async function type(text: string) {
 }
 
 beforeEach(() => {
+  mockParams = {};
   mockPush.mockReset();
   refetch.mockReset();
   mockNavigation.addListener.mockReset();
   mockNavigation.addListener.mockReturnValue(jest.fn());
   mockSearch();
+  mockPeople();
   mockLibrary([]);
 });
 
@@ -183,5 +218,72 @@ describe("ExploreScreen", () => {
       screen.getByRole("button", { name: "Tentar de novo" }),
     );
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  describe("tabs", () => {
+    async function renderPlain() {
+      await render(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ExploreScreen />
+        </SafeAreaProvider>,
+      );
+    }
+
+    it("opens on the games tab by default", async () => {
+      await renderExplore();
+      expect(screen.getByRole("tab", { name: "Jogos" })).toBeSelected();
+      expect(screen.getByRole("tab", { name: "Pessoas" })).not.toBeSelected();
+      expect(screen.getByLabelText("Buscar jogos")).toBeOnTheScreen();
+      expect(screen.queryByLabelText("Buscar pessoas")).not.toBeOnTheScreen();
+    });
+
+    it("opens on the people tab when asked by the tab parameter", async () => {
+      mockParams = { tab: "people" };
+      await renderPlain();
+      expect(screen.getByRole("tab", { name: "Pessoas" })).toBeSelected();
+      expect(screen.getByLabelText("Buscar pessoas")).toBeOnTheScreen();
+      expect(screen.queryByLabelText("Buscar jogos")).not.toBeOnTheScreen();
+      expect(screen.getByText("Encontre pessoas")).toBeOnTheScreen();
+    });
+
+    it("moves to the people tab when the parameter arrives later", async () => {
+      await renderExplore();
+      expect(screen.getByLabelText("Buscar jogos")).toBeOnTheScreen();
+
+      mockParams = { tab: "people" };
+      await screen.rerender(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ExploreScreen />
+        </SafeAreaProvider>,
+      );
+      expect(screen.getByLabelText("Buscar pessoas")).toBeOnTheScreen();
+    });
+
+    it("keeps the search text of each tab when switching", async () => {
+      await renderExplore();
+      await type("ha");
+
+      await fireEvent.press(screen.getByRole("tab", { name: "Pessoas" }));
+      expect(screen.getByLabelText("Buscar pessoas").props.value).toBe("");
+      await fireEvent.changeText(screen.getByLabelText("Buscar pessoas"), "an");
+      expect(screen.getByText("Ana Souza")).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole("tab", { name: "Jogos" }));
+      await layoutGrid();
+      expect(screen.getByLabelText("Buscar jogos").props.value).toBe("ha");
+
+      await fireEvent.press(screen.getByRole("tab", { name: "Pessoas" }));
+      expect(screen.getByLabelText("Buscar pessoas").props.value).toBe("an");
+    });
+
+    it("opens a profile from a person result", async () => {
+      mockParams = { tab: "people" };
+      await renderPlain();
+      await fireEvent.changeText(screen.getByLabelText("Buscar pessoas"), "an");
+      await fireEvent.press(
+        screen.getByRole("button", { name: "Perfil de Ana Souza" }),
+      );
+      expect(mockPush).toHaveBeenCalledWith("/users/u1");
+    });
   });
 });

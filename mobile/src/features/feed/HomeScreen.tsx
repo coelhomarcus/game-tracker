@@ -27,6 +27,7 @@ const FAB_SIZE = 56;
 const AVATAR_SIZE = 40;
 
 const COMPOSER = '/posts/new' as Href;
+const EXPLORE_PEOPLE = '/explore?tab=people' as Href;
 
 type HeaderProps = { scope: FeedScope; onSelect: (scope: FeedScope) => void };
 
@@ -110,7 +111,7 @@ function Feed({ scope, onSelect, getOffset, setOffset }: FeedProps) {
       <EmptyState
         title="Acompanhe quem joga com você"
         message="Quando quem você segue publicar ou jogar algo, aparece aqui."
-        action={{ label: 'Encontrar pessoas', onPress: () => router.push('/explore') }}
+        action={{ label: 'Encontrar pessoas', onPress: () => router.push(EXPLORE_PEOPLE) }}
       />
     );
   }

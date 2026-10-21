@@ -141,7 +141,7 @@ describe('HomeScreen', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Encontrar pessoas' }));
 
-    expect(mockPush).toHaveBeenCalledWith('/explore');
+    expect(mockPush).toHaveBeenCalledWith('/explore?tab=people');
   });
 
   it('opens the composer from the floating button', async () => {

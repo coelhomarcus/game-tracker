@@ -1,6 +1,13 @@
 import type { FlashListRef } from "@shopify/flash-list";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,10 +22,12 @@ import {
   EmptyState,
   GameCover,
   Screen,
+  Tabs,
   TextField,
   type TextFieldInput,
 } from "@/components";
 import { useLibrary } from "@/features/library/queries";
+import { PeopleSearch } from "@/features/profiles/PeopleSearch";
 import { useScrollToTopOnTabPress } from "@/lib/useScrollToTopOnTabPress";
 import { colors, fontSize, space } from "@/theme/tokens";
 
@@ -28,7 +37,15 @@ import type { GameSummary } from "./types";
 const MIN_TERM_LENGTH = 2;
 const MIN_ITEM_WIDTH = 110;
 
+type ExploreTab = "games" | "people";
+
+const TABS: { value: ExploreTab; label: string }[] = [
+  { value: "games", label: "Jogos" },
+  { value: "people", label: "Pessoas" },
+];
+
 type HeaderProps = {
+  tabs: ReactNode;
   term: string;
   busy: boolean;
   inputRef: Ref<TextFieldInput>;
@@ -39,25 +56,35 @@ type HeaderProps = {
  * Defined at module scope and rendered as an element: a component created inside the screen
  * would get a new identity on every keystroke, remounting the field and closing the keyboard.
  */
-function ExploreHeader({ term, busy, inputRef, onChangeTerm }: HeaderProps) {
+function ExploreHeader({
+  tabs,
+  term,
+  busy,
+  inputRef,
+  onChangeTerm,
+}: HeaderProps) {
   return (
-    <View style={styles.header}>
-      <View style={styles.field}>
-        <TextField
-          label="Buscar jogos"
-          value={term}
-          onChangeText={onChangeTerm}
-          returnKeyType="search"
-          inputRef={inputRef}
-        />
+    <View style={styles.headerColumn}>
+      {/* The page pads its content; the tabs bring their own padding. */}
+      <View style={styles.tabs}>{tabs}</View>
+      <View style={styles.header}>
+        <View style={styles.field}>
+          <TextField
+            label="Buscar jogos"
+            value={term}
+            onChangeText={onChangeTerm}
+            returnKeyType="search"
+            inputRef={inputRef}
+          />
+        </View>
+        {busy ? (
+          <ActivityIndicator
+            accessibilityLabel="Buscando"
+            color={colors.textMuted}
+            style={styles.busy}
+          />
+        ) : null}
       </View>
-      {busy ? (
-        <ActivityIndicator
-          accessibilityLabel="Buscando"
-          color={colors.textMuted}
-          style={styles.busy}
-        />
-      ) : null}
     </View>
   );
 }
@@ -89,9 +116,14 @@ function ExploreCard({ game, width, inLibrary, onPress }: CardProps) {
   );
 }
 
-export function ExploreScreen() {
+type GamesSearchProps = {
+  term: string;
+  onChangeTerm: (text: string) => void;
+  tabs: ReactNode;
+};
+
+function GamesSearch({ term, onChangeTerm, tabs }: GamesSearchProps) {
   const router = useRouter();
-  const [term, setTerm] = useState("");
   const inputRef = useRef<TextFieldInput>(null);
   const listRef = useRef<FlashListRef<GameSummary>>(null);
   useScrollToTopOnTabPress(listRef);
@@ -140,10 +172,11 @@ export function ExploreScreen() {
 
   const header = (
     <ExploreHeader
+      tabs={tabs}
       term={term}
       busy={searching && search.isFetching}
       inputRef={inputRef}
-      onChangeTerm={setTerm}
+      onChangeTerm={onChangeTerm}
     />
   );
 
@@ -171,8 +204,33 @@ export function ExploreScreen() {
   );
 }
 
+export function ExploreScreen() {
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+  const requested = params.tab === "people" ? "people" : undefined;
+  const [tab, setTab] = useState<ExploreTab>(requested ?? "games");
+  const [gameTerm, setGameTerm] = useState("");
+  const [peopleTerm, setPeopleTerm] = useState("");
+
+  // The screen stays mounted in the tab bar, so a later link to the people tab arrives as a change.
+  const [seenRequest, setSeenRequest] = useState(requested);
+  if (requested !== seenRequest) {
+    setSeenRequest(requested);
+    if (requested) setTab(requested);
+  }
+
+  const tabs = <Tabs items={TABS} selected={tab} onSelect={setTab} />;
+
+  return tab === "people" ? (
+    <PeopleSearch term={peopleTerm} onChangeTerm={setPeopleTerm} tabs={tabs} />
+  ) : (
+    <GamesSearch term={gameTerm} onChangeTerm={setGameTerm} tabs={tabs} />
+  );
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1, paddingHorizontal: space.lg },
+  headerColumn: { gap: space.md },
+  tabs: { marginHorizontal: -space.lg },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
