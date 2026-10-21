@@ -1,8 +1,9 @@
 # Dokploy deployment
 
 GameTracker production consists of the backend API running as a Docker service
-on Dokploy. The Android APK is built and distributed by GitHub Actions. There
-is no production web frontend.
+on Dokploy. The Android client is the Expo app in `mobile/`; its automatic APK
+release through GitHub Actions is deferred until an Expo release workflow is
+added. There is no production web client.
 
 ## Services
 
@@ -60,6 +61,8 @@ Deployments should therefore follow this sequence:
 
 ## Android release configuration
 
-GitHub Actions builds the Android APK against the public Dokploy API. Set the
-repository variable `API_URL` to the HTTPS API URL without `/api` at the end.
-The signing secrets are configured in GitHub Actions, not in Dokploy.
+For the future release workflow, GitHub Actions will build the Android APK
+against the public Dokploy API. Set the repository variable `API_URL` to the
+HTTPS API URL without `/api` at the end. The signing secrets are configured in
+GitHub Actions, not in Dokploy. Until that workflow exists, pushes to `main`
+publish no APK.

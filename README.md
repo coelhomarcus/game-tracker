@@ -3,10 +3,12 @@
 GameTracker is an academic social Android app for tracking games, sharing
 activity with friends, and chatting in real time. The project has two parts:
 
-- a Flutter Android client in `frontend/`;
+- an Expo (React Native) Android client in `mobile/`;
 - a Node.js/Express API in `backend/`.
 
-There is no production web frontend. The distributed client is the Android APK.
+There is no production web client. The distributed client is the Android APK.
+The Expo app replaced an earlier Flutter client, which was removed from the
+repository (it remains in the Git history).
 
 ## Features
 
@@ -22,19 +24,21 @@ There is no production web frontend. The distributed client is the Android APK.
 
 | Path | Description |
 | --- | --- |
-| `frontend/` | Flutter Android app using Riverpod, go_router, Dio, and Socket.IO. |
+| `mobile/` | Expo Android app in TypeScript using Expo Router, TanStack Query, Zustand, and Socket.IO. |
+| `mobile/integration/` | Integration suites for the app's API layer against the test API. |
 | `backend/` | TypeScript API using Express, Drizzle ORM, PostgreSQL, Redis, JWT, and Socket.IO. |
 | `backend/drizzle/` | Committed database migrations. |
-| `.github/workflows/` | Backend CI, Flutter CI, and automatic APK releases. |
+| `.github/workflows/` | Backend CI (including the mobile integration suites) and mobile CI. |
+| `.github/scripts/next-version.mjs` | SemVer calculator kept for the future Expo release workflow. |
 | `docs/DEPLOY_DOKPLOY.md` | Production deployment notes for Dokploy. |
 | `docker-compose.dev.yml` | Local PostgreSQL and Redis services. |
 | `docker-compose.test.yml` | Disposable PostgreSQL and Redis services for tests. |
 
 ## Requirements
 
-- Node.js 22 or newer.
+- Node.js 22 or newer (the app requires 22.13+, 24.3+, or 26+).
 - Docker and Docker Compose.
-- Flutter 3.47.6 and the Android SDK for APK builds.
+- An Android SDK with an emulator, or an Android device.
 - IGDB/Twitch Developer credentials for game search.
 
 ## Local development
@@ -72,13 +76,20 @@ following values in `backend/.env` as needed:
 ### Run the Android app
 
 ```bash
-cd frontend
-flutter pub get
-flutter run --dart-define=API_URL=http://localhost:3000
+cd mobile
+npm ci
+EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo start
 ```
 
 For an Android emulator, use `http://10.0.2.2:3000` as the API host. Do not add
-`/api` to `API_URL`; the client adds that path itself.
+`/api` to `EXPO_PUBLIC_API_URL`; the client adds that path itself. Add
+`--web` to `npx expo start` for a browser preview.
+
+### Push notifications
+
+Android push notifications need a Firebase `google-services.json`, configured
+through `android.googleServicesFile` in `mobile/app.json`. Without it the app
+shows in-app notifications only.
 
 ## Tests
 
@@ -96,18 +107,17 @@ npm test
 The test database must end with `_test`. The test safety guard rejects remote
 databases and development databases.
 
-### Flutter tests
+### Mobile tests
 
 ```bash
-cd frontend
-flutter pub get
-dart format --output=none --set-exit-if-changed lib test
-flutter analyze
-flutter test
+cd mobile
+npm run typecheck
+npm run lint
+npm test
 ```
 
-Flutter integration tests run against a real local test API. Start the backend
-test API first:
+Mobile integration tests run the app's API layer against a real local test
+API. Start the backend test API first:
 
 ```bash
 cd backend
@@ -118,9 +128,13 @@ npm run dev:test
 Then, in another terminal:
 
 ```bash
-cd frontend
-flutter test test/integration --dart-define=GT_BACKEND=http://localhost:3100
+cd mobile
+GT_BACKEND=http://localhost:3100 npm run test:integration
 ```
+
+`GT_BACKEND` must be a local `http(s)` origin without a path (no `/api`).
+Without it the integration suites are skipped. Never point it at a development
+or production API.
 
 ## Branches and commits
 
@@ -137,39 +151,31 @@ Use Conventional Commits:
 Examples:
 
 ```text
-feat(frontend): add replay tracking
+feat(mobile): add replay tracking
 fix(backend): reject expired refresh tokens
 ci: publish signed Android releases
 ```
 
 Use `!` or a `BREAKING CHANGE:` footer for incompatible changes.
 
-## Automatic APK releases
+## Android releases
 
-Every push to `main` runs `.github/workflows/flutter-release.yml`. Pull
-Requests run validation workflows but do not publish releases.
+The automatic APK release is deferred: pushes to `main` publish no APK until an
+Expo release workflow is added. Pull Requests run validation workflows and do
+not publish releases.
 
-The release workflow:
+The future release workflow will:
 
-1. runs the Flutter quality gate;
-2. calculates the next SemVer version from Conventional Commits;
-3. builds a signed APK;
-4. creates a `vX.Y.Z` Git tag;
-5. creates a GitHub Release with the APK attached.
+1. calculate the next SemVer version from Conventional Commits with
+   `.github/scripts/next-version.mjs`;
+2. build a signed APK with `expo prebuild` and Gradle, keeping the same
+   Android `applicationId` (`com.marcuscoelho.gametracker`) so it updates the
+   installed app in place;
+3. create a `vX.Y.Z` Git tag;
+4. create a GitHub Release with the APK attached.
 
-The first release uses version `1.0.0`. Later releases increment the major,
-minor, or patch number according to the commit history. APK files are named
-`gametracker-X.Y.Z.apk`.
-
-For a local release build:
-
-```bash
-cd frontend
-API_URL=https://api.example.com tool/build_release.sh
-```
-
-The local build requires `frontend/android/key.properties` and a real release
-keystore. Debug-signed APKs are rejected.
+The first release uses version `1.0.0`. It will use the same four signing
+secrets listed below and must reject debug-signed APKs.
 
 ## Dokploy deployment
 
@@ -194,9 +200,9 @@ Complete these steps once:
 
 1. Create or verify the `develop` branch on GitHub.
 2. Protect `main` and require Pull Requests from `develop`.
-3. Add the GitHub Actions repository variable `API_URL`, containing the HTTPS
-   Dokploy API URL without `/api`.
-4. Add these GitHub Actions secrets:
+3. For the future release workflow, add the GitHub Actions repository variable
+   `API_URL`, containing the HTTPS Dokploy API URL without `/api`.
+4. For the future release workflow, add these GitHub Actions secrets:
    - `ANDROID_KEYSTORE_BASE64`
    - `ANDROID_KEYSTORE_PASSWORD`
    - `ANDROID_KEY_ALIAS`
@@ -210,8 +216,9 @@ keystore file and all passwords private; never commit them to Git.
 
 ### Create the release keystore manually
 
-Run this once on a secure machine. Keep the generated `.jks` file in a secure
-backup because future APK updates must use the same keystore:
+This is needed for the future release workflow. Run this once on a secure
+machine. Keep the generated `.jks` file in a secure backup because future APK
+updates must use the same keystore:
 
 ```bash
 keytool -genkeypair -v \
@@ -229,5 +236,5 @@ base64 -w 0 gametracker-release.jks                     # Linux
 ```
 
 Add the keystore password, alias, and key password as the other three secrets.
-The workflow recreates the temporary keystore on the runner and deletes it
-after the build.
+The release workflow will recreate the temporary keystore on the runner and
+delete it after the build.

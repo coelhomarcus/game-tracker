@@ -36,3 +36,15 @@ npm run typecheck
 npm run lint
 npm test
 ```
+
+## Integration tests
+
+The suites in `integration/` run the app's API layer against the disposable test API. Start it in
+`backend/` with `npm run test:seed` and `npm run dev:test`, then:
+
+```bash
+GT_BACKEND=http://localhost:3100 npm run test:integration
+```
+
+Without `GT_BACKEND` the suites are skipped. It must be a local origin without a path; never point
+it at a development or production API.

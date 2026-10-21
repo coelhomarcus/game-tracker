@@ -1,4 +1,4 @@
-// Cria os jogos sintéticos no banco de TESTE, para os testes de integração do Flutter.
+// Cria os jogos sintéticos no banco de TESTE, para os testes de integração do app (mobile/).
 //   npm run test:seed   (usa backend/.env.test)
 import { ensureSyntheticGames } from '../test/helpers/seed';
 
