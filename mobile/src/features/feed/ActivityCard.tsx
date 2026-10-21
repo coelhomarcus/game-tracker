@@ -29,7 +29,7 @@ export function ActivityCard({ post, onPress }: ActivityCardProps) {
   return (
     <View style={styles.card}>
       <Pressable
-        accessibilityRole="button"
+        accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={label}
         onPress={onPress}
         style={styles.body}

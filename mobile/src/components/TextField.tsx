@@ -7,6 +7,8 @@ export type TextFieldInput = ComponentRef<typeof TextInput>;
 
 export type TextFieldProps = {
   label: string;
+  /** Keeps the label for screen readers only, for compact fields that carry a placeholder. */
+  hideLabel?: boolean;
   value: string;
   onChangeText: (text: string) => void;
   error?: string;
@@ -24,10 +26,18 @@ export type TextFieldProps = {
   inputRef?: Ref<TextFieldInput>;
 };
 
-export function TextField({ label, error, helper, multiline, inputRef, ...inputProps }: TextFieldProps) {
+export function TextField({
+  label,
+  hideLabel,
+  error,
+  helper,
+  multiline,
+  inputRef,
+  ...inputProps
+}: TextFieldProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      {hideLabel ? null : <Text style={styles.label}>{label}</Text>}
       <TextInput
         {...inputProps}
         ref={inputRef}

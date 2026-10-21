@@ -106,6 +106,12 @@ describe('TextField', () => {
     await fireEvent.changeText(screen.getByLabelText('E-mail'), 'ana@example.com');
     expect(onChangeText).toHaveBeenCalledWith('ana@example.com');
   });
+
+  it('keeps a hidden label for screen readers only', async () => {
+    await render(<TextField label="Comentário" hideLabel value="" onChangeText={() => {}} />);
+    expect(screen.queryByText('Comentário')).toBeNull();
+    expect(screen.getByLabelText('Comentário')).toBeOnTheScreen();
+  });
 });
 
 describe('Pill', () => {

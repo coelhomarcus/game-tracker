@@ -25,7 +25,7 @@ export function PostCard({ post, onPress }: PostCardProps) {
   return (
     <View style={styles.card}>
       <Pressable
-        accessibilityRole="button"
+        accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={`Post de ${name}, ${time}: ${post.content}`}
         onPress={onPress}
         style={styles.body}
