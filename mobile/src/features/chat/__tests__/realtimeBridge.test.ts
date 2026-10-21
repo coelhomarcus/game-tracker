@@ -1,0 +1,308 @@
+import { useSession, type User } from '@/features/auth';
+import { queryClient } from '@/lib/queryClient';
+import { chatSocket } from '@/test-utils/fakeChatSocket';
+
+import { chatApi } from '../api';
+import { useChatStore } from '../chatStore';
+import { conversationsKey, messagesKey, type MessagePages } from '../queries';
+import { realtimeBridge } from '../realtimeBridge';
+import type { Conversation, Message } from '../types';
+
+jest.mock('@/lib/realtime/chatSocket', () => jest.requireActual('@/test-utils/fakeChatSocket'));
+jest.mock('@/features/chat/api', () => ({
+  chatApi: { list: jest.fn(), create: jest.fn(), messages: jest.fn(), markRead: jest.fn() },
+}));
+
+const mocked = jest.mocked(chatApi);
+
+const me: User = {
+  id: 'me',
+  username: 'eu',
+  name: 'Eu',
+  email: 'eu@example.com',
+  avatarUrl: null,
+  bannerUrl: null,
+  bio: null,
+};
+
+type JsonOptions = {
+  conversationId?: string;
+  senderId?: string;
+  minute?: number;
+  clientMessageId?: string | null;
+};
+
+function json(
+  id: string,
+  { conversationId = 'c1', senderId = 'u2', minute = 5, clientMessageId = null }: JsonOptions = {},
+) {
+  return {
+    id,
+    conversationId,
+    senderId,
+    content: `text ${id}`,
+    createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)).toISOString(),
+    clientMessageId,
+    sender: { id: senderId, username: senderId, name: null, avatarUrl: null },
+  };
+}
+
+function cached(id: string, conversationId: string, minute: number): Message {
+  return {
+    id,
+    conversationId,
+    senderId: 'u2',
+    content: 'antes',
+    createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)),
+    clientMessageId: null,
+    sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+  };
+}
+
+function seedCache() {
+  queryClient.setQueryData<MessagePages>(messagesKey('c1'), {
+    pages: [{ items: [cached('m0', 'c1', 0)], nextCursor: null }],
+    pageParams: [undefined],
+  });
+  queryClient.setQueryData<Conversation[]>(conversationsKey, [
+    {
+      id: 'c2',
+      otherUser: { id: 'u3', username: 'caio', name: null, avatarUrl: null },
+      lastMessage: cached('x', 'c2', 1),
+      unread: false,
+    },
+    {
+      id: 'c1',
+      otherUser: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+      lastMessage: cached('m0', 'c1', 0),
+      unread: false,
+    },
+  ]);
+}
+
+function cachedIds(conversationId = 'c1'): string[] {
+  const data = queryClient.getQueryData<MessagePages>(messagesKey(conversationId));
+  return data?.pages.flatMap((page) => page.items.map((item) => item.id)) ?? [];
+}
+
+const conversations = () => queryClient.getQueryData<Conversation[]>(conversationsKey) ?? [];
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+const store = () => useChatStore.getState();
+
+beforeEach(() => {
+  mocked.markRead.mockResolvedValue(undefined);
+  useSession.setState({ status: 'signedIn', user: me });
+  realtimeBridge.start();
+  chatSocket.connect();
+});
+
+afterEach(() => {
+  realtimeBridge.stop();
+  useSession.setState({ status: 'signedOut', user: null });
+  chatSocket.reset();
+  queryClient.clear();
+  jest.resetAllMocks();
+  jest.useRealTimers();
+});
+
+describe('lifecycle', () => {
+  it('removes every listener and typing timer on stop and is idempotent', () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    realtimeBridge.start();
+    // Five server events and the reconnect hook, registered once.
+    expect(chatSocket.listenerCount()).toBe(6);
+    chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
+
+    realtimeBridge.stop();
+    realtimeBridge.stop();
+
+    expect(chatSocket.listenerCount()).toBe(0);
+    expect(store().typing).toEqual({});
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('message:receive', () => {
+  it('updates a closed conversation in the list as unread without marking it read', () => {
+    seedCache();
+
+    chatSocket.fire('message:receive', json('m1'));
+
+    expect(conversations().map((item) => item.id)).toEqual(['c1', 'c2']);
+    expect(conversations()[0]).toMatchObject({ unread: true, lastMessage: { id: 'm1' } });
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+  });
+
+  it('appends a message for the open conversation once and marks it read', () => {
+    seedCache();
+    store().setOpenConversation('c1');
+
+    chatSocket.fire('message:receive', json('m1'));
+    chatSocket.fire('message:receive', json('m1'));
+
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+    expect(conversations()[0]).toMatchObject({ id: 'c1', unread: false });
+    expect(mocked.markRead).toHaveBeenCalledWith('c1');
+  });
+
+  it('does not mark my own message unread or read', () => {
+    seedCache();
+
+    chatSocket.fire('message:receive', json('m1', { senderId: 'me' }));
+
+    expect(conversations()[0]).toMatchObject({ id: 'c1', unread: false });
+    expect(mocked.markRead).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the list for a conversation it does not know yet', () => {
+    seedCache();
+
+    chatSocket.fire('message:receive', json('n1', { conversationId: 'c9' }));
+
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('clears the typing flag when the other person sends', () => {
+    chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
+
+    chatSocket.fire('message:receive', json('m1'));
+
+    expect(store().typing.c1).toBeUndefined();
+  });
+
+  it('ignores malformed payloads', () => {
+    seedCache();
+
+    chatSocket.fire('message:receive', null);
+    chatSocket.fire('message:receive', { id: 'm1' });
+
+    expect(cachedIds()).toEqual(['m0']);
+  });
+});
+
+describe('reliable sending', () => {
+  it('ends with the message in the cache once when the event arrives before the ack', async () => {
+    seedCache();
+    const id = store().send('c1', 'oi');
+
+    chatSocket.fire('message:receive', json('m1', { senderId: 'me', clientMessageId: id }));
+    expect(store().pending.c1).toBeUndefined();
+    chatSocket
+      .pendingAck('message:send')
+      ?.resolve({ message: json('m1', { senderId: 'me', clientMessageId: id }) });
+    await flush();
+
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+    expect(store().pending.c1).toBeUndefined();
+  });
+
+  it('re-sends an unconfirmed message with the same id on reconnect', async () => {
+    seedCache();
+    const id = store().send('c1', 'oi');
+    chatSocket.pendingAck('message:send')?.reject(new Error('timeout'));
+    await flush();
+    expect(store().pending.c1?.[0].status).toBe('uncertain');
+    chatSocket.drop();
+    chatSocket.ackLog = [];
+
+    chatSocket.connect();
+
+    expect(chatSocket.ackLog).toEqual([
+      {
+        event: 'message:send',
+        payload: { conversationId: 'c1', content: 'oi', clientMessageId: id },
+      },
+    ]);
+    chatSocket
+      .pendingAck('message:send')
+      ?.resolve({ message: json('m1', { senderId: 'me', clientMessageId: id }) });
+    await flush();
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+  });
+});
+
+describe('typing and presence', () => {
+  it('tracks the other person typing and clears it after 6 s without a stop', () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+
+    chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
+    expect(store().typing.c1).toBe(true);
+    jest.advanceTimersByTime(6000);
+    expect(store().typing.c1).toBeUndefined();
+
+    chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
+    chatSocket.fire('typing:stop', { conversationId: 'c1', userId: 'u2' });
+    expect(store().typing.c1).toBeUndefined();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('ignores my own typing from another device', () => {
+    chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'me' });
+
+    expect(store().typing.c1).toBeUndefined();
+  });
+
+  it('tracks presence events', () => {
+    chatSocket.fire('presence:online', { userId: 'u2' });
+    expect(store().online.u2).toBe(true);
+
+    chatSocket.fire('presence:offline', { userId: 'u2' });
+    expect(store().online.u2).toBe(false);
+  });
+});
+
+describe('open conversation', () => {
+  it('joins the room and asks who is online, then leaves it when closed', async () => {
+    seedCache();
+
+    store().setOpenConversation('c1');
+    expect(chatSocket.pendingAck('conversation:join')?.payload).toEqual({ conversationId: 'c1' });
+    chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
+    await flush();
+    expect(chatSocket.pendingAck('presence:get')?.payload).toEqual({ conversationId: 'c1' });
+    chatSocket.pendingAck('presence:get')?.resolve({ online: [] });
+    await flush();
+    expect(store().online.u2).toBe(false);
+
+    store().setOpenConversation(null);
+    expect(chatSocket.emitted).toEqual([
+      { event: 'conversation:leave', payload: { conversationId: 'c1' } },
+    ]);
+  });
+
+  it('re-joins and refreshes presence and data after a reconnect', async () => {
+    seedCache();
+    store().setOpenConversation('c1');
+    chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
+    await flush();
+    chatSocket.pendingAck('presence:get')?.resolve({ online: [] });
+    await flush();
+    chatSocket.drop();
+    chatSocket.ackLog = [];
+
+    chatSocket.connect();
+    chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
+    await flush();
+    chatSocket.pendingAck('presence:get')?.resolve({ online: ['u2'] });
+    await flush();
+
+    expect(chatSocket.ackLog.map((entry) => entry.event)).toEqual([
+      'conversation:join',
+      'presence:get',
+    ]);
+    expect(store().online.u2).toBe(true);
+    expect(queryClient.getQueryState(messagesKey('c1'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('joins right away when started while a conversation is already open', () => {
+    realtimeBridge.stop();
+    store().setOpenConversation('c1');
+    expect(chatSocket.ackLog).toEqual([]);
+
+    realtimeBridge.start();
+
+    expect(chatSocket.pendingAck('conversation:join')?.payload).toEqual({ conversationId: 'c1' });
+  });
+});

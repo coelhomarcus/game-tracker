@@ -106,6 +106,17 @@ class ChatSocket {
     });
   }
 
+  /**
+   * Fire-and-forget, for events the server never acknowledges (`conversation:leave`, typing).
+   * Dropped while disconnected: the server forgets rooms and typing state with the connection.
+   */
+  emit(event: string, payload: unknown): boolean {
+    const socket = this.socket;
+    if (!socket?.connected) return false;
+    socket.emit(event, payload);
+    return true;
+  }
+
   /** Listens to a server event; the handler survives reconnects. Returns the unsubscribe. */
   on(event: string, handler: Handler): () => void {
     const socket = this.ensureSocket();

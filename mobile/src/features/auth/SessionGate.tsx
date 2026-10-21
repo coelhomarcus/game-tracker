@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button, EmptyState } from '@/components';
 import { useSession } from '@/features/auth';
+import { realtimeBridge } from '@/features/chat/realtimeBridge';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, space } from '@/theme/tokens';
 
@@ -22,11 +23,16 @@ export function SessionGate() {
     void bootstrap();
   }, [bootstrap]);
 
-  // One realtime connection while signed in; the token is read again on every attempt.
+  // One realtime connection while signed in; the token is read again on every attempt. The bridge
+  // listens first so it sees the first connect.
   useEffect(() => {
     if (status !== 'signedIn') return;
+    realtimeBridge.start();
     chatSocket.start();
-    return () => chatSocket.stop();
+    return () => {
+      chatSocket.stop();
+      realtimeBridge.stop();
+    };
   }, [status]);
 
   async function retry() {

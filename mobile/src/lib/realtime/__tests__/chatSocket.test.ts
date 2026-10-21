@@ -453,4 +453,21 @@ describe('chatSocket', () => {
       expect(jest.getTimerCount()).toBe(1);
     });
   });
+
+  describe('emit', () => {
+    it('sends events without an ack only while connected', () => {
+      expect(chat.emit('conversation:leave', { conversationId: 'c1' })).toBe(false);
+
+      chat.start();
+      expect(chat.emit('conversation:leave', { conversationId: 'c1' })).toBe(false);
+      expect(socket().emitted).toHaveLength(0);
+
+      socket().serverAccepts();
+      expect(chat.emit('conversation:leave', { conversationId: 'c1' })).toBe(true);
+      expect(socket().emitted).toEqual([
+        { event: 'conversation:leave', payload: { conversationId: 'c1' }, ack: undefined },
+      ]);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+  });
 });
