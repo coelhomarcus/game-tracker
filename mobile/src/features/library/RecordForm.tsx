@@ -148,7 +148,9 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
   const create = useCreateEntry();
   const update = useUpdateEntry();
 
+  // Both are snapshotted together: a later refetch must not change the base the patch is diffed against.
   const [initial] = useState(() => initialValues(game, entry));
+  const [original] = useState(entry);
   const [values, setValues] = useState<FormValues>(initial);
   const [customPlatform, setCustomPlatform] = useState(() =>
     initial.platform === ''
@@ -203,7 +205,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
 
   async function save() {
     if (saving) return;
-    if (entry && !dirty) {
+    if (original && !dirty) {
       router.back();
       return;
     }
@@ -215,7 +217,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
     const draft = toDraft(values);
     setSaving(true);
     try {
-      if (entry) await update.mutateAsync({ original: entry, edited: draft });
+      if (original) await update.mutateAsync({ original, edited: draft });
       else await create.mutateAsync({ igdbId: game.igdbId, draft });
     } catch (error) {
       setApiError(authErrorMessage(error));
@@ -224,7 +226,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
     }
     setReleased(true);
     disablePrevention();
-    showToast(entry ? 'Registro atualizado' : 'Registro criado');
+    showToast(original ? 'Registro atualizado' : 'Registro criado');
     router.back();
   }
 

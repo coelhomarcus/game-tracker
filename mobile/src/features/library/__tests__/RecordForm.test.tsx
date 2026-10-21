@@ -373,6 +373,27 @@ describe('RecordForm (edit record)', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the record the form opened with as the patch base when the library refetches', async () => {
+    const original = makeEntry(game);
+    mockEntries([original]);
+    await renderForm();
+
+    // The mount-time refetch brings a copy changed on another device.
+    mockEntries([makeEntry(game, { notes: 'Mudou em outro aparelho', hoursPlayed: 30 })]);
+    await screen.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <RecordForm />
+      </SafeAreaProvider>,
+    );
+    await press('Nota 9 de 10');
+    await press('Salvar registro');
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const args = mockUpdate.mock.calls[0][0];
+    expect(args.original).toBe(original);
+    expect(updateBody(args.original, args.edited)).toEqual({ rating: 9 });
+  });
+
   it('shows a custom platform of the record in the text field', async () => {
     mockEntries([makeEntry(game, { platform: 'Mega Drive' })]);
     await renderForm();
