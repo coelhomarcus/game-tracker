@@ -4,13 +4,15 @@ import { useRouter, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ChoiceChip, ConfirmDialog, Screen } from '@/components';
+import { Button, ChoiceChip, ConfirmDialog, Screen } from '@/components';
 import { useSession } from '@/features/auth';
 import { useChatStore } from '@/features/chat/chatStore';
 import { SORT_OPTIONS, useLibraryPrefs } from '@/features/library/prefsStore';
+import { usePush, type PushStatus } from '@/features/push/pushController';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 const EDIT_PROFILE = '/me/edit' as Href;
+const NOTIFICATIONS = '/notifications' as Href;
 
 /** What signing out would lose: unsent chat drafts and messages still waiting to be sent. */
 function unsentWarning(count: number): string | undefined {
@@ -41,6 +43,33 @@ function Row({ label, onPress, danger = false }: RowProps) {
   );
 }
 
+const PUSH_COPY: Record<PushStatus, { message: string; action?: string }> = {
+  unsupported: {
+    message:
+      'As notificações aparecem na central com o app aberto. Avisos com o app fechado não estão disponíveis nesta versão.',
+  },
+  on: { message: 'Ativadas neste aparelho.' },
+  registering: { message: 'Ativando…' },
+  off: { message: 'Desativadas neste aparelho.', action: 'Ativar' },
+  denied: {
+    message: 'Bloqueadas nas configurações do sistema. Libere por lá para receber avisos.',
+    action: 'Tentar de novo',
+  },
+  failed: { message: 'Não foi possível ativar agora. Tente de novo.', action: 'Tentar de novo' },
+};
+
+function PushSettings() {
+  const status = usePush((state) => state.status);
+  const enable = usePush((state) => state.enable);
+  const { message, action } = PUSH_COPY[status];
+  return (
+    <>
+      <Text style={styles.body}>{message}</Text>
+      {action ? <Button label={action} onPress={() => void enable()} /> : null}
+    </>
+  );
+}
+
 export function SettingsScreen() {
   const router = useRouter();
   const sort = useLibraryPrefs((state) => state.sort);
@@ -57,6 +86,15 @@ export function SettingsScreen() {
             label="Sair"
             danger
             onPress={() => setUnsent(useChatStore.getState().draftCount())}
+          />
+        </Section>
+
+        <Section title="Notificações">
+          <PushSettings />
+          <Button
+            label="Abrir central de notificações"
+            variant="secondary"
+            onPress={() => router.push(NOTIFICATIONS)}
           />
         </Section>
 
@@ -112,6 +150,7 @@ const styles = StyleSheet.create({
   danger: { color: colors.danger, fontWeight: '600' },
   label: { color: colors.textMuted, fontSize: fontSize.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  body: { color: colors.text, fontSize: fontSize.md },
   about: { color: colors.text, fontSize: fontSize.md },
   muted: { color: colors.textMuted, fontSize: fontSize.sm },
 });

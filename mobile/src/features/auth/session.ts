@@ -61,18 +61,66 @@ export const useSession = create<SessionState>((set) => ({
     set({ status: 'signedIn', user });
   },
 
-  async signOut() {
-    const previousToken = await sessionManager.clear();
-    queryClient.clear();
-    set({ status: 'signedOut', user: null });
-    if (!previousToken) return;
-    try {
-      await authApi.logout(previousToken);
-    } catch {
-      // Best effort: the local session is already gone.
-    }
+  signOut() {
+    // A second tap while the hooks run joins the sign-out already in progress.
+    signingOut ??= (async () => {
+      try {
+        await runBeforeSignOut();
+        const previousToken = await sessionManager.clear();
+        queryClient.clear();
+        set({ status: 'signedOut', user: null });
+        if (!previousToken) return;
+        try {
+          await authApi.logout(previousToken);
+        } catch {
+          // Best effort: the local session is already gone.
+        }
+      } finally {
+        signingOut = null;
+      }
+    })();
+    return signingOut;
   },
 }));
+
+let signingOut: Promise<void> | null = null;
+
+type BeforeSignOut = () => Promise<void>;
+
+/** How long one hook may hold the sign-out up. */
+const BEFORE_SIGN_OUT_TIMEOUT_MS = 3000;
+
+const beforeSignOutHooks = new Set<BeforeSignOut>();
+
+/**
+ * Runs `hook` on every sign-out the user asks for, before the session is cleared, so it can still
+ * make authenticated requests (e.g. revoke this device's push registration). Best effort: errors
+ * are ignored and a hook that takes longer than 3 s is no longer waited for. Not run when the
+ * session expires on its own, since there is no session left by then. Returns the unregister.
+ */
+export function registerBeforeSignOut(hook: BeforeSignOut): () => void {
+  beforeSignOutHooks.add(hook);
+  return () => {
+    beforeSignOutHooks.delete(hook);
+  };
+}
+
+function runBounded(hook: BeforeSignOut): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, BEFORE_SIGN_OUT_TIMEOUT_MS);
+    Promise.resolve()
+      .then(hook)
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
+}
+
+async function runBeforeSignOut(): Promise<void> {
+  await Promise.all([...beforeSignOutHooks].map(runBounded));
+}
 
 sessionManager.onExpired = () => {
   queryClient.clear();

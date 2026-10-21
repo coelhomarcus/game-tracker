@@ -14,6 +14,12 @@ jest.mock('@/features/chat/realtimeBridge', () => ({
   realtimeBridge: { start: () => mockBridgeStart(), stop: () => mockBridgeStop() },
 }));
 
+const mockPushStart = jest.fn();
+const mockPushStop = jest.fn();
+jest.mock('@/features/push/pushController', () => ({
+  pushController: { start: () => mockPushStart(), stop: () => mockPushStop() },
+}));
+
 jest.mock('expo-router', () => {
   function Stack({ children }: { children?: unknown }) {
     return children ?? null;
@@ -38,6 +44,8 @@ beforeEach(() => {
   mockStop.mockClear();
   mockBridgeStart.mockClear();
   mockBridgeStop.mockClear();
+  mockPushStart.mockClear();
+  mockPushStop.mockClear();
   useSession.setState({ status: 'signedOut', user: null, bootstrap: jest.fn() });
 });
 
@@ -67,6 +75,22 @@ describe('SessionGate chat connection', () => {
     mockBridgeStop.mockClear();
     await unmount();
     expect(mockBridgeStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs the push controller while signed in', async () => {
+    const { unmount } = await render(<SessionGate />);
+    expect(mockPushStart).not.toHaveBeenCalled();
+
+    await setStatus('signedIn');
+    expect(mockPushStart).toHaveBeenCalledTimes(1);
+
+    await setStatus('signedOut');
+    expect(mockPushStop).toHaveBeenCalledTimes(1);
+
+    await setStatus('signedIn');
+    mockPushStop.mockClear();
+    await unmount();
+    expect(mockPushStop).toHaveBeenCalledTimes(1);
   });
 
   it('starts right away when the session is restored as signed in', async () => {

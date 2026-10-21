@@ -3,7 +3,7 @@ import { queryClient } from '@/lib/queryClient';
 
 import { authApi } from '../api';
 import { api, sessionManager } from '../client';
-import { useSession } from '../session';
+import { registerBeforeSignOut, useSession } from '../session';
 
 jest.mock('../api', () => ({
   authApi: {
@@ -205,6 +205,98 @@ describe('signOut', () => {
 
     expect(mocked.authApi.logout).not.toHaveBeenCalled();
     expect(useSession.getState().status).toBe('signedOut');
+  });
+});
+
+describe('before sign-out hooks', () => {
+  const unhooks: (() => void)[] = [];
+
+  afterEach(() => {
+    for (const unhook of unhooks.splice(0)) unhook();
+    jest.useRealTimers();
+  });
+
+  test('runs the hooks while the session still exists, then clears it', async () => {
+    useSession.setState({ status: 'signedIn', user: ana });
+    const order: string[] = [];
+    mocked.session.clear.mockImplementation(async () => {
+      order.push('clear');
+      return null;
+    });
+    unhooks.push(
+      registerBeforeSignOut(async () => {
+        order.push(`hook while ${useSession.getState().status}`);
+      }),
+    );
+
+    await useSession.getState().signOut();
+
+    expect(order).toEqual(['hook while signedIn', 'clear']);
+    expect(useSession.getState().status).toBe('signedOut');
+  });
+
+  test('a failing hook does not stop the sign-out', async () => {
+    useSession.setState({ status: 'signedIn', user: ana });
+    mocked.session.clear.mockResolvedValue(null);
+    unhooks.push(registerBeforeSignOut(() => Promise.reject(new Error('offline'))));
+
+    await useSession.getState().signOut();
+
+    expect(mocked.session.clear).toHaveBeenCalled();
+    expect(useSession.getState().status).toBe('signedOut');
+  });
+
+  test('a hanging hook delays the sign-out by at most 3 s', async () => {
+    jest.useFakeTimers();
+    useSession.setState({ status: 'signedIn', user: ana });
+    mocked.session.clear.mockResolvedValue(null);
+    unhooks.push(registerBeforeSignOut(() => new Promise<void>(() => undefined)));
+
+    const done = useSession.getState().signOut();
+    await jest.advanceTimersByTimeAsync(2999);
+    expect(mocked.session.clear).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1);
+    await done;
+    expect(mocked.session.clear).toHaveBeenCalled();
+    expect(useSession.getState().status).toBe('signedOut');
+  });
+
+  test('an unregistered hook no longer runs', async () => {
+    useSession.setState({ status: 'signedIn', user: ana });
+    mocked.session.clear.mockResolvedValue(null);
+    const hook = jest.fn().mockResolvedValue(undefined);
+    registerBeforeSignOut(hook)();
+
+    await useSession.getState().signOut();
+
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  test('a second sign-out while the first runs its hooks joins it', async () => {
+    useSession.setState({ status: 'signedIn', user: ana });
+    mocked.session.clear.mockResolvedValue(null);
+    let release = () => {};
+    const hook = jest.fn(() => new Promise<void>((resolve) => (release = resolve)));
+    unhooks.push(registerBeforeSignOut(hook));
+
+    const first = useSession.getState().signOut();
+    const second = useSession.getState().signOut();
+    release();
+    await Promise.all([first, second]);
+
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(mocked.session.clear).toHaveBeenCalledTimes(1);
+  });
+
+  test('session expiry does not run the hooks', () => {
+    useSession.setState({ status: 'signedIn', user: ana });
+    const hook = jest.fn().mockResolvedValue(undefined);
+    unhooks.push(registerBeforeSignOut(hook));
+
+    expire?.();
+
+    expect(hook).not.toHaveBeenCalled();
   });
 });
 

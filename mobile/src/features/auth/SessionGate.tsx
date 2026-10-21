@@ -5,6 +5,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Button, EmptyState } from '@/components';
 import { useSession } from '@/features/auth';
 import { realtimeBridge } from '@/features/chat/realtimeBridge';
+import { pushController } from '@/features/push/pushController';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, space } from '@/theme/tokens';
 
@@ -33,6 +34,13 @@ export function SessionGate() {
       chatSocket.stop();
       realtimeBridge.stop();
     };
+  }, [status]);
+
+  // Push registration and tapped notifications, also only while signed in.
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    pushController.start();
+    return () => pushController.stop();
   }, [status]);
 
   async function retry() {
