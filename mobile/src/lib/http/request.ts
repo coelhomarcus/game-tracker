@@ -39,8 +39,11 @@ export async function request<T>(
 ): Promise<T> {
   const { method = 'GET', body, query, token, signal } = opts;
 
+  // A FormData body is sent untouched: the runtime adds the multipart boundary itself.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   // The timeout and the caller's signal both feed one controller, so this
@@ -58,7 +61,7 @@ export async function request<T>(
       response = await fetch(buildUrl(baseUrl, path, query), {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
         signal: controller.signal,
       });
       raw = response.status === 204 ? '' : await response.text();

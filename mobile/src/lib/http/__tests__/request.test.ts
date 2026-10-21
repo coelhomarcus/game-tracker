@@ -7,6 +7,9 @@ import { ApiError, NetworkError } from '../errors';
 import { request } from '../request';
 
 const BASE = 'http://test/api';
+
+// React Native's FormData type lacks the readers that Node's implementation has.
+type ServerForm = { get(name: string): unknown };
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -37,6 +40,31 @@ describe('request', () => {
     expect(seenAuth).toBe('Bearer t1');
     expect(seenContentType).toBe('application/json');
     expect(seenBody).toEqual({ a: 1 });
+  });
+
+  it('sends a FormData body as-is without a JSON Content-Type', async () => {
+    let seenContentType: string | null = null;
+    let seenField: unknown = null;
+    server.use(
+      http.post(`${BASE}/upload`, async ({ request: req }) => {
+        seenContentType = req.headers.get('content-type');
+        seenField = ((await req.formData()) as unknown as ServerForm).get('avatar');
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const form = new FormData();
+    form.append('avatar', new Blob(['img'], { type: 'image/png' }), 'a.png');
+
+    const result = await request<{ ok: boolean }>(BASE, '/upload', {
+      method: 'POST',
+      body: form,
+      token: 't1',
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(seenField).not.toBeNull();
+    expect((seenField as unknown as File).name).toBe('a.png');
+    expect(seenContentType).toMatch(/^multipart\/form-data; boundary=/);
   });
 
   it('omits Authorization and Content-Type when there is no token or body', async () => {
