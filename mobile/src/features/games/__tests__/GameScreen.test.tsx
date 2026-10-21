@@ -429,7 +429,8 @@ describe('GameScreen', () => {
       await renderScreen();
       await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Perfil de Ana Souza' }));
+      // The label carries the hours the row shows; without hours it is only the name.
+      await fireEvent.press(screen.getByRole('button', { name: 'Perfil de Ana Souza, 12,5 h' }));
       expect(mockPush).toHaveBeenLastCalledWith('/users/u1');
       await fireEvent.press(screen.getByRole('button', { name: 'Perfil de bia' }));
       expect(mockPush).toHaveBeenLastCalledWith('/users/u2');

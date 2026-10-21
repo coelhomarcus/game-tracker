@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
 import { pickImage } from '../pickImage';
 
@@ -68,6 +69,30 @@ describe('pickImage', () => {
     launch.mockResolvedValue({ canceled: true, assets: null });
 
     await expect(pickImage('avatar')).resolves.toBeNull();
+  });
+
+  describe('on Android', () => {
+    const originalOS = Platform.OS;
+    beforeEach(() => {
+      Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    });
+    afterEach(() => {
+      Object.defineProperty(Platform, 'OS', { value: originalOS, configurable: true });
+    });
+
+    it('opens the picker without asking for the media library permission', async () => {
+      permission.mockResolvedValue({ granted: false } as never);
+      launch.mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'file:///a.png', mimeType: 'image/png', fileName: 'a.png' }],
+      } as never);
+      const onDenied = jest.fn();
+
+      await expect(pickImage('avatar', onDenied)).resolves.toMatchObject({ uri: 'file:///a.png' });
+
+      expect(permission).not.toHaveBeenCalled();
+      expect(onDenied).not.toHaveBeenCalled();
+    });
   });
 
   it('reports a denied permission and never opens the picker', async () => {

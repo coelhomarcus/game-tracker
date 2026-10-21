@@ -93,6 +93,12 @@ afterEach(() => {
 });
 
 describe('PeopleSearch', () => {
+  it('limits the search term to the 50 characters the API accepts', async () => {
+    await renderPeople();
+
+    expect(screen.getByLabelText('Buscar pessoas').props.maxLength).toBe(50);
+  });
+
   it('shows the hint for a short term and ignores placeholder results', async () => {
     await renderPeople();
     expect(screen.getByText('abas')).toBeOnTheScreen();

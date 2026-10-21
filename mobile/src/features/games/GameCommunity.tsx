@@ -57,8 +57,14 @@ function uniquePlayers(players: GamePlayer[]): GamePlayer[] {
 function PlayerRow({ player }: { player: GamePlayer }) {
   const { user } = player;
   const name = displayName(user);
+  const hours = player.hoursPlayed === null ? null : `${formatHours(player.hoursPlayed)} h`;
   return (
-    <ProfileLink user={user} hitSlop={0} style={styles.player}>
+    <ProfileLink
+      user={user}
+      hitSlop={0}
+      style={styles.player}
+      accessibilityLabel={hours === null ? undefined : `Perfil de ${name}, ${hours}`}
+    >
       <Avatar uri={resolveImageUrl(user.avatarUrl)} name={name} size={40} />
       <View style={styles.playerText}>
         <Text numberOfLines={1} style={styles.playerName}>
@@ -68,9 +74,7 @@ function PlayerRow({ player }: { player: GamePlayer }) {
           <Text numberOfLines={1} style={styles.playerHandle}>{`@${user.username}`}</Text>
         )}
       </View>
-      {player.hoursPlayed !== null ? (
-        <Text style={styles.playerHours}>{`${formatHours(player.hoursPlayed)} h`}</Text>
-      ) : null}
+      {hours === null ? null : <Text style={styles.playerHours}>{hours}</Text>}
     </ProfileLink>
   );
 }

@@ -35,6 +35,7 @@ function PeopleHeader({ tabs, term, busy, inputRef, onChangeTerm }: HeaderProps)
             value={term}
             onChangeText={onChangeTerm}
             returnKeyType="search"
+            maxLength={50}
             inputRef={inputRef}
           />
         </View>

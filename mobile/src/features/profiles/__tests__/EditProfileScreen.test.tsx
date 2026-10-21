@@ -286,6 +286,7 @@ describe('EditProfileScreen photos', () => {
 
   it('shows the failure and retries the same image', async () => {
     const error = new NetworkError();
+    mockProfileData = { ...profile, avatarUrl: 'https://img.example.com/old.jpg' };
     jest.mocked(pickImage).mockResolvedValue(photo);
     mockUpload.mockRejectedValueOnce(error);
     await renderScreen();
@@ -294,6 +295,10 @@ describe('EditProfileScreen photos', () => {
 
     expect(screen.getByText(authErrorMessage(error))).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
+    // The failed upload leaves the picture the profile already had.
+    expect(screen.getByLabelText('Ana Souza').props.source).toEqual({
+      uri: 'https://img.example.com/old.jpg',
+    });
 
     await press('Tentar de novo');
 
@@ -301,6 +306,9 @@ describe('EditProfileScreen photos', () => {
     expect(mockUpload).toHaveBeenCalledTimes(2);
     expect(mockUpload).toHaveBeenLastCalledWith({ kind: 'avatar', image: photo });
     expect(showToast).toHaveBeenCalledWith('Foto atualizada');
+    expect(screen.getByLabelText('Ana Souza').props.source).toEqual({
+      uri: 'https://img.example.com/new.jpg',
+    });
     expect(screen.queryByText(authErrorMessage(error))).toBeNull();
     expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
   });

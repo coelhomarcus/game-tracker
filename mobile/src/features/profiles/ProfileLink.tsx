@@ -16,6 +16,8 @@ export type ProfileLinkProps = {
    */
   touchOnly?: boolean;
   testID?: string;
+  /** Replaces the default `Perfil de <name>`, e.g. to add what the row also shows. */
+  accessibilityLabel?: string;
 };
 
 /**
@@ -29,6 +31,7 @@ export function ProfileLink({
   style,
   touchOnly = false,
   testID,
+  accessibilityLabel,
 }: ProfileLinkProps) {
   const router = useRouter();
   return (
@@ -37,7 +40,7 @@ export function ProfileLink({
       accessible={touchOnly ? false : undefined}
       importantForAccessibility={touchOnly ? 'no-hide-descendants' : undefined}
       accessibilityRole="button"
-      accessibilityLabel={`Perfil de ${displayName(user)}`}
+      accessibilityLabel={accessibilityLabel ?? `Perfil de ${displayName(user)}`}
       hitSlop={hitSlop}
       onPress={() => router.push(`/users/${user.id}` as Href)}
       style={style}
