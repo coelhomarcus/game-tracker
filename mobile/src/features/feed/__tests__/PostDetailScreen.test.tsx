@@ -370,6 +370,19 @@ describe('PostDetailScreen comments', () => {
     expect(screen.getByRole('button', { name: 'Responder a Ana Souza' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Responder a bia' })).toBeOnTheScreen();
   });
+
+  it('opens the author profile from the avatar and the name of a comment', async () => {
+    await renderScreen();
+
+    // Each comment has two links: the avatar first, then the name.
+    const caioLinks = screen.getAllByRole('button', { name: 'Perfil de Caio' });
+    expect(caioLinks).toHaveLength(2);
+    await fireEvent.press(caioLinks[0]);
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Perfil de bia' })[1]);
+
+    expect(mockPush).toHaveBeenNthCalledWith(1, '/users/u3');
+    expect(mockPush).toHaveBeenNthCalledWith(2, '/users/u2');
+  });
 });
 
 describe('PostDetailScreen composer', () => {

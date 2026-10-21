@@ -21,7 +21,7 @@ import { colors, fontSize, radii, space, type GameStatus } from '@/theme/tokens'
 import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
 import { useLibraryFilter } from './filterStore';
 import { LibraryCard } from './LibraryCard';
-import { useLibraryPrefs, type LibrarySort } from './prefsStore';
+import { SORT_OPTIONS, useLibraryPrefs, type LibrarySort } from './prefsStore';
 import { useLibrary } from './queries';
 import { STATUSES, statusLabel } from './status';
 
@@ -31,14 +31,6 @@ const SKELETON_COUNT = 8;
 const SKELETON_ITEMS = Array.from({ length: SKELETON_COUNT }, (_, index) => String(index));
 /** Covers are 3:4. */
 const COVER_RATIO = 4 / 3;
-
-const SORT_OPTIONS: { value: LibrarySort; label: string }[] = [
-  { value: 'recent', label: 'Adicionados recentemente' },
-  { value: 'oldest', label: 'Adicionados há mais tempo' },
-  { value: 'mostPlayed', label: 'Mais horas registradas' },
-  { value: 'rating', label: 'Minha nota' },
-  { value: 'name', label: 'Nome A–Z' },
-];
 
 type TabValue = GameStatus | 'all';
 

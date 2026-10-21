@@ -74,6 +74,10 @@ export function SessionGate() {
         <Stack.Screen name="users" options={{ headerShown: false }} />
         <Stack.Screen name="me" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ title: '', headerBackButtonDisplayMode: 'minimal' }} />
+        <Stack.Screen
+          name="settings"
+          options={{ title: 'Configurações', headerBackButtonDisplayMode: 'minimal' }}
+        />
       </Stack.Protected>
     </Stack>
   );

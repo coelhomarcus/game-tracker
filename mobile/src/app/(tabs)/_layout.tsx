@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 
 import { HeaderBell } from '@/components';
+import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
 import { colors } from '@/theme/tokens';
 
 const EXPLORE_GAMES = '/explore?tab=games' as Href;
@@ -49,7 +50,6 @@ function ProfileHeaderRight() {
         accessibilityRole="button"
         accessibilityLabel="Configurações"
         hitSlop={4}
-        // The settings route arrives in a later change, so it is not a typed route yet.
         onPress={() => router.push('/settings' as Href)}
         style={styles.addButton}
       >
@@ -79,7 +79,10 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Início', tabBarIcon: HomeIcon }} />
+      <Tabs.Screen
+        name="index"
+        options={{ title: 'Início', tabBarIcon: HomeIcon, headerLeft: HomeHeaderLeft }}
+      />
       <Tabs.Screen
         name="library"
         options={{ title: 'Biblioteca', tabBarIcon: LibraryIcon, headerRight: LibraryHeaderRight }}

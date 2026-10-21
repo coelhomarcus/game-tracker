@@ -4,7 +4,16 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type LibrarySort = 'recent' | 'oldest' | 'mostPlayed' | 'rating' | 'name';
 
-const SORTS: readonly LibrarySort[] = ['recent', 'oldest', 'mostPlayed', 'rating', 'name'];
+/** The sorts in display order, with the label every picker shows. */
+export const SORT_OPTIONS: { value: LibrarySort; label: string }[] = [
+  { value: 'recent', label: 'Adicionados recentemente' },
+  { value: 'oldest', label: 'Adicionados há mais tempo' },
+  { value: 'mostPlayed', label: 'Mais horas registradas' },
+  { value: 'rating', label: 'Minha nota' },
+  { value: 'name', label: 'Nome A–Z' },
+];
+
+const SORTS: readonly LibrarySort[] = SORT_OPTIONS.map((option) => option.value);
 
 function parseSort(value: unknown): LibrarySort {
   return (SORTS as readonly unknown[]).includes(value) ? (value as LibrarySort) : 'recent';

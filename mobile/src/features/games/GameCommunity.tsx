@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar, Button, Tabs } from '@/components';
 import { STATUSES, statusIcon, statusLabel } from '@/features/library/status';
+import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { formatHours } from '@/lib/hours';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, fontSize, space } from '@/theme/tokens';
@@ -55,7 +56,7 @@ function uniquePlayers(players: GamePlayer[]): GamePlayer[] {
 function PlayerRow({ player }: { player: GamePlayer }) {
   const { user } = player;
   return (
-    <View style={styles.player}>
+    <ProfileLink user={user} hitSlop={0} style={styles.player}>
       <Avatar uri={resolveImageUrl(user.avatarUrl)} name={user.name ?? user.username} size={40} />
       <Text numberOfLines={1} style={styles.playerName}>
         {user.name ?? `@${user.username}`}
@@ -63,7 +64,7 @@ function PlayerRow({ player }: { player: GamePlayer }) {
       {player.hoursPlayed !== null ? (
         <Text style={styles.playerHours}>{`${formatHours(player.hoursPlayed)} h`}</Text>
       ) : null}
-    </View>
+    </ProfileLink>
   );
 }
 

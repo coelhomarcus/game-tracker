@@ -123,6 +123,23 @@ describe('PostCard', () => {
     expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
   });
+
+  it('opens the author profile from the avatar and from the name without opening the post', async () => {
+    const onPress = jest.fn();
+    await render(<PostCard post={post()} onPress={onPress} />);
+
+    const links = screen.getAllByRole('button', { name: 'Perfil de Ana Souza' });
+    expect(links).toHaveLength(2);
+    for (const link of links) await fireEvent.press(link);
+
+    expect(mockPush).toHaveBeenCalledTimes(2);
+    expect(mockPush).toHaveBeenCalledWith('/users/u1');
+    expect(onPress).not.toHaveBeenCalled();
+    // The body keeps its own press and label.
+    await fireEvent.press(screen.getByLabelText(POST_LABEL));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('PostGameLink', () => {
@@ -249,6 +266,22 @@ describe('ActivityCard', () => {
     await screen.rerender(<ActivityCard post={activity} />);
     expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
+  });
+
+  it('opens the author profile from the avatar and from the name without opening the post', async () => {
+    const onPress = jest.fn();
+    const activity = post({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
+    await render(<ActivityCard post={activity} onPress={onPress} />);
+
+    const links = screen.getAllByRole('button', { name: 'Perfil de Ana Souza' });
+    expect(links).toHaveLength(2);
+    for (const link of links) await fireEvent.press(link);
+
+    expect(mockPush).toHaveBeenCalledTimes(2);
+    expect(mockPush).toHaveBeenCalledWith('/users/u1');
+    expect(onPress).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('Ana Souza zerou Hades, Concluído, há 5 min'));
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });
 

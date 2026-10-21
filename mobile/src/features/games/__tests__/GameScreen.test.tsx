@@ -406,6 +406,32 @@ describe('GameScreen', () => {
       expect(useGamePlayers).toHaveBeenLastCalledWith('g1', 'following');
     });
 
+    it('opens the profile of a player from the list', async () => {
+      jest.mocked(useGamePlayers).mockReturnValue({
+        data: [
+          {
+            user: { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null },
+            status: 'playing',
+            hoursPlayed: 12.5,
+          },
+          {
+            user: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+            status: 'playing',
+            hoursPlayed: null,
+          },
+        ],
+        isPending: false,
+        isError: false,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Perfil de Ana Souza' }));
+      expect(mockPush).toHaveBeenLastCalledWith('/users/u1');
+      await fireEvent.press(screen.getByRole('button', { name: 'Perfil de bia' }));
+      expect(mockPush).toHaveBeenLastCalledWith('/users/u2');
+    });
+
     it('shows the posts of the game below the players', async () => {
       await renderScreen();
       await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
