@@ -127,6 +127,7 @@ export function restartApp(apiUrl?: string): AppInstance {
 function loadFeatures() {
   return {
     app: loadSession(),
+    chat: (require('@/features/chat/api') as typeof import('@/features/chat/api')).chatApi,
     feed: (require('@/features/feed/api') as typeof import('@/features/feed/api')).feedApi,
     games: (require('@/features/games/api') as typeof import('@/features/games/api')).gamesApi,
     library: (require('@/features/library/api') as typeof import('@/features/library/api'))
@@ -195,24 +196,57 @@ export async function eventually(
 
 const openSockets = new Set<Socket>();
 
-/**
- * A raw Socket.IO connection authenticated as one user (the app's chat socket is a singleton, and
- * a test with two users needs two connections). Close it with `closeSockets` in `afterEach`.
- */
-export async function connectSocket(accessToken: string): Promise<Socket> {
+/** A raw Socket.IO client for the test API, not yet connected; `closeSockets` closes it. */
+function newSocket(auth: Record<string, unknown>): Socket {
   if (!backendUrl) throw new Error('GT_BACKEND is not set');
   const socket = io(backendUrl, {
-    auth: { token: accessToken },
+    auth,
     transports: ['websocket'],
+    autoConnect: false,
     reconnection: false,
     forceNew: true,
   });
   openSockets.add(socket);
-  await new Promise<void>((resolve, reject) => {
-    socket.once('connect', () => resolve());
-    socket.once('connect_error', (error) => reject(error));
-  });
   return socket;
+}
+
+/** Connects (or reconnects, after a drop) `socket`; rejects with the server's `connect_error`. */
+export function reconnectSocket(socket: Socket): Promise<Socket> {
+  return new Promise<Socket>((resolve, reject) => {
+    const onConnect = () => {
+      socket.off('connect_error', onError);
+      resolve(socket);
+    };
+    const onError = (error: Error) => {
+      socket.off('connect', onConnect);
+      reject(error);
+    };
+    socket.once('connect', onConnect);
+    socket.once('connect_error', onError);
+    socket.connect();
+  });
+}
+
+/**
+ * A raw Socket.IO connection authenticated as one user (the app's chat socket is a singleton, and
+ * a test with two users needs two connections). Close it with `closeSockets` in `afterEach`.
+ */
+export function connectSocket(accessToken: string): Promise<Socket> {
+  return reconnectSocket(newSocket({ token: accessToken }));
+}
+
+/** Opens a connection with `auth` that the server must refuse, and returns the refusal. */
+export async function socketRejection(auth: Record<string, unknown>): Promise<Error> {
+  const socket = newSocket(auth);
+  try {
+    await reconnectSocket(socket);
+  } catch (error) {
+    return error as Error;
+  } finally {
+    socket.disconnect();
+    openSockets.delete(socket);
+  }
+  throw new Error('expected the server to refuse the connection, but it connected');
 }
 
 /** Emits `event` and resolves with the server's ACK; rejects if none arrives in `timeoutMs`. */
