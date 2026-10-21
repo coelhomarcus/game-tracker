@@ -2,10 +2,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { showToast } from '@/lib/toast';
+
 import { HomeScreen } from '../HomeScreen';
 import { useFeed } from '../queries';
 import type { Post } from '../types';
 
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useFeed: jest.fn(),
   useTogglePostLike: () => ({ mutate: jest.fn() }),
@@ -55,7 +58,7 @@ function feedResult(overrides: Record<string, unknown> = {}): FeedResult {
     isFetchNextPageError: false,
     hasNextPage: false,
     fetchNextPage: jest.fn(),
-    refetch: jest.fn(),
+    refetch: jest.fn().mockResolvedValue({ isError: false }),
     ...overrides,
   } as unknown as FeedResult;
 }
@@ -174,10 +177,12 @@ describe('HomeScreen', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the posts on screen when a refresh fails', async () => {
+  it('keeps the posts on screen and reports it when a refresh fails', async () => {
+    const refetch = jest.fn().mockResolvedValue({ isError: true });
     mockedUseFeed.mockReturnValue(
       feedResult({
         isError: true,
+        refetch,
         data: { pages: [{ items: [post()], nextCursor: null }], pageParams: [] },
       }),
     );
@@ -185,10 +190,41 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
     expect(screen.queryByText('Não foi possível carregar o feed')).not.toBeOnTheScreen();
+    expect(showToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível atualizar o feed');
+    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
+  });
+
+  it('reports a refresh that rejects', async () => {
+    const refetch = jest.fn().mockRejectedValue(new Error('offline'));
+    mockedUseFeed.mockReturnValue(feedResult({ data: emptyPages, refetch }));
+    await renderHome();
+
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
+
+    expect(showToast).toHaveBeenCalledWith('Não foi possível atualizar o feed');
+  });
+
+  it('stays quiet when a refresh succeeds', async () => {
+    await renderHome();
+
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('refetches the current scope on pull to refresh', async () => {
-    const refetch = jest.fn();
+    const refetch = jest.fn().mockResolvedValue({ isError: false });
     mockedUseFeed.mockReturnValue(feedResult({ data: emptyPages, refetch }));
     await renderHome();
 

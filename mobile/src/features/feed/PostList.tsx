@@ -4,6 +4,7 @@ import {
   forwardRef,
   useCallback,
   useMemo,
+  useState,
   type ComponentType,
   type ReactElement,
 } from 'react';
@@ -18,6 +19,7 @@ import {
 } from 'react-native';
 
 import { Button } from '@/components';
+import { showToast } from '@/lib/toast';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
@@ -30,8 +32,8 @@ export type PostListProps = {
   query: UseInfiniteQueryResult<InfiniteData<PostPage>>;
   ListHeaderComponent?: Slot;
   ListEmptyComponent?: Slot;
-  /** Defaults to refetching the query. */
-  onRefresh?: () => void;
+  /** Defaults to refetching the query and reporting a failure. */
+  onRefresh?: () => void | Promise<unknown>;
   /** Defaults to opening the post's page. */
   onPressPost?: (post: Post) => void;
   /** Bottom padding of the content, e.g. to keep the last card clear of a floating button. */
@@ -56,7 +58,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   ref,
 ) {
   const router = useRouter();
-  const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError, isRefetching } = query;
+  const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError } = query;
   const { fetchNextPage, refetch } = query;
 
   const posts = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
@@ -84,9 +86,24 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
-  const refresh = useCallback(() => {
-    if (onRefresh) onRefresh();
-    else void refetch();
+  // Only a pull shows the spinner: background refetches (scope switch, focus) stay silent.
+  const [pulling, setPulling] = useState(false);
+  const refresh = useCallback(async () => {
+    setPulling(true);
+    try {
+      if (onRefresh) {
+        await onRefresh();
+        return;
+      }
+      // `refetch` resolves with the error instead of throwing, so both outcomes are handled.
+      const failed = await refetch().then(
+        (result) => result.isError,
+        () => true,
+      );
+      if (failed) showToast('Não foi possível atualizar o feed');
+    } finally {
+      setPulling(false);
+    }
   }, [onRefresh, refetch]);
 
   const contentStyle = useMemo(
@@ -130,8 +147,8 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       onContentSizeChange={onContentSizeChange}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
-      onRefresh={refresh}
-      refreshing={isRefetching && !isFetchingNextPage}
+      onRefresh={() => void refresh()}
+      refreshing={pulling}
       ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={ListEmptyComponent}
       ListFooterComponent={footer}

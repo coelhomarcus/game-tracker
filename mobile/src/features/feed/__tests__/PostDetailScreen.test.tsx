@@ -133,7 +133,7 @@ beforeEach(() => {
   // Only the clock is faked: timers stay real so Testing Library keeps working.
   jest.useFakeTimers({
     now: new Date('2026-10-20T12:00:00.000Z'),
-    doNotFake: ['nextTick', 'setImmediate', 'setTimeout'],
+    doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'],
   });
   jest.clearAllMocks();
   mockParams = { postId: 'p1' };

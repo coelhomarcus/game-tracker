@@ -1,5 +1,5 @@
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import type { Game } from '@/features/games/types';
@@ -22,7 +22,7 @@ const POST_LABEL = 'Post de Ana Souza, há 5 min: Zerei de primeira!';
 
 beforeEach(() => {
   // Only the clock is faked: timers stay real so Testing Library keeps working.
-  jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'setTimeout'] });
+  jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'] });
   jest.clearAllMocks();
 });
 
@@ -262,7 +262,7 @@ function feedQuery(overrides: Record<string, unknown> = {}, items: Post[] = [pos
     isFetchNextPageError: false,
     isRefetching: false,
     fetchNextPage: jest.fn(),
-    refetch: jest.fn(),
+    refetch: jest.fn().mockResolvedValue({ isError: false }),
     ...overrides,
   } as unknown as FeedQuery;
 }
@@ -396,10 +396,12 @@ describe('PostList', () => {
   });
 
   it('refreshes with the query by default', async () => {
-    const refetch = jest.fn();
+    const refetch = jest.fn().mockResolvedValue({ isError: false });
     await render(<PostList query={feedQuery({ refetch })} />);
 
-    screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
 
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -408,7 +410,9 @@ describe('PostList', () => {
     const onRefresh = jest.fn();
     await render(<PostList query={feedQuery()} onRefresh={onRefresh} />);
 
-    screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
@@ -420,9 +424,35 @@ describe('PostList', () => {
     expect(screen.getByTestId('post-list').props.refreshControl.props.refreshing).toBe(false);
   });
 
-  it('is refreshing during a pull refetch', async () => {
+  it('does not show the pull spinner for a background refetch', async () => {
     await render(<PostList query={feedQuery({ isRefetching: true })} />);
 
-    expect(screen.getByTestId('post-list').props.refreshControl.props.refreshing).toBe(true);
+    expect(screen.getByTestId('post-list').props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it('shows the pull spinner from the pull until the refetch settles', async () => {
+    let finish!: (result: { isError: boolean }) => void;
+    const refetch = jest.fn(() => new Promise((resolve) => (finish = resolve)));
+    await render(<PostList query={feedQuery({ refetch })} />);
+    const refreshing = () => screen.getByTestId('post-list').props.refreshControl.props.refreshing;
+
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
+    expect(refreshing()).toBe(true);
+
+    await act(async () => finish({ isError: false }));
+    expect(refreshing()).toBe(false);
+  });
+
+  it('stops the pull spinner when the refetch rejects', async () => {
+    const refetch = jest.fn().mockRejectedValue(new Error('offline'));
+    await render(<PostList query={feedQuery({ refetch })} />);
+
+    await act(async () => {
+      screen.getByTestId('post-list').props.refreshControl.props.onRefresh();
+    });
+
+    expect(screen.getByTestId('post-list').props.refreshControl.props.refreshing).toBe(false);
   });
 });
