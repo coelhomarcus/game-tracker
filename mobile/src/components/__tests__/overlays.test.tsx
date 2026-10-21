@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ChoiceChip, ConfirmDialog, OptionSheet, ToastHost } from '..';
@@ -29,6 +29,13 @@ describe('Toast', () => {
   afterEach(async () => {
     await act(() => hideToast());
     jest.useRealTimers();
+  });
+
+  it('announces the message to the screen reader', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    await act(() => showToast('Status alterado'));
+    expect(announce).toHaveBeenCalledWith('Status alterado');
+    announce.mockRestore();
   });
 
   it('shows the message and hides it after 3 seconds', async () => {
@@ -199,8 +206,10 @@ describe('ChoiceChip', () => {
     expect(chip).toBeSelected();
     const style = StyleSheet.flatten(chip.props.style);
     expect(style.minHeight).toBe(48);
+    expect(style.minWidth).toBe(48);
     expect(style.backgroundColor).toBe(colors.active);
     expect(StyleSheet.flatten(screen.getByText('Jogando').props.style).color).toBe(colors.textStrong);
+    expect(StyleSheet.flatten(screen.getByText('Jogando').props.style).textAlign).toBe('center');
     await fireEvent.press(chip);
     expect(onPress).toHaveBeenCalledTimes(1);
   });

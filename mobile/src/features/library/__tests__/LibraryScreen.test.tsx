@@ -186,6 +186,12 @@ describe('cards', () => {
     expect(screen.getByRole('button', { name: 'Hades, Jogando, 2 registros' })).toBeOnTheScreen();
   });
 
+  it('does not give the cover its own screen reader stop', async () => {
+    await renderLibrary();
+    expect(cards()).toHaveLength(3);
+    expect(screen.queryByLabelText(/Capa de/, { includeHiddenElements: true })).toBeNull();
+  });
+
   it('opens the progress tab of the game when pressed', async () => {
     await renderLibrary();
     await fireEvent.press(screen.getByRole('button', { name: 'Celeste, Concluído, PC' }));

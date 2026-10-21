@@ -78,7 +78,7 @@ function ExploreCard({ game, width, inLibrary, onPress }: CardProps) {
       onPress={() => onPress(game.igdbId)}
       style={[styles.card, { width }]}
     >
-      <GameCover name={game.name} url={game.coverUrl} width={width} />
+      <GameCover decorative name={game.name} url={game.coverUrl} width={width} />
       <Text style={styles.name} numberOfLines={2}>
         {game.name}
       </Text>

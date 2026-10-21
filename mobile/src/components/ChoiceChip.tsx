@@ -32,6 +32,7 @@ export function ChoiceChip({ label, selected, onPress, icon, accessibilityLabel 
 const styles = StyleSheet.create({
   chip: {
     minHeight: 48,
+    minWidth: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -41,7 +42,7 @@ const styles = StyleSheet.create({
   },
   chipSelected: { backgroundColor: colors.active },
   chipIdle: { backgroundColor: colors.surface },
-  label: { fontSize: fontSize.sm },
+  label: { fontSize: fontSize.sm, textAlign: 'center' },
   labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
   labelIdle: { color: colors.text },
 });

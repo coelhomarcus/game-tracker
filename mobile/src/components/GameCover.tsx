@@ -10,11 +10,16 @@ export type GameCoverProps = {
   url: string | null;
   /** Box width; omitted, the cover fills its parent. */
   width?: number;
+  /**
+   * Set when the cover sits inside a control that already names the game, so screen readers
+   * do not stop on it a second time.
+   */
+  decorative?: boolean;
 };
 
 const ICON_ONLY_BELOW = 80;
 
-export function GameCover({ name, url, width }: GameCoverProps) {
+export function GameCover({ name, url, width, decorative = false }: GameCoverProps) {
   const uri = resolveImageUrl(url);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const showImage = uri !== null && failedUri !== uri;
@@ -22,9 +27,13 @@ export function GameCover({ name, url, width }: GameCoverProps) {
 
   return (
     <View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={`Capa de ${name}`}
+      {...(decorative
+        ? { accessible: false, importantForAccessibility: 'no-hide-descendants' as const }
+        : {
+            accessible: true,
+            accessibilityRole: 'image' as const,
+            accessibilityLabel: `Capa de ${name}`,
+          })}
       style={[styles.box, { width: width ?? '100%' }]}
     >
       {showImage ? (

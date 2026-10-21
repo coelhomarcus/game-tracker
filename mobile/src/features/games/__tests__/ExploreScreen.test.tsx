@@ -115,6 +115,14 @@ describe("ExploreScreen", () => {
     ).toBeOnTheScreen();
   });
 
+  it("does not give the cover its own screen reader stop", async () => {
+    await renderExplore();
+    await type("ha");
+    expect(
+      screen.queryByLabelText(/Capa de/, { includeHiddenElements: true }),
+    ).toBeNull();
+  });
+
   it("marks a game that is already in the library", async () => {
     mockLibrary([11]);
     await renderExplore();

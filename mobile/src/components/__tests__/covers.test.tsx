@@ -21,6 +21,15 @@ describe('GameCover', () => {
     expect(screen.queryByTestId('game-cover-image')).toBeNull();
   });
 
+  it('is hidden from the screen reader when decorative', async () => {
+    await render(<GameCover decorative name="Hades" url={null} width={120} />);
+    expect(screen.queryByLabelText(/Capa de/, { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByRole('image')).toBeNull();
+    const cover = screen.getByText('Hades', { includeHiddenElements: true }).parent!;
+    expect(cover.props.accessible).toBe(false);
+    expect(cover.props.importantForAccessibility).toBe('no-hide-descendants');
+  });
+
   it('falls back to the name after the image fails to load', async () => {
     await render(<GameCover name="Celeste" url="https://cdn.example.com/celeste.jpg" width={120} />);
     expect(screen.queryByText('Celeste')).toBeNull();

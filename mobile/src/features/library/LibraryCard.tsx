@@ -37,7 +37,7 @@ export function LibraryCard({ group, width, sort, favorite, showStatus, onPress 
       style={[styles.card, { width }]}
     >
       <View>
-        <GameCover name={group.game.name} url={group.game.coverUrl} width={width} />
+        <GameCover decorative name={group.game.name} url={group.game.coverUrl} width={width} />
         {showStatus ? (
           <View testID="library-card-status" style={styles.status}>
             <StatusIcon status={status} />
