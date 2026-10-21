@@ -34,6 +34,22 @@ export function useConversations() {
   });
 }
 
+/**
+ * One conversation from the list (`null` when the list does not have it). A cached list is used
+ * as is; it is fetched only when missing (a deep link), so opening a room never races its own
+ * mark-read with a list refetch.
+ */
+export function useConversation(conversationId: string) {
+  const signedIn = useSession((state) => state.status === 'signedIn');
+  return useQuery({
+    queryKey: conversationsKey,
+    queryFn: () => chatApi.list(),
+    enabled: signedIn,
+    refetchOnMount: false,
+    select: (list: Conversation[]) => list.find((item) => item.id === conversationId) ?? null,
+  });
+}
+
 export function useMessages(conversationId: string | undefined) {
   return useInfiniteQuery<MessagePage, Error, MessagePages, QueryKey, string | undefined>({
     queryKey: messagesKey(conversationId ?? ''),

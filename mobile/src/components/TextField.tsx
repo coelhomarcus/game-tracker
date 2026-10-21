@@ -3,6 +3,10 @@ import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-na
 
 import { colors, fontSize, radii, space } from '@/theme/tokens';
 
+/** The growing multiline field: 16 px text, one line fills the 48 dp minimum height. */
+const LINE_HEIGHT = 22;
+const GROWING_PADDING = 13;
+
 export type TextFieldInput = ComponentRef<typeof TextInput>;
 
 export type TextFieldProps = {
@@ -17,6 +21,8 @@ export type TextFieldProps = {
   placeholder?: string;
   maxLength?: number;
   multiline?: boolean;
+  /** With `multiline`: starts at one line and grows up to this many, then scrolls. */
+  maxLines?: number;
   secureTextEntry?: boolean;
   autoComplete?: TextInputProps['autoComplete'];
   keyboardType?: TextInputProps['keyboardType'];
@@ -32,9 +38,15 @@ export function TextField({
   error,
   helper,
   multiline,
+  maxLines,
   inputRef,
   ...inputProps
 }: TextFieldProps) {
+  const multilineStyle = multiline
+    ? maxLines
+      ? [styles.inputGrowing, { maxHeight: LINE_HEIGHT * maxLines + GROWING_PADDING * 2 }]
+      : styles.inputMultiline
+    : null;
   return (
     <View style={styles.container}>
       {hideLabel ? null : <Text style={styles.label}>{label}</Text>}
@@ -45,7 +57,7 @@ export function TextField({
         accessibilityLabel={label}
         accessibilityHint={error}
         placeholderTextColor={colors.textMuted}
-        style={[styles.input, multiline ? styles.inputMultiline : null, error ? styles.inputError : null]}
+        style={[styles.input, multilineStyle, error ? styles.inputError : null]}
       />
       {error ? (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -72,6 +84,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
   },
   inputMultiline: { minHeight: 120, paddingVertical: space.md, textAlignVertical: 'top' },
+  inputGrowing: {
+    lineHeight: LINE_HEIGHT,
+    paddingVertical: GROWING_PADDING,
+    textAlignVertical: 'center',
+  },
   inputError: { borderColor: colors.danger },
   helper: { color: colors.textMuted, fontSize: fontSize.sm },
   error: { color: colors.danger, fontSize: fontSize.sm },
