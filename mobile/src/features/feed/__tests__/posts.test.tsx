@@ -17,6 +17,9 @@ jest.mock('../queries', () => ({ useTogglePostLike: () => ({ mutate: mockMutate 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
+// The avatar link is hidden from screen readers on purpose; touch still reaches it.
+const HIDDEN = { includeHiddenElements: true };
+
 const NOW = new Date('2026-10-20T12:00:00.000Z');
 const POST_LABEL = 'Post de Ana Souza, há 5 min: Zerei de primeira!';
 
@@ -128,9 +131,11 @@ describe('PostCard', () => {
     const onPress = jest.fn();
     await render(<PostCard post={post()} onPress={onPress} />);
 
-    const links = screen.getAllByRole('button', { name: 'Perfil de Ana Souza' });
-    expect(links).toHaveLength(2);
-    for (const link of links) await fireEvent.press(link);
+    // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
+    const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
+    expect(nameLink).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(nameLink);
+    await fireEvent.press(screen.getByTestId('author-avatar-link', HIDDEN));
 
     expect(mockPush).toHaveBeenCalledTimes(2);
     expect(mockPush).toHaveBeenCalledWith('/users/u1');
@@ -273,9 +278,11 @@ describe('ActivityCard', () => {
     const activity = post({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
     await render(<ActivityCard post={activity} onPress={onPress} />);
 
-    const links = screen.getAllByRole('button', { name: 'Perfil de Ana Souza' });
-    expect(links).toHaveLength(2);
-    for (const link of links) await fireEvent.press(link);
+    // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
+    const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
+    expect(nameLink).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(nameLink);
+    await fireEvent.press(screen.getByTestId('author-avatar-link', HIDDEN));
 
     expect(mockPush).toHaveBeenCalledTimes(2);
     expect(mockPush).toHaveBeenCalledWith('/users/u1');

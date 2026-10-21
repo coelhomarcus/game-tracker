@@ -12,9 +12,9 @@ import { displayName, type Comment } from './types';
 
 const AVATAR_SIZE = 32;
 const ICON_SIZE = 20;
-// Brings the 32 dp avatar and the one-line name up to the 48 dp touch target.
+// Brings the 32 dp avatar up to the 48 dp touch target; the name link is 48 dp tall on its own.
 const AVATAR_SLOP = space.sm;
-const NAME_SLOP = { top: 14, bottom: 14, left: space.sm, right: space.sm };
+const NAME_SLOP = { left: space.sm, right: space.sm };
 
 export type CommentItemProps = {
   item: FlatComment;
@@ -32,7 +32,12 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
 
   return (
     <View style={[styles.row, depth === 1 ? styles.reply : null]}>
-      <ProfileLink user={comment.author} hitSlop={AVATAR_SLOP}>
+      <ProfileLink
+        user={comment.author}
+        hitSlop={AVATAR_SLOP}
+        touchOnly
+        testID="author-avatar-link"
+      >
         <Avatar uri={resolveImageUrl(comment.author.avatarUrl)} name={name} size={AVATAR_SIZE} />
       </ProfileLink>
       <View style={styles.column}>
@@ -81,10 +86,10 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   reply: { marginLeft: space.xl },
-  column: { flex: 1, gap: space.xs },
+  column: { flex: 1 },
   replyingTo: { color: colors.textMuted, fontSize: fontSize.xs },
   meta: { flexDirection: 'row', alignItems: 'center' },
-  nameLink: { flexShrink: 1 },
+  nameLink: { flexShrink: 1, minHeight: 48, justifyContent: 'center' },
   name: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },
   time: { color: colors.textMuted, fontSize: fontSize.sm },
   content: { color: colors.text, fontSize: fontSize.md },

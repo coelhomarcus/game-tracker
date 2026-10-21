@@ -12,9 +12,9 @@ import { PostGameLink } from './PostGameLink';
 import { displayName, type Post } from './types';
 
 const AVATAR_SIZE = 32;
-// Brings the 32 dp avatar and the one-line name up to the 48 dp touch target.
+// Brings the 32 dp avatar up to the 48 dp touch target; the name link is 48 dp tall on its own.
 const AVATAR_SLOP = space.sm;
-const NAME_SLOP = { top: 14, bottom: 14, left: space.sm, right: space.sm };
+const NAME_SLOP = { left: space.sm, right: space.sm };
 
 export type ActivityCardProps = {
   post: Post;
@@ -38,7 +38,13 @@ export function ActivityCard({ post, onPress, hideGame = false }: ActivityCardPr
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <ProfileLink user={post.author} hitSlop={AVATAR_SLOP}>
+        <ProfileLink
+          user={post.author}
+          hitSlop={AVATAR_SLOP}
+          touchOnly
+          testID="author-avatar-link"
+          style={styles.avatarLink}
+        >
           <Avatar uri={resolveImageUrl(post.author.avatarUrl)} name={name} size={AVATAR_SIZE} />
         </ProfileLink>
         <View style={styles.column}>
@@ -86,8 +92,11 @@ const styles = StyleSheet.create({
     gap: space.xs,
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  column: { flex: 1, gap: space.xs },
-  nameLink: { alignSelf: 'flex-start' },
+  // The 48 dp name link already leaves room above the body.
+  column: { flex: 1 },
+  // Centers the 32 dp avatar on the 48 dp name line.
+  avatarLink: { marginTop: space.sm },
+  nameLink: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center' },
   body: { gap: space.xs },
   content: { color: colors.text, fontSize: fontSize.sm },
   name: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },

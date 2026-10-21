@@ -10,16 +10,32 @@ export type ProfileLinkProps = {
   children: ReactNode;
   hitSlop: PressableProps['hitSlop'];
   style?: StyleProp<ViewStyle>;
+  /**
+   * Touch-only shortcut for a link that sits right beside another one with the same label (an
+   * avatar next to the name): screen readers reach the profile through the other link only.
+   */
+  touchOnly?: boolean;
+  testID?: string;
 };
 
 /**
  * Opens a person's profile. Cards render it beside, not inside, their own pressable body, so a
  * tap on the avatar or the name never also opens the post.
  */
-export function ProfileLink({ user, children, hitSlop, style }: ProfileLinkProps) {
+export function ProfileLink({
+  user,
+  children,
+  hitSlop,
+  style,
+  touchOnly = false,
+  testID,
+}: ProfileLinkProps) {
   const router = useRouter();
   return (
     <Pressable
+      testID={testID}
+      accessible={touchOnly ? false : undefined}
+      importantForAccessibility={touchOnly ? 'no-hide-descendants' : undefined}
       accessibilityRole="button"
       accessibilityLabel={`Perfil de ${displayName(user)}`}
       hitSlop={hitSlop}

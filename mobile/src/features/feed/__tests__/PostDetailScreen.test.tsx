@@ -43,6 +43,9 @@ const metrics = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
+// The avatar link is hidden from screen readers on purpose; touch still reaches it.
+const HIDDEN = { includeHiddenElements: true };
+
 const POST_ID = '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b';
 const POST_LABEL = /^Post de Ana Souza, /;
 
@@ -374,14 +377,19 @@ describe('PostDetailScreen comments', () => {
   it('opens the author profile from the avatar and the name of a comment', async () => {
     await renderScreen();
 
-    // Each comment has two links: the avatar first, then the name.
-    const caioLinks = screen.getAllByRole('button', { name: 'Perfil de Caio' });
-    expect(caioLinks).toHaveLength(2);
-    await fireEvent.press(caioLinks[0]);
-    await fireEvent.press(screen.getAllByRole('button', { name: 'Perfil de bia' })[1]);
+    // One exposed link per comment (the name, a full 48 dp tall); the avatar link is touch-only.
+    const caioLink = screen.getByRole('button', { name: 'Perfil de Caio' });
+    expect(caioLink).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(caioLink);
+    await fireEvent.press(screen.getByRole('button', { name: 'Perfil de bia' }));
+    // The post header and the three comments each have a touch-only avatar link.
+    const avatars = screen.getAllByTestId('author-avatar-link', HIDDEN);
+    expect(avatars).toHaveLength(4);
+    await fireEvent.press(avatars[3]);
 
     expect(mockPush).toHaveBeenNthCalledWith(1, '/users/u3');
     expect(mockPush).toHaveBeenNthCalledWith(2, '/users/u2');
+    expect(mockPush).toHaveBeenNthCalledWith(3, '/users/u3');
   });
 });
 

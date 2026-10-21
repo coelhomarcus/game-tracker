@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar, Button, Tabs } from '@/components';
 import { STATUSES, statusIcon, statusLabel } from '@/features/library/status';
+import { displayName } from '@/features/feed/types';
 import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { formatHours } from '@/lib/hours';
 import { resolveImageUrl } from '@/lib/imageUrl';
@@ -55,12 +56,18 @@ function uniquePlayers(players: GamePlayer[]): GamePlayer[] {
 
 function PlayerRow({ player }: { player: GamePlayer }) {
   const { user } = player;
+  const name = displayName(user);
   return (
     <ProfileLink user={user} hitSlop={0} style={styles.player}>
-      <Avatar uri={resolveImageUrl(user.avatarUrl)} name={user.name ?? user.username} size={40} />
-      <Text numberOfLines={1} style={styles.playerName}>
-        {user.name ?? `@${user.username}`}
-      </Text>
+      <Avatar uri={resolveImageUrl(user.avatarUrl)} name={name} size={40} />
+      <View style={styles.playerText}>
+        <Text numberOfLines={1} style={styles.playerName}>
+          {name}
+        </Text>
+        {name === user.username ? null : (
+          <Text numberOfLines={1} style={styles.playerHandle}>{`@${user.username}`}</Text>
+        )}
+      </View>
       {player.hoursPlayed !== null ? (
         <Text style={styles.playerHours}>{`${formatHours(player.hoursPlayed)} h`}</Text>
       ) : null}
@@ -135,6 +142,8 @@ const styles = StyleSheet.create({
   // Tabs pad their own row by `space.lg`; this cancels it so they align with the text above.
   tabs: { marginHorizontal: -space.lg },
   player: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48 },
-  playerName: { flex: 1, color: colors.textStrong, fontSize: fontSize.md },
+  playerText: { flex: 1 },
+  playerName: { color: colors.textStrong, fontSize: fontSize.md },
+  playerHandle: { color: colors.textMuted, fontSize: fontSize.sm },
   playerHours: { color: colors.text, fontSize: fontSize.sm },
 });

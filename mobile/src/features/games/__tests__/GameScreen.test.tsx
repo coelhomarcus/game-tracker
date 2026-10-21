@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useGamePosts } from '@/features/feed/queries';
@@ -399,7 +399,10 @@ describe('GameScreen', () => {
       expect(screen.getByText('Alguns dos jogadores, até 10.')).toBeOnTheScreen();
       expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
       expect(screen.getByText('12,5 h')).toBeOnTheScreen();
-      expect(screen.getByText('@bia')).toBeOnTheScreen();
+      expect(screen.getByText('@ana')).toBeOnTheScreen();
+      // Without a name the title is the username, with no second line repeating it.
+      expect(screen.getByText('bia')).toBeOnTheScreen();
+      expect(screen.queryByText('@bia')).toBeNull();
       expect(useGamePlayers).toHaveBeenLastCalledWith('g1', 'all');
 
       await fireEvent.press(screen.getByRole('tab', { name: 'Quem eu sigo' }));
@@ -430,6 +433,25 @@ describe('GameScreen', () => {
       expect(mockPush).toHaveBeenLastCalledWith('/users/u1');
       await fireEvent.press(screen.getByRole('button', { name: 'Perfil de bia' }));
       expect(mockPush).toHaveBeenLastCalledWith('/users/u2');
+    });
+
+    it('titles a player with a blank name by the username', async () => {
+      jest.mocked(useGamePlayers).mockReturnValue({
+        data: [
+          {
+            user: { id: 'u3', username: 'caio', name: '  ', avatarUrl: null },
+            status: 'playing',
+            hoursPlayed: null,
+          },
+        ],
+        isPending: false,
+        isError: false,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      const row = screen.getByRole('button', { name: 'Perfil de caio' });
+      expect(within(row).getByText('caio')).toBeOnTheScreen();
     });
 
     it('shows the posts of the game below the players', async () => {
