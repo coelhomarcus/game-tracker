@@ -145,7 +145,7 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
             <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
           )
         ) : null}
-        {tab === 'community' ? <GameCommunity gameId={game.id} /> : null}
+        {tab === 'community' ? <GameCommunity gameId={game.id} igdbId={game.igdbId} /> : null}
       </View>
     </Screen>
   );

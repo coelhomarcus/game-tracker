@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useGamePosts } from '@/features/feed/queries';
 import { useDeleteEntry, useLibrary, useUpdateEntry } from '@/features/library/queries';
 import type { GameEntry } from '@/features/library/types';
 import { ApiError } from '@/lib/http/errors';
@@ -16,6 +17,10 @@ jest.mock('../queries', () => ({
   useGameStats: jest.fn(),
   useGamePlayers: jest.fn(),
   useToggleFavorite: jest.fn(),
+}));
+jest.mock('@/features/feed/queries', () => ({
+  useGamePosts: jest.fn(),
+  useTogglePostLike: jest.fn(),
 }));
 jest.mock('@/features/library/queries', () => ({
   useLibrary: jest.fn(),
@@ -119,6 +124,11 @@ beforeEach(() => {
   jest
     .mocked(useGamePlayers)
     .mockReturnValue({ data: [], isPending: false, isError: false } as never);
+  jest.mocked(useGamePosts).mockReturnValue({
+    data: { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] },
+    isPending: false,
+    isError: false,
+  } as never);
   setup();
 });
 
@@ -394,6 +404,15 @@ describe('GameScreen', () => {
 
       await fireEvent.press(screen.getByRole('tab', { name: 'Quem eu sigo' }));
       expect(useGamePlayers).toHaveBeenLastCalledWith('g1', 'following');
+    });
+
+    it('shows the posts of the game below the players', async () => {
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      expect(useGamePosts).toHaveBeenLastCalledWith('g1');
+      await fireEvent.press(screen.getByRole('button', { name: 'Publicar sobre este jogo' }));
+      expect(mockPush).toHaveBeenCalledWith('/posts/new?igdbId=11');
     });
 
     const ana = { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null };

@@ -15,10 +15,12 @@ const AVATAR_SIZE = 32;
 export type ActivityCardProps = {
   post: Post;
   onPress?: () => void;
+  /** Hides the game link, for lists already scoped to one game. */
+  hideGame?: boolean;
 };
 
 /** A library activity ("started playing…"), more compact than a written post. */
-export function ActivityCard({ post, onPress }: ActivityCardProps) {
+export function ActivityCard({ post, onPress, hideGame = false }: ActivityCardProps) {
   const name = displayName(post.author);
   const status = post.activityStatus;
   const time = formatRelativeTime(post.createdAt);
@@ -54,7 +56,7 @@ export function ActivityCard({ post, onPress }: ActivityCardProps) {
         </View>
       </Pressable>
       <View style={styles.footer}>
-        {post.game ? <PostGameLink game={post.game} /> : null}
+        {post.game && !hideGame ? <PostGameLink game={post.game} /> : null}
         <PostActions post={post} />
       </View>
     </View>

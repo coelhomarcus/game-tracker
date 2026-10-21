@@ -14,10 +14,12 @@ const AVATAR_SIZE = 40;
 export type PostCardProps = {
   post: Post;
   onPress?: () => void;
+  /** Hides the game link, for lists already scoped to one game. */
+  hideGame?: boolean;
 };
 
 /** A written post. The game link and actions stay outside the pressable body to stay reachable. */
-export function PostCard({ post, onPress }: PostCardProps) {
+export function PostCard({ post, onPress, hideGame = false }: PostCardProps) {
   const name = displayName(post.author);
   const image = resolveImageUrl(post.imageUrl);
   const time = formatRelativeTime(post.createdAt);
@@ -49,7 +51,7 @@ export function PostCard({ post, onPress }: PostCardProps) {
         </View>
       </Pressable>
       <View style={styles.footer}>
-        {post.game ? <PostGameLink game={post.game} /> : null}
+        {post.game && !hideGame ? <PostGameLink game={post.game} /> : null}
         <PostActions post={post} />
       </View>
     </View>

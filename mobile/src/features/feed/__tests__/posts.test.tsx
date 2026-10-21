@@ -83,6 +83,13 @@ describe('PostCard', () => {
     expect(screen.getByLabelText(/^Post de bia, /)).toBeOnTheScreen();
   });
 
+  it('hides the game link when asked to', async () => {
+    await render(<PostCard post={post()} hideGame />);
+
+    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/Abrir jogo/)).toBeNull();
+  });
+
   it('omits the game link when the post has no game', async () => {
     await render(<PostCard post={post({ game: null })} />);
 
@@ -173,6 +180,12 @@ describe('ActivityCard', () => {
     expect(screen.getByText('Concluído')).toBeOnTheScreen();
     expect(screen.getByText('há 5 min')).toBeOnTheScreen();
     expect(screen.getByLabelText('Abrir jogo Hades')).toBeOnTheScreen();
+  });
+
+  it('hides the game link when asked to', async () => {
+    await render(<ActivityCard post={post({ type: 'activity' })} hideGame />);
+
+    expect(screen.queryByLabelText(/Abrir jogo/)).toBeNull();
   });
 
   it('exposes the sentence, status and time in the accessibility label', async () => {

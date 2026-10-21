@@ -9,6 +9,7 @@ import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import type { PlayersScope } from './api';
+import { GamePosts } from './GamePosts';
 import { useGamePlayers, useGameStats } from './queries';
 import type { GamePlayer, GameStats } from './types';
 
@@ -66,7 +67,7 @@ function PlayerRow({ player }: { player: GamePlayer }) {
   );
 }
 
-export function GameCommunity({ gameId }: { gameId: string }) {
+export function GameCommunity({ gameId, igdbId }: { gameId: string; igdbId: number }) {
   const [scope, setScope] = useState<PlayersScope>('all');
   const stats = useGameStats(gameId);
   const players = useGamePlayers(gameId, scope);
@@ -115,6 +116,8 @@ export function GameCommunity({ gameId }: { gameId: string }) {
           <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
         )}
       </View>
+
+      <GamePosts gameId={gameId} igdbId={igdbId} />
     </View>
   );
 }
