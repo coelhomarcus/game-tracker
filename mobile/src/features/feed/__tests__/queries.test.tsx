@@ -6,7 +6,12 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import type { ReactNode } from "react";
 
-import { queryClient as sharedQueryClient, useSession } from "@/features/auth";
+import {
+  authErrorMessage,
+  queryClient as sharedQueryClient,
+  useSession,
+} from "@/features/auth";
+import { showToast } from "@/lib/toast";
 
 import { feedApi } from "../api";
 import {
@@ -20,6 +25,7 @@ import {
 } from "../queries";
 import type { Comment, Post, PostPage } from "../types";
 
+jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
 jest.mock("@/features/feed/api", () => ({
   feedApi: {
     feed: jest.fn(),
@@ -272,6 +278,24 @@ describe("useTogglePostLike", () => {
       likedByMe: false,
       likeCount: 2,
     });
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+
+  it("does not show a toast when the like succeeds", async () => {
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("cancels in-flight reads so a refetch cannot overwrite the optimistic state", async () => {
@@ -437,6 +461,8 @@ describe("comments", () => {
       client.getQueryData<Comment[]>(["comments", "p1"])![0].replies[0]
         .likedByMe,
     ).toBe(false);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
   });
 });
 
@@ -603,9 +629,12 @@ describe("rapid and concurrent likes", () => {
     await act(async () => first.reject());
     await waitFor(() => expect(mocked.setLike).toHaveBeenCalledTimes(2));
     expect(mocked.setLike).toHaveBeenLastCalledWith("p1", false);
+    // The failed tap does not roll back while a later tap is pending, so it says nothing.
+    expect(showToast).not.toHaveBeenCalled();
 
     await act(async () => second.resolve());
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(showToast).not.toHaveBeenCalled();
     expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({
       likedByMe: false,
       likeCount: 2,
@@ -670,9 +699,61 @@ describe("rapid and concurrent likes", () => {
     await act(async () => first.reject());
     await waitFor(() => expect(mocked.setCommentLike).toHaveBeenCalledTimes(2));
     expect(mocked.setCommentLike).toHaveBeenLastCalledWith("c1", false);
+    expect(showToast).not.toHaveBeenCalled();
     await act(async () => second.reject());
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(client.getQueryData(["comments", "p1"])).toEqual(tree);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+
+  it("shows one toast for a post double tap that fails both times, after the last settles", async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setLike
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      result.current.mutate(post("p1"));
+      result.current.mutate(post("p1", { likedByMe: true, likeCount: 3 }));
+    });
+
+    await act(async () => first.reject());
+    await waitFor(() => expect(mocked.setLike).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
+    await act(async () => second.reject());
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not toast when a comment like fails but a later tap is still pending", async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setCommentLike
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    client.setQueryData(["comments", "p1"], [comment("c1")]);
+    const { result } = await renderHook(() => useToggleCommentLike("p1"), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      result.current.mutate(comment("c1"));
+      result.current.mutate(comment("c1", [], { likedByMe: true, likeCount: 1 }));
+    });
+
+    await act(async () => first.reject());
+    await waitFor(() => expect(mocked.setCommentLike).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
+    await act(async () => second.resolve());
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 });

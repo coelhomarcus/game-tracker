@@ -7,6 +7,9 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 
+import { authErrorMessage } from "@/features/auth";
+import { showToast } from "@/lib/toast";
+
 import { feedApi } from "./api";
 import { beginLike, runInLane, settleLike } from "./likeLanes";
 import { cancelPostQueries, updatePostEverywhere } from "./postCache";
@@ -81,9 +84,11 @@ function withLike(liked: boolean) {
  */
 export function useTogglePostLike() {
   const client = useQueryClient();
-  const settle = (post: Post, ok: boolean) => {
-    const to = settleLike(postLane(post.id), !post.likedByMe, ok);
-    if (to !== undefined) updatePostEverywhere(client, post.id, withLike(to));
+  const settle = (post: Post, error?: Error) => {
+    const to = settleLike(postLane(post.id), !post.likedByMe, !error);
+    if (to === undefined) return;
+    updatePostEverywhere(client, post.id, withLike(to));
+    if (error) showToast(authErrorMessage(error));
   };
   return useMutation<void, Error, Post>({
     mutationFn: (post) =>
@@ -95,8 +100,8 @@ export function useTogglePostLike() {
       await cancelPostQueries(client, post.id);
       updatePostEverywhere(client, post.id, withLike(!post.likedByMe));
     },
-    onSuccess: (_data, post) => settle(post, true),
-    onError: (_error, post) => settle(post, false),
+    onSuccess: (_data, post) => settle(post),
+    onError: (error, post) => settle(post, error),
   });
 }
 
@@ -175,9 +180,11 @@ export function useToggleCommentLike(postId: string) {
     client.setQueryData<Comment[]>(queryKey, (tree) =>
       tree ? mapComment(tree, id, withCommentLike(liked)) : tree,
     );
-  const settle = (comment: Comment, ok: boolean) => {
-    const to = settleLike(commentLane(comment.id), !comment.likedByMe, ok);
-    if (to !== undefined) update(comment.id, to);
+  const settle = (comment: Comment, error?: Error) => {
+    const to = settleLike(commentLane(comment.id), !comment.likedByMe, !error);
+    if (to === undefined) return;
+    update(comment.id, to);
+    if (error) showToast(authErrorMessage(error));
   };
   return useMutation<void, Error, Comment>({
     mutationFn: (comment) =>
@@ -189,7 +196,7 @@ export function useToggleCommentLike(postId: string) {
       await client.cancelQueries({ queryKey });
       update(comment.id, !comment.likedByMe);
     },
-    onSuccess: (_data, comment) => settle(comment, true),
-    onError: (_error, comment) => settle(comment, false),
+    onSuccess: (_data, comment) => settle(comment),
+    onError: (error, comment) => settle(comment, error),
   });
 }
