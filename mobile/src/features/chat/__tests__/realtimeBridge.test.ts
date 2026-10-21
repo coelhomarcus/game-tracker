@@ -6,7 +6,7 @@ import { chatApi } from '../api';
 import { useChatStore } from '../chatStore';
 import { conversationsKey, messagesKey, type MessagePages } from '../queries';
 import { realtimeBridge } from '../realtimeBridge';
-import type { Conversation, Message } from '../types';
+import { parseMessage, type Conversation, type Message, type MessagePage } from '../types';
 
 jest.mock('@/lib/realtime/chatSocket', () => jest.requireActual('@/test-utils/fakeChatSocket'));
 jest.mock('@/features/chat/api', () => ({
@@ -80,6 +80,52 @@ function seedCache() {
   ]);
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const page = (...items: Message[]): MessagePage => ({
+  items,
+  nextCursor: null,
+});
+
+/** Loads c1's messages through a real query (as the room does), so it can be refetched. */
+async function loadMessages(...items: Message[]) {
+  mocked.messages.mockResolvedValueOnce(page(...items));
+  await queryClient.fetchInfiniteQuery({
+    queryKey: messagesKey('c1'),
+    queryFn: ({ pageParam }) => chatApi.messages('c1', pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: MessagePage) => last.nextCursor ?? undefined,
+    retry: false,
+  });
+}
+
+/** Records the order of message fetches and read marks. */
+function trackOrder(serverItems: () => Message[]) {
+  const order: string[] = [];
+  mocked.messages.mockImplementation(async () => {
+    order.push('fetch');
+    return page(...serverItems());
+  });
+  mocked.markRead.mockImplementation(async () => {
+    order.push('read');
+  });
+  return order;
+}
+
+async function answerJoin() {
+  chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
+  await flush();
+  await flush();
+}
+
 function cachedIds(conversationId = 'c1'): string[] {
   const data = queryClient.getQueryData<MessagePages>(messagesKey(conversationId));
   return data?.pages.flatMap((page) => page.items.map((item) => item.id)) ?? [];
@@ -144,6 +190,24 @@ describe('message:receive', () => {
     expect(cachedIds()).toEqual(['m1', 'm0']);
     expect(conversations()[0]).toMatchObject({ id: 'c1', unread: false });
     expect(mocked.markRead).toHaveBeenCalledWith('c1');
+  });
+
+  it('marks a burst read with one request in flight and at most one after it', async () => {
+    seedCache();
+    store().setOpenConversation('c1');
+    const request = deferred<void>();
+    mocked.markRead.mockReturnValueOnce(request.promise);
+
+    for (const id of ['m1', 'm2', 'm3', 'm4', 'm5']) {
+      chatSocket.fire('message:receive', json(id, { minute: 10 + Number(id.slice(1)) }));
+    }
+    expect(mocked.markRead).toHaveBeenCalledTimes(1);
+    request.resolve();
+    await flush();
+
+    expect(mocked.markRead).toHaveBeenCalledTimes(2);
+    expect(mocked.markRead).toHaveBeenLastCalledWith('c1');
+    expect(conversations()[0]).toMatchObject({ id: 'c1', unread: false });
   });
 
   it('does not mark my own message unread or read', () => {
@@ -255,6 +319,8 @@ describe('typing and presence', () => {
 describe('open conversation', () => {
   it('joins the room and asks who is online, then leaves it when closed', async () => {
     seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    mocked.messages.mockResolvedValue(page(cached('m0', 'c1', 0)));
 
     store().setOpenConversation('c1');
     expect(chatSocket.pendingAck('conversation:join')?.payload).toEqual({ conversationId: 'c1' });
@@ -271,19 +337,22 @@ describe('open conversation', () => {
     ]);
   });
 
-  it('re-joins and refreshes presence and data after a reconnect', async () => {
+  it('re-joins and refreshes presence and data after a reconnect, then marks it read', async () => {
     seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
     store().setOpenConversation('c1');
-    chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
-    await flush();
+    await answerJoin();
     chatSocket.pendingAck('presence:get')?.resolve({ online: [] });
     await flush();
     chatSocket.drop();
     chatSocket.ackLog = [];
+    // Sent while the connection was down: only the server has it.
+    const order = trackOrder(() => [cached('m1', 'c1', 1), cached('m0', 'c1', 0)]);
 
     chatSocket.connect();
-    chatSocket.pendingAck('conversation:join')?.resolve({ ok: true });
-    await flush();
+    expect(order).toEqual([]);
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    await answerJoin();
     chatSocket.pendingAck('presence:get')?.resolve({ online: ['u2'] });
     await flush();
 
@@ -292,8 +361,123 @@ describe('open conversation', () => {
       'presence:get',
     ]);
     expect(store().online.u2).toBe(true);
-    expect(queryClient.getQueryState(messagesKey('c1'))?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+    expect(order).toEqual(['fetch', 'read']);
+    expect(mocked.markRead).toHaveBeenCalledWith('c1');
+  });
+
+  it('refetches the open conversation after the join answers, then marks it read', async () => {
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    const refetch = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(refetch.promise);
+
+    store().setOpenConversation('c1');
+    expect(mocked.messages).toHaveBeenCalledTimes(1);
+    await answerJoin();
+    expect(mocked.messages).toHaveBeenCalledTimes(2);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+
+    refetch.resolve(page(cached('m1', 'c1', 1), cached('m0', 'c1', 0)));
+    await flush();
+    await flush();
+
+    expect(cachedIds()).toEqual(['m1', 'm0']);
+    expect(mocked.markRead).toHaveBeenCalledTimes(1);
+    expect(mocked.markRead).toHaveBeenCalledWith('c1');
+  });
+
+  it('refetches even when a message was merged before the join answered', async () => {
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    const mine = parseMessage(json('m2', { senderId: 'me', minute: 2 }));
+    // m1 was sent while outside the room; the server has both.
+    const order = trackOrder(() => [mine, cached('m1', 'c1', 1), cached('m0', 'c1', 0)]);
+    store().setOpenConversation('c1');
+
+    // My message from another device, merged locally while the join is on its way.
+    chatSocket.fire('message:receive', json('m2', { senderId: 'me', minute: 2 }));
+    expect(cachedIds()).toEqual(['m2', 'm0']);
+    await answerJoin();
+    await flush();
+
+    expect(order).toEqual(['fetch', 'read']);
+    expect(cachedIds()).toEqual(['m2', 'm1', 'm0']);
+  });
+
+  it('does not mark read when the room closed or re-joined before the refetch landed', async () => {
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    const refetch = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(refetch.promise);
+    store().setOpenConversation('c1');
+    await answerJoin();
+
+    store().setOpenConversation(null);
+    refetch.resolve(page(cached('m0', 'c1', 0)));
+    await flush();
+    await flush();
+    expect(mocked.markRead).not.toHaveBeenCalled();
+
+    // Left and opened again: only the newest join's refetch may mark it read.
+    const stale = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(stale.promise);
+    store().setOpenConversation('c1');
+    await answerJoin();
+    store().setOpenConversation(null);
+    store().setOpenConversation('c1');
+    stale.resolve(page(cached('m0', 'c1', 0)));
+    await flush();
+    await flush();
+    expect(mocked.markRead).not.toHaveBeenCalled();
+
+    mocked.messages.mockResolvedValueOnce(page(cached('m0', 'c1', 0)));
+    await answerJoin();
+    await flush();
+    expect(mocked.markRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mark read when the refetch fails', async () => {
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    mocked.messages.mockRejectedValueOnce(new Error('offline'));
+    store().setOpenConversation('c1');
+
+    await answerJoin();
+    await flush();
+
+    expect(mocked.messages).toHaveBeenCalledTimes(2);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+  });
+
+  it('does not refetch or mark read when the join is refused', async () => {
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    store().setOpenConversation('c1');
+
+    chatSocket.pendingAck('conversation:join')?.resolve({ error: 'Conversa não encontrada' });
+    await flush();
+    await flush();
+
+    expect(mocked.messages).toHaveBeenCalledTimes(1);
+    expect(mocked.markRead).not.toHaveBeenCalled();
+  });
+
+  it('catches up on the first connect after starting with a conversation open', async () => {
+    realtimeBridge.stop();
+    chatSocket.drop();
+    seedCache();
+    await loadMessages(cached('m0', 'c1', 0));
+    store().setOpenConversation('c1');
+    const order = trackOrder(() => [cached('m1', 'c1', 1), cached('m0', 'c1', 0)]);
+    realtimeBridge.start();
+
+    chatSocket.connect();
+    await answerJoin();
+    await flush();
+
+    expect(order).toEqual(['fetch', 'read']);
+    expect(cachedIds()).toEqual(['m1', 'm0']);
   });
 
   it('joins right away when started while a conversation is already open', () => {

@@ -25,13 +25,29 @@ const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGo
 let mockParams: Record<string, string | string[]> = {};
 /** Every options object the screen handed to the header, in order. */
 const mockHeaderOptions: Record<string, unknown>[] = [];
+/** Whether the screen is focused (another screen pushed on top blurs it). */
+const mockFocus = {
+  focused: true,
+  listeners: new Set<() => void>(),
+  set(focused: boolean) {
+    mockFocus.focused = focused;
+    for (const listener of [...mockFocus.listeners]) listener();
+  },
+};
 jest.mock('expo-router', () => {
-  const { useEffect } = jest.requireActual('react');
+  const { useEffect, useSyncExternalStore } = jest.requireActual('react');
+  const subscribe = (listener: () => void) => {
+    mockFocus.listeners.add(listener);
+    return () => mockFocus.listeners.delete(listener);
+  };
   return {
     useRouter: () => mockRouter,
     useLocalSearchParams: () => mockParams,
-    // Mounted means focused here; unmounting blurs.
-    useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, [effect]),
+    // Mounted and focused runs the effect; blurring or unmounting runs its cleanup.
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      const focused = useSyncExternalStore(subscribe, () => mockFocus.focused);
+      useEffect(() => (focused ? effect() : undefined), [effect, focused]);
+    },
     // The header is rendered in place so the tests can read and press it.
     Stack: {
       Screen: ({ options }: { options?: { title?: string; headerTitle?: unknown } }) => {
@@ -140,12 +156,28 @@ async function renderRoom(id: string = CONV) {
   await render(ui());
 }
 
-/** Renders with the list cached and the given history loaded. */
+/** Renders with the list cached and the given history loaded (the server keeps answering it). */
 async function renderLoaded(items: Message[], nextCursor: string | null = null) {
   queryClient.setQueryData(conversationsKey, [withAna]);
-  mocked.messages.mockResolvedValueOnce(page(items, nextCursor));
+  mocked.messages.mockResolvedValue(page(items, nextCursor));
   await renderRoom();
   await screen.findByTestId(items.length > 0 ? 'message-list' : 'chat-empty');
+}
+
+async function answerJoin() {
+  await act(async () => chatSocket.pendingAck('conversation:join')?.resolve({ ok: true }));
+}
+
+/** Waits for the bridge's catch-up after a join: its refetch, the read mark, and the render. */
+async function caughtUp(reads = 1) {
+  await waitFor(() => expect(mocked.markRead).toHaveBeenCalledTimes(reads));
+  await act(() => new Promise<void>((done) => setTimeout(done, 0)));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
 }
 
 const typingEvents = () =>
@@ -164,6 +196,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   mockParams = {};
+  mockFocus.focused = true;
   mockRouter.push.mockReset();
   mockRouter.back.mockReset();
   mockRouter.replace.mockReset();
@@ -191,7 +224,7 @@ afterEach(async () => {
 });
 
 describe('ChatRoomScreen: opening and leaving', () => {
-  it('opens the conversation, joins its room, asks for presence and marks it read', async () => {
+  it('opens the conversation, joins, asks for presence, refreshes and marks it read', async () => {
     await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
 
     expect(useChatStore.getState().openConversationId).toBe(CONV);
@@ -199,12 +232,19 @@ describe('ChatRoomScreen: opening and leaving', () => {
       event: 'conversation:join',
       payload: { conversationId: CONV },
     });
-    await act(async () => chatSocket.pendingAck('conversation:join')?.resolve({ ok: true }));
+    // Read only once the room is joined and its messages are fresh.
+    expect(mocked.markRead).not.toHaveBeenCalled();
+    await answerJoin();
     expect(chatSocket.ackLog).toContainEqual({
       event: 'presence:get',
       payload: { conversationId: CONV },
     });
+    await caughtUp();
     expect(mocked.markRead).toHaveBeenCalledWith(CONV);
+    expect(mocked.messages).toHaveBeenCalledTimes(2);
+    expect(mocked.markRead.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocked.messages.mock.invocationCallOrder[1],
+    );
     // The cached list is used as is: no refetch that could bring the unread flag back.
     expect(mocked.list).not.toHaveBeenCalled();
     const list = queryClient.getQueryData<Conversation[]>(conversationsKey);
@@ -228,7 +268,47 @@ describe('ChatRoomScreen: opening and leaving', () => {
       event: 'conversation:join',
       payload: { conversationId: CONV },
     });
+    await answerJoin();
+    await caughtUp();
     expect(mocked.markRead).toHaveBeenCalledWith(CONV);
+  });
+
+  it('catches up after coming back: fetches what arrived, then marks it read', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await answerJoin();
+    await caughtUp();
+
+    // The profile opened on top: the room is left, so its messages stop arriving.
+    await act(async () => mockFocus.set(false));
+    expect(chatSocket.emitted).toContainEqual({
+      event: 'conversation:leave',
+      payload: { conversationId: CONV },
+    });
+    expect(useChatStore.getState().openConversationId).toBeNull();
+    // Sent while away: only the server has it.
+    const refetch = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(refetch.promise);
+
+    await act(async () => mockFocus.set(true));
+    expect(useChatStore.getState().openConversationId).toBe(CONV);
+    expect(mocked.markRead).toHaveBeenCalledTimes(1);
+    await answerJoin();
+    expect(mocked.messages).toHaveBeenCalledTimes(3);
+    expect(mocked.markRead).toHaveBeenCalledTimes(1);
+
+    await act(async () =>
+      refetch.resolve(
+        page([
+          message('m2', 'u1', 'Enquanto isso', today(9, 7)),
+          message('m1', 'u1', 'Oi', today(9, 5)),
+        ]),
+      ),
+    );
+    expect(await screen.findByText('Enquanto isso')).toBeOnTheScreen();
+    await caughtUp(2);
+    expect(mocked.markRead.mock.invocationCallOrder[1]).toBeGreaterThan(
+      mocked.messages.mock.invocationCallOrder[2],
+    );
   });
 
   it('does not set the header again while scrolling or when messages arrive', async () => {
@@ -274,8 +354,9 @@ describe('ChatRoomScreen: header', () => {
 
   it('shows online from presence and typing over it', async () => {
     await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
-    await act(async () => chatSocket.pendingAck('conversation:join')?.resolve({ ok: true }));
+    await answerJoin();
     await act(async () => chatSocket.pendingAck('presence:get')?.resolve({ online: ['u1'] }));
+    await caughtUp();
 
     expect(screen.getByRole('button', { name: 'Perfil de Ana Souza, online' })).toBeOnTheScreen();
     expect(screen.getByText('online')).toBeOnTheScreen();

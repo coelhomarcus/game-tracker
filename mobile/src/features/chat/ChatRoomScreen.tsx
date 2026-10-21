@@ -30,7 +30,7 @@ import { ChatComposer, useTypingSignal } from './ChatComposer';
 import { useChatStore, type PendingMessage } from './chatStore';
 import { ConnectionBanner } from './ConnectionBanner';
 import { MessageBubble, type BubbleMessage } from './MessageBubble';
-import { useConversation, useMarkRead, useMessages } from './queries';
+import { useConversation, useMessages } from './queries';
 import type { Message } from './types';
 
 // The API answers 500 to an id that is not a UUID, so such an address is simply not a conversation.
@@ -228,7 +228,6 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const pending = useChatStore((state) => state.pending[conversationId] ?? NO_PENDING);
   const retry = useChatStore((state) => state.retry);
   const discard = useChatStore((state) => state.discard);
-  const { mutate: markRead } = useMarkRead(conversationId);
   const typing = useTypingSignal(conversationId);
   const stopTyping = typing.stop;
 
@@ -237,19 +236,19 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   // something other than a 404 (the loader shows a 404 as not found instead of this room).
   const ready = data !== undefined || messages.isError;
 
-  // Open while on screen: the realtime bridge joins the room (and asks who is online) and leaves
-  // it when this clears. Typing stops before leaving, since the room is needed to send it.
+  // Open while on screen: the realtime bridge joins the room (asks who is online, refetches what
+  // was sent while away and then marks it read) and leaves it when this clears. Typing stops
+  // before leaving, since the room is needed to send it.
   useFocusEffect(
     useCallback(() => {
       if (!ready) return;
       useChatStore.getState().setOpenConversation(conversationId);
-      markRead();
       return () => {
         stopTyping();
         const store = useChatStore.getState();
         if (store.openConversationId === conversationId) store.setOpenConversation(null);
       };
-    }, [ready, conversationId, markRead, stopTyping]),
+    }, [ready, conversationId, stopTyping]),
   );
 
   // Stable across scrolls and new messages, so the header is not set again on each render. The

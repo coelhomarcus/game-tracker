@@ -73,32 +73,24 @@ export function useStartConversation() {
   });
 }
 
-/** Marks the conversation read on the server, and in the list right away. */
-export function useMarkRead(conversationId: string) {
-  const client = useQueryClient();
-  return useMutation<void, Error, void>({
-    mutationFn: () => chatApi.markRead(conversationId),
-    onMutate: () => markReadInList(client, conversationId),
-    // The list's unread flag comes from the server; let it say again.
-    onError: () => {
-      void client.invalidateQueries({ queryKey: conversationsKey });
-    },
-  });
-}
-
 // ---------- cache updates from the socket ----------
 
 /**
  * Applies `update` now, and again once a fetch already in flight lands: that response may have
  * been read before the change existed and would otherwise overwrite it. `update` must be
- * idempotent.
+ * idempotent. `dataUpdatedAt` is kept, so it keeps telling when the server was last read (the
+ * realtime bridge relies on it to know whether a join still needs a refetch).
  */
 function updateNowAndAfterFetch<T>(
   client: QueryClient,
   key: QueryKey,
   update: (data: T | undefined) => T | undefined,
 ): void {
-  client.setQueryData<T>(key, update);
+  const apply = () =>
+    client.setQueryData<T>(key, update, {
+      updatedAt: client.getQueryState(key)?.dataUpdatedAt,
+    });
+  apply();
   const inFlight = client.getQueryCache().find({ queryKey: key, exact: true })?.promise;
   if (!inFlight) return;
   void inFlight
@@ -106,7 +98,7 @@ function updateNowAndAfterFetch<T>(
       () => undefined,
       () => undefined,
     )
-    .then(() => client.setQueryData<T>(key, update));
+    .then(apply);
 }
 
 /** Merges server messages into a conversation's loaded pages; nothing happens if none are. */
@@ -143,8 +135,12 @@ export function applyLatestMessage(client: QueryClient, message: Message, unread
   });
 }
 
+/**
+ * Clears a conversation's unread flag in the list, now and on top of a list response already on
+ * its way (it may have been read before the conversation was marked read on the server).
+ */
 export function markReadInList(client: QueryClient, conversationId: string): void {
-  client.setQueryData<Conversation[]>(conversationsKey, (data) =>
+  updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
     data?.some((item) => item.id === conversationId && item.unread)
       ? data.map((item) => (item.id === conversationId ? { ...item, unread: false } : item))
       : data,

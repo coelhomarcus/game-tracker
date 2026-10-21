@@ -9,9 +9,9 @@ import {
   addMessagesToCache,
   applyLatestMessage,
   conversationsKey,
+  markReadInList,
   messagesKey,
   useConversations,
-  useMarkRead,
   useMessages,
   useStartConversation,
   type MessagePages,
@@ -169,27 +169,32 @@ describe('useStartConversation', () => {
   });
 });
 
-describe('useMarkRead', () => {
-  it('marks the conversation read on the server and in the list right away', async () => {
-    const request = deferred<void>();
-    mocked.markRead.mockReturnValue(request.promise);
+// The server side of marking read lives in the realtime bridge (after each join's refetch).
+describe('markReadInList', () => {
+  it('marks only that conversation read in the list right away', () => {
     client.setQueryData(conversationsKey, [
       conversation('c1', message('m1', 1), true),
       conversation('c2', message('m2', 2), true),
     ]);
 
-    const { result, unmount } = await renderHook(() => useMarkRead('c1'), {
-      wrapper: wrapperFor(client),
-    });
-    await act(async () => {
-      result.current.mutate();
-    });
+    markReadInList(client, 'c1');
 
-    expect(mocked.markRead).toHaveBeenCalledWith('c1');
     const list = client.getQueryData<Conversation[]>(conversationsKey);
     expect(list?.map((item) => item.unread)).toEqual([false, true]);
+  });
 
-    await act(async () => request.resolve());
+  it('marks it read again on top of a list response that was already on its way', async () => {
+    const response = deferred<Conversation[]>();
+    mocked.list.mockReturnValue(response.promise);
+    const { result, unmount } = await renderHook(() => useConversations(), {
+      wrapper: wrapperFor(client),
+    });
+
+    // Read on the server before the conversation was marked read there.
+    markReadInList(client, 'c1');
+    await act(async () => response.resolve([conversation('c1', message('m1', 1), true)]));
+
+    await waitFor(() => expect(result.current.data?.[0].unread).toBe(false));
     await unmount();
   });
 });
@@ -209,6 +214,24 @@ describe('cache helpers', () => {
 
     const data = client.getQueryData<MessagePages>(messagesKey('c1'));
     expect(data?.pages[0].items.map((item) => item.id)).toEqual(['m2', 'm1']);
+  });
+
+  it('keeps the time the server was last read when merging locally', () => {
+    client.setQueryData<MessagePages>(
+      messagesKey('c1'),
+      { pages: [page(message('m1', 1))], pageParams: [undefined] },
+      { updatedAt: 1_000 },
+    );
+    client.setQueryData(conversationsKey, [conversation('c1', message('m1', 1), true)], {
+      updatedAt: 2_000,
+    });
+
+    addMessagesToCache(client, 'c1', [message('m2', 2)]);
+    applyLatestMessage(client, message('m2', 2), true);
+    markReadInList(client, 'c1');
+
+    expect(client.getQueryState(messagesKey('c1'))?.dataUpdatedAt).toBe(1_000);
+    expect(client.getQueryState(conversationsKey)?.dataUpdatedAt).toBe(2_000);
   });
 
   it('applies a message again on top of a response that was already on its way', async () => {
