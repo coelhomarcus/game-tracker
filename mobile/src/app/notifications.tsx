@@ -1,9 +1,3 @@
-import { EmptyState, Screen } from '@/components';
+import NotificationsScreen from '@/features/notifications/NotificationsScreen';
 
-export default function NotificationsScreen() {
-  return (
-    <Screen>
-      <EmptyState title="Notificações" message="Em construção" />
-    </Screen>
-  );
-}
+export default NotificationsScreen;
