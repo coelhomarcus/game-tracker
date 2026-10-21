@@ -16,16 +16,17 @@ export type PostCardProps = {
   onPress?: () => void;
 };
 
-/** A written post. The game link and the actions stay outside the pressable body so they remain reachable. */
+/** A written post. The game link and actions stay outside the pressable body to stay reachable. */
 export function PostCard({ post, onPress }: PostCardProps) {
   const name = displayName(post.author);
   const image = resolveImageUrl(post.imageUrl);
+  const time = formatRelativeTime(post.createdAt);
 
   return (
     <View style={styles.card}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Post de ${name}`}
+        accessibilityLabel={`Post de ${name}, ${time}: ${post.content}`}
         onPress={onPress}
         style={styles.body}
       >
@@ -33,7 +34,7 @@ export function PostCard({ post, onPress }: PostCardProps) {
         <View style={styles.column}>
           <Text style={styles.meta}>
             <Text style={styles.name}>{name}</Text>
-            {` @${post.author.username} · ${formatRelativeTime(post.createdAt)}`}
+            {` @${post.author.username} · ${time}`}
           </Text>
           <Text style={styles.content}>{post.content}</Text>
           {image ? (

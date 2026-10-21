@@ -18,6 +18,7 @@ const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 const NOW = new Date('2026-10-20T12:00:00.000Z');
+const POST_LABEL = 'Post de Ana Souza, há 5 min: Zerei de primeira!';
 
 beforeEach(() => {
   // Only the clock is faked: timers stay real so Testing Library keeps working.
@@ -69,11 +70,17 @@ describe('PostCard', () => {
     expect(screen.getByLabelText('Abrir jogo Hades')).toBeOnTheScreen();
   });
 
+  it('exposes the post text and time in the accessibility label', async () => {
+    await render(<PostCard post={post()} />);
+
+    expect(screen.getByLabelText(POST_LABEL)).toBeOnTheScreen();
+  });
+
   it('falls back to the username when the name is blank', async () => {
     const author = { id: 'u2', username: 'bia', name: '  ', avatarUrl: null };
     await render(<PostCard post={post({ author })} />);
 
-    expect(screen.getByLabelText('Post de bia')).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Post de bia, /)).toBeOnTheScreen();
   });
 
   it('omits the game link when the post has no game', async () => {
@@ -94,7 +101,7 @@ describe('PostCard', () => {
     const onPress = jest.fn();
     await render(<PostCard post={post()} onPress={onPress} />);
 
-    await fireEvent.press(screen.getByLabelText('Post de Ana Souza'));
+    await fireEvent.press(screen.getByLabelText(POST_LABEL));
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
@@ -127,6 +134,22 @@ describe('PostActions', () => {
     expect(screen.getByLabelText('Descurtir post, 4 curtidas')).toBeOnTheScreen();
   });
 
+  it('uses the singular for one like and one comment', async () => {
+    const single = post({ likeCount: 1, commentCount: 1 });
+    await render(<PostActions post={single} />);
+    expect(screen.getByLabelText('Curtir post, 1 curtida')).toBeOnTheScreen();
+    expect(screen.getByLabelText('1 comentário')).toBeOnTheScreen();
+
+    await screen.rerender(<PostActions post={{ ...single, likedByMe: true }} />);
+    expect(screen.getByLabelText('Descurtir post, 1 curtida')).toBeOnTheScreen();
+  });
+
+  it('uses the plural for zero and several', async () => {
+    await render(<PostActions post={post({ likeCount: 0, commentCount: 0 })} />);
+    expect(screen.getByLabelText('Curtir post, 0 curtidas')).toBeOnTheScreen();
+    expect(screen.getByLabelText('0 comentários')).toBeOnTheScreen();
+  });
+
   it('opens the post from the comment count', async () => {
     await render(<PostActions post={post()} />);
 
@@ -152,6 +175,20 @@ describe('ActivityCard', () => {
     expect(screen.getByLabelText('Abrir jogo Hades')).toBeOnTheScreen();
   });
 
+  it('exposes the sentence, status and time in the accessibility label', async () => {
+    const activity = post({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
+    await render(<ActivityCard post={activity} />);
+
+    expect(screen.getByLabelText('Ana Souza zerou Hades, Concluído, há 5 min')).toBeOnTheScreen();
+  });
+
+  it('leaves the status out of the label without an activity status', async () => {
+    const activity = post({ type: 'activity', activityStatus: null, content: 'zerou Hades' });
+    await render(<ActivityCard post={activity} />);
+
+    expect(screen.getByLabelText('Ana Souza zerou Hades, há 5 min')).toBeOnTheScreen();
+  });
+
   it('shows no status chip without an activity status', async () => {
     await render(<ActivityCard post={post({ type: 'activity', activityStatus: null })} />);
 
@@ -163,7 +200,7 @@ describe('ActivityCard', () => {
     const onPress = jest.fn();
     await render(<ActivityCard post={post({ type: 'activity' })} onPress={onPress} />);
 
-    await fireEvent.press(screen.getByLabelText('Post de Ana Souza'));
+    await fireEvent.press(screen.getByLabelText(/^Ana Souza /));
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
@@ -211,7 +248,7 @@ describe('PostList', () => {
   it('opens the post when a card is pressed', async () => {
     await render(<PostList query={feedQuery()} />);
 
-    await fireEvent.press(screen.getByLabelText('Post de Ana Souza'));
+    await fireEvent.press(screen.getByLabelText(POST_LABEL));
 
     expect(mockPush).toHaveBeenCalledWith('/posts/p1');
   });
@@ -220,7 +257,7 @@ describe('PostList', () => {
     const onPressPost = jest.fn();
     await render(<PostList query={feedQuery()} onPressPost={onPressPost} />);
 
-    await fireEvent.press(screen.getByLabelText('Post de Ana Souza'));
+    await fireEvent.press(screen.getByLabelText(POST_LABEL));
 
     expect(onPressPost).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
     expect(mockPush).not.toHaveBeenCalled();
@@ -238,6 +275,16 @@ describe('PostList', () => {
     await fireEvent(screen.getByTestId('post-list'), 'endReached');
     await fireEvent(screen.getByTestId('post-list'), 'endReached');
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fetch from scrolling after a failed page', async () => {
+    const fetchNextPage = jest.fn();
+    const failed = feedQuery({ hasNextPage: true, isFetchNextPageError: true, fetchNextPage });
+    await render(<PostList query={failed} />);
+
+    await fireEvent(screen.getByTestId('post-list'), 'endReached');
+
+    expect(fetchNextPage).not.toHaveBeenCalled();
   });
 
   it('does not fetch when there is no next page', async () => {

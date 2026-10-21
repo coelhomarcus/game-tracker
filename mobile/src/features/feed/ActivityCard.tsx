@@ -21,12 +21,16 @@ export type ActivityCardProps = {
 export function ActivityCard({ post, onPress }: ActivityCardProps) {
   const name = displayName(post.author);
   const status = post.activityStatus;
+  const time = formatRelativeTime(post.createdAt);
+  const label = [`${name} ${post.content}`, status ? statusLabel[status] : null, time]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <View style={styles.card}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Post de ${name}`}
+        accessibilityLabel={label}
         onPress={onPress}
         style={styles.body}
       >
@@ -45,7 +49,7 @@ export function ActivityCard({ post, onPress }: ActivityCardProps) {
                 </Text>
               </View>
             ) : null}
-            <Text style={styles.time}>{formatRelativeTime(post.createdAt)}</Text>
+            <Text style={styles.time}>{time}</Text>
           </View>
         </View>
       </Pressable>

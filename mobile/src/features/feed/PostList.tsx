@@ -59,8 +59,9 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   );
 
   const loadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    // After a failed page only the retry button fetches again, never the scroll position.
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   const refresh = useCallback(() => {
     if (onRefresh) onRefresh();
