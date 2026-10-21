@@ -18,7 +18,11 @@ function formatAddedDate(date: Date): string {
 }
 
 /** What the pill under a cover says about the sort in use; `null` when there is nothing to say. */
-export function libraryFooter(group: LibraryGroup, sort: LibrarySort): ReactNode | null {
+export function libraryFooter(
+  group: LibraryGroup,
+  sort: LibrarySort,
+  favorite: boolean,
+): ReactNode | null {
   switch (sort) {
     case 'recent':
       return formatAddedDate(newestAddedAt(group));
@@ -30,7 +34,6 @@ export function libraryFooter(group: LibraryGroup, sort: LibrarySort): ReactNode
     }
     case 'rating': {
       const rating = bestRating(group);
-      const favorite = group.game.isFavoritedByMe;
       const notes = hasNotes(group);
       if (rating === null && !favorite && !notes) return null;
       return (

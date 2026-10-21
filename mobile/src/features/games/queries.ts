@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useSession } from '@/features/auth';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { gamesApi, type PlayersScope } from './api';
@@ -28,6 +29,19 @@ export function useGamePlayers(gameId: string | undefined, scope: PlayersScope) 
     queryFn: () =>
       gamesApi.players(gameId as string, { status: 'playing', scope, limit: PLAYERS_LIMIT }),
     enabled: gameId !== undefined,
+  });
+}
+
+/**
+ * The games the signed-in user favorited. Library entries embed plain game rows without
+ * `isFavoritedByMe`, so this list is the source of the heart in the library.
+ */
+export function useMyFavorites() {
+  const userId = useSession((state) => state.user?.id);
+  return useQuery({
+    queryKey: ['favorites'],
+    queryFn: () => gamesApi.favorites(userId as string),
+    enabled: userId !== undefined,
   });
 }
 
@@ -60,11 +74,11 @@ export function useToggleFavorite(igdbId: number) {
     onError: (_error, _variables, context) => {
       if (context?.previous) client.setQueryData(key, context.previous);
     },
-    // The library footer heart reads `entry.game.isFavoritedByMe`, so the library is refreshed too.
+    // The library footer heart reads the favorites list, so it is refreshed too.
     onSettled: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: key }),
-        client.invalidateQueries({ queryKey: ['library'] }),
+        client.invalidateQueries({ queryKey: ['favorites'] }),
       ]),
   });
 }

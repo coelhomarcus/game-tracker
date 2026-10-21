@@ -12,6 +12,7 @@ import {
   Tabs,
   TextField,
 } from '@/components';
+import { useMyFavorites } from '@/features/games/queries';
 import { colors, fontSize, radii, space, type GameStatus } from '@/theme/tokens';
 
 import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
@@ -92,6 +93,7 @@ function LibraryHeader(props: HeaderProps) {
 export function LibraryScreen() {
   const router = useRouter();
   const library = useLibrary();
+  const favorites = useMyFavorites();
   const { query, status, platformKey } = useLibraryFilter();
   const sort = useLibraryPrefs((state) => state.sort);
   const [sheet, setSheet] = useState<'platform' | 'sort' | null>(null);
@@ -100,6 +102,11 @@ export function LibraryScreen() {
   const overview = useMemo(
     () => buildLibraryOverview(data ?? [], { query, status, platformKey }, sort),
     [data, query, status, platformKey, sort],
+  );
+
+  const favoriteIds = useMemo(
+    () => new Set((favorites.data ?? []).map((game) => game.id)),
+    [favorites.data],
   );
 
   const openGame = useCallback(
@@ -176,6 +183,7 @@ export function LibraryScreen() {
               group={group}
               width={width}
               sort={sort}
+              favorite={favoriteIds.has(group.game.id)}
               showStatus={status === null}
               onPress={openGame}
             />

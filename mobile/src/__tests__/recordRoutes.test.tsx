@@ -46,6 +46,7 @@ const mockEntry: GameEntry = {
 const mockCreate = jest.fn();
 
 jest.mock('@/features/games/queries', () => ({
+  useMyFavorites: () => ({ data: [] }),
   useGame: () => ({ data: mockGameData, isPending: false, isError: false, error: null, refetch: jest.fn() }),
 }));
 

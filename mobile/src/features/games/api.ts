@@ -36,6 +36,12 @@ export const gamesApi = {
     return json.map((item) => parseGamePlayer(item as Record<string, unknown>));
   },
 
+  /** The games a user favorited; the endpoint returns plain game rows. */
+  async favorites(userId: string): Promise<Game[]> {
+    const json = await api.get<unknown[]>(`/users/${userId}/favorites`);
+    return json.map((item) => parseGame(item as Record<string, unknown>));
+  },
+
   async setFavorite(gameId: string, favorite: boolean): Promise<void> {
     if (favorite) await api.post<void>(`/games/${gameId}/favorite`);
     else await api.delete<void>(`/games/${gameId}/favorite`);

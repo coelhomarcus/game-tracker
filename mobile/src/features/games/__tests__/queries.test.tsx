@@ -2,12 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { useSession } from '@/features/auth';
+
 import { gamesApi } from '../api';
 import {
   useGame,
   useGamePlayers,
   useGameSearch,
   useGameStats,
+  useMyFavorites,
   useToggleFavorite,
 } from '../queries';
 import type { Game, GameSummary } from '../types';
@@ -19,6 +22,7 @@ jest.mock('../api', () => ({
     stats: jest.fn(),
     players: jest.fn(),
     setFavorite: jest.fn(),
+    favorites: jest.fn(),
   },
 }));
 
@@ -153,7 +157,7 @@ describe('useToggleFavorite', () => {
     expect(client.getQueryData<Game>(['game', 1942])?.isFavoritedByMe).toBe(false);
   });
 
-  it('invalidates the game and the library when the request settles', async () => {
+  it('invalidates the game and the favorites when the request settles', async () => {
     mocked.setFavorite.mockResolvedValue(undefined);
     const client = freshClient();
     seed(client);
@@ -166,7 +170,37 @@ describe('useToggleFavorite', () => {
       await result.current.mutateAsync({ gameId: 'g1', favorite: true });
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['game', 1942] });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['library'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['favorites'] });
+    expect(spy).not.toHaveBeenCalledWith({ queryKey: ['library'] });
+  });
+});
+
+describe('useMyFavorites', () => {
+  afterEach(() => {
+    useSession.setState({ status: 'signedOut', user: null });
+  });
+
+  it('loads the favorites of the signed-in user under the favorites key', async () => {
+    useSession.setState({
+      status: 'signedIn',
+      user: { id: 'u1' } as ReturnType<typeof useSession.getState>['user'],
+    });
+    mocked.favorites.mockResolvedValue([game]);
+    const client = freshClient();
+    const { result } = await renderHook(() => useMyFavorites(), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current.data).toEqual([game]));
+    expect(mocked.favorites).toHaveBeenCalledWith('u1');
+    expect(client.getQueryData(['favorites'])).toEqual([game]);
+  });
+
+  it('does not request without a user', async () => {
+    useSession.setState({ status: 'signedOut', user: null });
+    const { result } = await renderHook(() => useMyFavorites(), {
+      wrapper: wrapperFor(freshClient()),
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mocked.favorites).not.toHaveBeenCalled();
   });
 });
 

@@ -14,6 +14,8 @@ export type LibraryCardProps = {
   group: LibraryGroup;
   width: number;
   sort: LibrarySort;
+  /** Whether the user favorited the game; library entries do not carry that themselves. */
+  favorite: boolean;
   /** The status icon only helps when the list mixes statuses, i.e. under the `Todos` tab. */
   showStatus: boolean;
   onPress: (igdbId: number) => void;
@@ -24,9 +26,9 @@ function recordsLabel(group: LibraryGroup): string {
   return platformsOf(group)[0] || 'Plataforma não informada';
 }
 
-export function LibraryCard({ group, width, sort, showStatus, onPress }: LibraryCardProps) {
+export function LibraryCard({ group, width, sort, favorite, showStatus, onPress }: LibraryCardProps) {
   const status = singleStatus(group);
-  const footer = libraryFooter(group, sort);
+  const footer = libraryFooter(group, sort, favorite);
   return (
     <Pressable
       accessibilityRole="button"

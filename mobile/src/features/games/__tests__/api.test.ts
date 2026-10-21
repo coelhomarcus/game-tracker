@@ -150,6 +150,28 @@ describe('gamesApi', () => {
     ]);
   });
 
+  it('favorites sends GET /users/:id/favorites and parses the game rows', async () => {
+    server.use(
+      http.get(`${apiBaseUrl}/users/u1/favorites`, () =>
+        HttpResponse.json([{ id: 'g1', igdbId: 1942, name: 'Hades' }]),
+      ),
+    );
+
+    await expect(gamesApi.favorites('u1')).resolves.toEqual([
+      {
+        id: 'g1',
+        igdbId: 1942,
+        name: 'Hades',
+        coverUrl: null,
+        summary: null,
+        screenshots: [],
+        platforms: [],
+        genres: [],
+        isFavoritedByMe: false,
+      },
+    ]);
+  });
+
   it('setFavorite sends POST to favorite and DELETE to unfavorite', async () => {
     const methods: string[] = [];
     server.use(

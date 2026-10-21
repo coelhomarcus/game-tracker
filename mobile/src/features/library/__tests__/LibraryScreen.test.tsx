@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useMyFavorites } from '@/features/games/queries';
 import type { Game } from '@/features/games/types';
 
 import { useLibraryFilter } from '../filterStore';
@@ -16,6 +17,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../queries', () => ({ useLibrary: jest.fn() }));
+jest.mock('@/features/games/queries', () => ({ useMyFavorites: jest.fn() }));
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -25,7 +27,8 @@ const metrics = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
-function game(id: string, igdbId: number, name: string, isFavoritedByMe = false): Game {
+/** Library entries embed plain game rows, so the API never sets `isFavoritedByMe` on them. */
+function game(id: string, igdbId: number, name: string): Game {
   return {
     id,
     igdbId,
@@ -35,7 +38,7 @@ function game(id: string, igdbId: number, name: string, isFavoritedByMe = false)
     screenshots: [],
     platforms: [],
     genres: [],
-    isFavoritedByMe,
+    isFavoritedByMe: false,
   };
 }
 
@@ -101,7 +104,14 @@ async function renderLibrary() {
   });
 }
 
+function mockFavorites(games: Game[]) {
+  jest.mocked(useMyFavorites).mockReturnValue({
+    data: games,
+  } as unknown as ReturnType<typeof useMyFavorites>);
+}
+
 beforeEach(() => {
+  mockFavorites([]);
   mockPush.mockReset();
   refetch.mockReset();
   useLibraryFilter.getState().clear();
@@ -191,6 +201,27 @@ describe('cards', () => {
 });
 
 describe('sort', () => {
+  async function chooseRatingSort() {
+    await fireEvent.press(screen.getByRole('button', { name: 'Ordenar' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Minha nota' }));
+  }
+
+  it('shows the heart only for the games in the favorites list', async () => {
+    mockFavorites([game('g2', 22, 'Celeste')]);
+    await renderLibrary();
+    await chooseRatingSort();
+    expect(screen.getAllByTestId('library-footer-favorite')).toHaveLength(1);
+  });
+
+  it('shows no heart while the favorites are not loaded', async () => {
+    jest.mocked(useMyFavorites).mockReturnValue({
+      data: undefined,
+    } as unknown as ReturnType<typeof useMyFavorites>);
+    await renderLibrary();
+    await chooseRatingSort();
+    expect(screen.queryByTestId('library-footer-favorite')).toBeNull();
+  });
+
   async function chooseSort(option: string) {
     await fireEvent.press(screen.getByRole('button', { name: 'Ordenar' }));
     expect(screen.getByText('Ordenar por')).toBeOnTheScreen();
@@ -319,21 +350,22 @@ describe('libraryFooter', () => {
 
   it('is null for name and for the sorts without a value', () => {
     const group = groupOf([{}]);
-    expect(libraryFooter(group, 'name')).toBeNull();
-    expect(libraryFooter(group, 'rating')).toBeNull();
-    expect(libraryFooter(group, 'mostPlayed')).toBeNull();
+    expect(libraryFooter(group, 'name', false)).toBeNull();
+    expect(libraryFooter(group, 'rating', false)).toBeNull();
+    expect(libraryFooter(group, 'mostPlayed', false)).toBeNull();
   });
 
   it('shows a heart for a favorite when sorting by rating', async () => {
-    const group = groupOf([{}], game('g9', 99, 'Fav', true));
-    await render(<>{libraryFooter(group, 'rating')}</>);
+    const group = groupOf([{}], game('g9', 99, 'Fav'));
+    await render(<>{libraryFooter(group, 'rating', true)}</>);
     expect(screen.getByTestId('library-footer-favorite')).toBeOnTheScreen();
     expect(screen.queryByTestId('library-footer-notes')).toBeNull();
   });
 
   it('shows the notes icon when there are notes', async () => {
     const group = groupOf([{ notes: 'x' }]);
-    await render(<>{libraryFooter(group, 'rating')}</>);
+    await render(<>{libraryFooter(group, 'rating', false)}</>);
     expect(screen.getByTestId('library-footer-notes')).toBeOnTheScreen();
+    expect(screen.queryByTestId('library-footer-favorite')).toBeNull();
   });
 });
