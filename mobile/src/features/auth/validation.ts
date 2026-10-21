@@ -12,7 +12,7 @@ function passwordError(password: string): string | undefined {
   return undefined;
 }
 
-function usernameError(username: string): string | undefined {
+export function usernameError(username: string): string | undefined {
   if (username.length === 0) return REQUIRED;
   if (username.length < 3) return 'Use pelo menos 3 caracteres';
   if (!USERNAME_PATTERN.test(username)) return 'Use apenas letras, números e _';
