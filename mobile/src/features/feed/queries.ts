@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 
 import { authErrorMessage } from "@/features/auth";
+import { invalidateOwnProfile } from "@/features/profiles/ownProfile";
 import { showToast } from "@/lib/toast";
 
 import { feedApi } from "./api";
@@ -128,7 +129,10 @@ export function useCreatePost() {
       gameEntryId?: string;
     }) => feedApi.create(input),
     onSuccess: (post) => {
-      const invalidations = [client.invalidateQueries({ queryKey: ["feed"] })];
+      const invalidations: Promise<unknown>[] = [
+        client.invalidateQueries({ queryKey: ["feed"] }),
+        invalidateOwnProfile(client, { entries: false }),
+      ];
       if (post.game) {
         invalidations.push(
           client.invalidateQueries({ queryKey: ["gamePosts", post.game.id] }),

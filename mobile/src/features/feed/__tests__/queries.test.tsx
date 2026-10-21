@@ -422,6 +422,36 @@ describe("useCreatePost", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["gamePosts", "g1"] });
   });
 
+  it("invalidates the own profile and activity lists but not another user's", async () => {
+    mocked.create.mockResolvedValue(post("new"));
+    useSession.setState({
+      status: "signedIn",
+      user: { id: "me" } as ReturnType<typeof useSession.getState>["user"],
+    });
+    const client = freshClient();
+    for (const id of ["me", "other"]) {
+      client.setQueryData(["profile", id], {});
+      client.setQueryData(["userPosts", id, "post"], {});
+      client.setQueryData(["userEntries", id], []);
+    }
+    const { result } = await renderHook(() => useCreatePost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: "oi" });
+    });
+    useSession.setState({ status: "signedOut", user: null });
+
+    const stale = (key: unknown[]) => client.getQueryState(key)?.isInvalidated;
+    expect(stale(["profile", "me"])).toBe(true);
+    expect(stale(["userPosts", "me", "post"])).toBe(true);
+    expect(stale(["profile", "other"])).toBe(false);
+    expect(stale(["userPosts", "other", "post"])).toBe(false);
+    // A post does not change the collection.
+    expect(stale(["userEntries", "me"])).toBe(false);
+  });
+
   it("invalidates only the feed for a post without a game", async () => {
     mocked.create.mockResolvedValue(post("new"));
     const client = freshClient();

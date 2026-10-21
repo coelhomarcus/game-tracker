@@ -164,6 +164,88 @@ describe('library mutations', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePlayers'] });
   });
 
+  describe('own profile', () => {
+    const stale = (client: QueryClient, key: unknown[]) => client.getQueryState(key)?.isInvalidated;
+
+    function seed(client: QueryClient) {
+      for (const id of ['me', 'other']) {
+        client.setQueryData(['userEntries', id], []);
+        client.setQueryData(['profile', id], {});
+        client.setQueryData(['userPosts', id, 'activity'], {});
+        client.setQueryData(['userPosts', id, 'post'], {});
+      }
+    }
+
+    beforeEach(() => {
+      useSession.setState({
+        status: 'signedIn',
+        user: { id: 'me' } as ReturnType<typeof useSession.getState>['user'],
+      });
+    });
+
+    afterEach(() => {
+      useSession.setState({ status: 'signedOut', user: null });
+    });
+
+    async function expectOwnProfileInvalidated(run: (client: QueryClient) => Promise<void>) {
+      const client = freshClient();
+      seed(client);
+      await run(client);
+      expect(stale(client, ['userEntries', 'me'])).toBe(true);
+      expect(stale(client, ['profile', 'me'])).toBe(true);
+      expect(stale(client, ['userPosts', 'me', 'activity'])).toBe(true);
+      expect(stale(client, ['userPosts', 'me', 'post'])).toBe(true);
+      expect(stale(client, ['userEntries', 'other'])).toBe(false);
+      expect(stale(client, ['profile', 'other'])).toBe(false);
+      expect(stale(client, ['userPosts', 'other', 'activity'])).toBe(false);
+      expect(stale(client, ['userPosts', 'other', 'post'])).toBe(false);
+    }
+
+    it('useCreateEntry invalidates the own collection, profile and activity only', async () => {
+      mocked.create.mockResolvedValue(entry('a'));
+      await expectOwnProfileInvalidated(async (client) => {
+        const { result } = await renderHook(() => useCreateEntry(), { wrapper: wrapperFor(client) });
+        await act(async () => {
+          await result.current.mutateAsync({ igdbId: 7, draft });
+        });
+      });
+    });
+
+    it('useUpdateEntry invalidates the own collection, profile and activity only', async () => {
+      const original = entry('a');
+      mocked.update.mockResolvedValue(original);
+      await expectOwnProfileInvalidated(async (client) => {
+        const { result } = await renderHook(() => useUpdateEntry(), { wrapper: wrapperFor(client) });
+        await act(async () => {
+          await result.current.mutateAsync({ original, edited: draft });
+        });
+      });
+    });
+
+    it('useDeleteEntry invalidates the own collection, profile and activity only', async () => {
+      mocked.remove.mockResolvedValue(undefined);
+      await expectOwnProfileInvalidated(async (client) => {
+        const { result } = await renderHook(() => useDeleteEntry(), { wrapper: wrapperFor(client) });
+        await act(async () => {
+          await result.current.mutateAsync('a');
+        });
+      });
+    });
+
+    it('invalidates no profile key when signed out', async () => {
+      useSession.setState({ status: 'signedOut', user: null });
+      mocked.remove.mockResolvedValue(undefined);
+      const client = freshClient();
+      seed(client);
+      const { result } = await renderHook(() => useDeleteEntry(), { wrapper: wrapperFor(client) });
+      await act(async () => {
+        await result.current.mutateAsync('a');
+      });
+      expect(stale(client, ['userEntries', 'me'])).toBe(false);
+      expect(stale(client, ['profile', 'me'])).toBe(false);
+    });
+  });
+
   it('does not invalidate the library when the request fails', async () => {
     mocked.create.mockRejectedValue(new Error('boom'));
     const client = freshClient();
