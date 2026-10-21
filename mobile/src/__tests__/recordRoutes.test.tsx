@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router, type Href } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
 
@@ -43,13 +43,15 @@ const mockEntry: GameEntry = {
   game: mockGameData,
 };
 
+const mockCreate = jest.fn();
+
 jest.mock('@/features/games/queries', () => ({
   useGame: () => ({ data: mockGameData, isPending: false, isError: false, error: null, refetch: jest.fn() }),
 }));
 
 jest.mock('@/features/library/queries', () => ({
   useLibrary: () => ({ data: [mockEntry], isPending: false, isError: false, isRefetching: false, refetch: jest.fn() }),
-  useCreateEntry: () => ({ mutateAsync: jest.fn() }),
+  useCreateEntry: () => ({ mutateAsync: mockCreate }),
   useUpdateEntry: () => ({ mutateAsync: jest.fn() }),
 }));
 
@@ -86,4 +88,18 @@ test('going back with unsaved changes asks before discarding', async () => {
 
   await fireEvent.press(screen.getByRole('button', { name: 'Descartar' }));
   expect(await screen.findByRole('button', { name: /^Biblioteca, tab/, selected: true })).toBeOnTheScreen();
+});
+
+test('saving a changed record leaves without the discard prompt', async () => {
+  mockCreate.mockResolvedValue(undefined);
+  const app = await renderRouter('./src/app', { initialUrl: '/library' });
+  await act(async () => router.push('/games/11/playthroughs/new' as Href));
+  await fireEvent.press(await screen.findByRole('button', { name: 'PC' }));
+
+  await fireEvent.press(screen.getByRole('button', { name: 'Salvar registro' }));
+
+  await waitFor(() => expect(app.getPathname()).toBe('/library'));
+  expect(mockCreate).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText('Descartar alterações?')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Salvar registro' })).toBeNull();
 });
