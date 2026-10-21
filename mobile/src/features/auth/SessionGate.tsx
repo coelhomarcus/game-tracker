@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button, EmptyState } from '@/components';
 import { useSession } from '@/features/auth';
+import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, space } from '@/theme/tokens';
 
 export function SessionGate() {
@@ -20,6 +21,13 @@ export function SessionGate() {
     started.current = true;
     void bootstrap();
   }, [bootstrap]);
+
+  // One realtime connection while signed in; the token is read again on every attempt.
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    chatSocket.start();
+    return () => chatSocket.stop();
+  }, [status]);
 
   async function retry() {
     if (retrying.current) return;
