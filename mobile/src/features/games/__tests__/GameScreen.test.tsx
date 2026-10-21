@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useDeleteEntry, useLibrary, useUpdateEntry } from '@/features/library/queries';
 import type { GameEntry } from '@/features/library/types';
 import { ApiError } from '@/lib/http/errors';
+import { apiOrigin } from '@/lib/env';
 import { showToast } from '@/lib/toast';
 
 import { GameScreen } from '../GameScreen';
@@ -393,6 +394,80 @@ describe('GameScreen', () => {
 
       await fireEvent.press(screen.getByRole('tab', { name: 'Quem eu sigo' }));
       expect(useGamePlayers).toHaveBeenLastCalledWith('g1', 'following');
+    });
+
+    const ana = { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null };
+
+    it('lists a player once when they have more than one playing record', async () => {
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      jest.mocked(useGamePlayers).mockReturnValue({
+        data: [
+          { user: ana, status: 'playing', hoursPlayed: 12.5 },
+          { user: ana, status: 'playing', hoursPlayed: 3 },
+        ],
+        isPending: false,
+        isError: false,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      expect(screen.getAllByText('Ana Souza')).toHaveLength(1);
+      expect(screen.getByText('12,5 h')).toBeOnTheScreen();
+      expect(screen.queryByText('3,0 h')).toBeNull();
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it('rewrites the avatar of a player onto the api origin', async () => {
+      jest.mocked(useGamePlayers).mockReturnValue({
+        data: [
+          {
+            user: { ...ana, avatarUrl: 'https://api.prod.example/uploads/ana.png' },
+            status: 'playing',
+            hoursPlayed: null,
+          },
+        ],
+        isPending: false,
+        isError: false,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      expect(screen.getByLabelText('Ana Souza').props.source).toEqual({
+        uri: `${apiOrigin}/uploads/ana.png`,
+      });
+    });
+
+    it('retries the counts when they fail to load', async () => {
+      const refetch = jest.fn();
+      jest.mocked(useGameStats).mockReturnValue({
+        data: undefined,
+        isPending: false,
+        isError: true,
+        refetch,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      expect(screen.getByText('Não foi possível carregar os números.')).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+      expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries the players when they fail to load', async () => {
+      const refetch = jest.fn();
+      jest.mocked(useGamePlayers).mockReturnValue({
+        data: undefined,
+        isPending: false,
+        isError: true,
+        refetch,
+      } as never);
+      await renderScreen();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
+
+      expect(screen.getByText('Não foi possível carregar os jogadores.')).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+      expect(refetch).toHaveBeenCalledTimes(1);
     });
 
     it('explains an empty player list per scope', async () => {

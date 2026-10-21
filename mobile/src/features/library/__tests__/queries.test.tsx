@@ -107,7 +107,7 @@ describe('useLibrary', () => {
 });
 
 describe('library mutations', () => {
-  it('useCreateEntry sends the draft and invalidates the library', async () => {
+  it('useCreateEntry sends the draft and invalidates the library and the community data', async () => {
     mocked.create.mockResolvedValue(entry('a'));
     const client = freshClient();
     const spy = jest.spyOn(client, 'invalidateQueries');
@@ -119,9 +119,11 @@ describe('library mutations', () => {
 
     expect(mocked.create).toHaveBeenCalledWith(7, draft);
     expect(spy).toHaveBeenCalledWith({ queryKey: ['library'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gameStats'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePlayers'] });
   });
 
-  it('useUpdateEntry sends original and edited and invalidates the library', async () => {
+  it('useUpdateEntry sends original and edited and invalidates the library and the community data', async () => {
     const original = entry('a');
     const edited = { ...draft, status: 'completed' as const };
     mocked.update.mockResolvedValue({ ...original, status: 'completed' });
@@ -135,9 +137,11 @@ describe('library mutations', () => {
 
     expect(mocked.update).toHaveBeenCalledWith(original, edited);
     expect(spy).toHaveBeenCalledWith({ queryKey: ['library'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gameStats'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePlayers'] });
   });
 
-  it('useDeleteEntry removes by id and invalidates the library', async () => {
+  it('useDeleteEntry removes by id and invalidates the library and the community data', async () => {
     mocked.remove.mockResolvedValue(undefined);
     const client = freshClient();
     const spy = jest.spyOn(client, 'invalidateQueries');
@@ -149,6 +153,8 @@ describe('library mutations', () => {
 
     expect(mocked.remove).toHaveBeenCalledWith('a');
     expect(spy).toHaveBeenCalledWith({ queryKey: ['library'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gameStats'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['gamePlayers'] });
   });
 
   it('does not invalidate the library when the request fails', async () => {

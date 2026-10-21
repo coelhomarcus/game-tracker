@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { Avatar, Tabs } from '@/components';
+import { Avatar, Button, Tabs } from '@/components';
 import { STATUSES, statusIcon, statusLabel } from '@/features/library/status';
 import { formatHours } from '@/lib/hours';
+import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import type { PlayersScope } from './api';
@@ -40,11 +41,21 @@ function Counts({ stats }: { stats: GameStats }) {
   );
 }
 
+/** The API returns one row per record, so a player with two playing records comes twice. */
+function uniquePlayers(players: GamePlayer[]): GamePlayer[] {
+  const seen = new Set<string>();
+  return players.filter((player) => {
+    if (seen.has(player.user.id)) return false;
+    seen.add(player.user.id);
+    return true;
+  });
+}
+
 function PlayerRow({ player }: { player: GamePlayer }) {
   const { user } = player;
   return (
     <View style={styles.player}>
-      <Avatar uri={user.avatarUrl} name={user.name ?? user.username} size={40} />
+      <Avatar uri={resolveImageUrl(user.avatarUrl)} name={user.name ?? user.username} size={40} />
       <Text numberOfLines={1} style={styles.playerName}>
         {user.name ?? `@${user.username}`}
       </Text>
@@ -69,7 +80,10 @@ export function GameCommunity({ gameId }: { gameId: string }) {
         {stats.data ? (
           <Counts stats={stats.data} />
         ) : stats.isError ? (
-          <Text style={styles.muted}>Não foi possível carregar os números.</Text>
+          <>
+            <Text style={styles.muted}>Não foi possível carregar os números.</Text>
+            <Button label='Tentar de novo' variant='text' onPress={() => void stats.refetch()} />
+          </>
         ) : (
           <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
         )}
@@ -90,10 +104,13 @@ export function GameCommunity({ gameId }: { gameId: string }) {
           players.data.length === 0 ? (
             <Text style={styles.muted}>{EMPTY_PLAYERS[scope]}</Text>
           ) : (
-            players.data.map((player) => <PlayerRow key={player.user.id} player={player} />)
+            uniquePlayers(players.data).map((player) => <PlayerRow key={player.user.id} player={player} />)
           )
         ) : players.isError ? (
-          <Text style={styles.muted}>Não foi possível carregar os jogadores.</Text>
+          <>
+            <Text style={styles.muted}>Não foi possível carregar os jogadores.</Text>
+            <Button label='Tentar de novo' variant='text' onPress={() => void players.refetch()} />
+          </>
         ) : (
           <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
         )}
