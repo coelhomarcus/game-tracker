@@ -2,10 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
+import { useChatStore, type PendingMessage } from '@/features/chat/chatStore';
 import { useLibraryPrefs } from '@/features/library/prefsStore';
 
 import { SettingsScreen } from '../SettingsScreen';
 
+jest.mock('@/lib/realtime/chatSocket', () => jest.requireActual('@/test-utils/fakeChatSocket'));
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
@@ -43,11 +45,17 @@ beforeEach(() => {
   mockVersion = '1.4.2';
   useLibraryPrefs.setState({ sort: 'recent' });
   useSession.setState({ status: 'signedIn', signOut });
+  useChatStore.getState().clear();
 });
 
 afterEach(() => {
   useSession.setState({ status: 'signedOut', user: null });
+  useChatStore.getState().clear();
 });
+
+function pendingMessage(clientMessageId: string, status: PendingMessage['status']) {
+  return { clientMessageId, content: 'oi', createdAt: new Date(), status } as PendingMessage;
+}
 
 describe('SettingsScreen', () => {
   it('opens the profile editor', async () => {
@@ -69,6 +77,50 @@ describe('SettingsScreen', () => {
 
     expect(signOut).not.toHaveBeenCalled();
     expect(screen.queryByText('Sair da conta?')).toBeNull();
+  });
+
+  it('has no message in the sign-out dialog when nothing is unsent', async () => {
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(screen.queryByText(/não enviada/)).toBeNull();
+  });
+
+  it('warns about one unsent draft before signing out', async () => {
+    useChatStore.setState({ drafts: { c1: 'oi', c2: '   ' } });
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(
+      screen.getByText('Você tem uma mensagem escrita e não enviada. Ela será descartada.'),
+    ).toBeOnTheScreen();
+  });
+
+  it('warns about every unsent draft and pending message in plural', async () => {
+    useChatStore.setState({
+      drafts: { c1: 'oi' },
+      pending: { c2: [pendingMessage('a', 'failed'), pendingMessage('b', 'uncertain')] },
+    });
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(
+      screen.getByText('Você tem 3 mensagens escritas e não enviadas. Elas serão descartadas.'),
+    ).toBeOnTheScreen();
+  });
+
+  it('counts a lone pending message as one unsent message', async () => {
+    useChatStore.setState({ pending: { c1: [pendingMessage('a', 'sending')] } });
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(
+      screen.getByText('Você tem uma mensagem escrita e não enviada. Ela será descartada.'),
+    ).toBeOnTheScreen();
   });
 
   it('signs out after the confirmation', async () => {

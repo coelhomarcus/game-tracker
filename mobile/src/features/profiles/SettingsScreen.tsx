@@ -6,10 +6,18 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChoiceChip, ConfirmDialog, Screen } from '@/components';
 import { useSession } from '@/features/auth';
+import { useChatStore } from '@/features/chat/chatStore';
 import { SORT_OPTIONS, useLibraryPrefs } from '@/features/library/prefsStore';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 const EDIT_PROFILE = '/me/edit' as Href;
+
+/** What signing out would lose: unsent chat drafts and messages still waiting to be sent. */
+function unsentWarning(count: number): string | undefined {
+  if (count === 0) return undefined;
+  if (count === 1) return 'Você tem uma mensagem escrita e não enviada. Ela será descartada.';
+  return `Você tem ${count} mensagens escritas e não enviadas. Elas serão descartadas.`;
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -36,7 +44,8 @@ function Row({ label, onPress, danger = false }: RowProps) {
 export function SettingsScreen() {
   const router = useRouter();
   const sort = useLibraryPrefs((state) => state.sort);
-  const [confirming, setConfirming] = useState(false);
+  // null while closed; the count is taken when the dialog opens.
+  const [unsent, setUnsent] = useState<number | null>(null);
   const version = Constants.expoConfig?.version ?? '—';
 
   return (
@@ -44,7 +53,11 @@ export function SettingsScreen() {
       <View style={styles.content}>
         <Section title="Conta">
           <Row label="Editar perfil" onPress={() => router.push(EDIT_PROFILE)} />
-          <Row label="Sair" danger onPress={() => setConfirming(true)} />
+          <Row
+            label="Sair"
+            danger
+            onPress={() => setUnsent(useChatStore.getState().draftCount())}
+          />
         </Section>
 
         <Section title="Biblioteca">
@@ -68,16 +81,17 @@ export function SettingsScreen() {
       </View>
 
       <ConfirmDialog
-        visible={confirming}
+        visible={unsent !== null}
         title="Sair da conta?"
+        message={unsent === null ? undefined : unsentWarning(unsent)}
         confirmLabel="Sair"
         cancelLabel="Continuar no app"
         destructive
         onConfirm={() => {
-          setConfirming(false);
+          setUnsent(null);
           void useSession.getState().signOut();
         }}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setUnsent(null)}
       />
     </Screen>
   );

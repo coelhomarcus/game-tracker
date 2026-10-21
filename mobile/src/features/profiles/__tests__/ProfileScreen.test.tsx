@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import UserRoute from '@/app/users/[id]';
 import { useSession } from '@/features/auth';
+import { useStartConversation } from '@/features/chat/queries';
 import type { Post } from '@/features/feed/types';
 import type { Game } from '@/features/games/types';
 import type { GameEntry } from '@/features/library/types';
@@ -21,6 +22,7 @@ jest.mock('../queries', () => ({
   useUserFavorites: jest.fn(),
   useToggleFollow: () => ({ mutate: jest.fn() }),
 }));
+jest.mock('@/features/chat/queries', () => ({ useStartConversation: jest.fn() }));
 jest.mock('@/features/feed/queries', () => ({
   useTogglePostLike: () => ({ mutate: jest.fn() }),
 }));
@@ -112,6 +114,16 @@ function post(overrides: Partial<Post> = {}): Post {
     likedByMe: false,
     ...overrides,
   };
+}
+
+const startConversation = jest.fn();
+
+function mockStart(overrides: Record<string, unknown> = {}) {
+  jest.mocked(useStartConversation).mockReturnValue({
+    mutateAsync: startConversation,
+    isPending: false,
+    ...overrides,
+  } as unknown as ReturnType<typeof useStartConversation>);
 }
 
 const refetchProfile = jest.fn();
@@ -219,6 +231,8 @@ beforeEach(() => {
   mockEntries(ENTRIES);
   mockFavorites([]);
   mockPosts([]);
+  mockStart();
+  startConversation.mockResolvedValue('c9');
 });
 
 afterEach(() => {
@@ -242,6 +256,57 @@ describe('actions', () => {
 
     expect(screen.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Editar perfil' })).toBeNull();
+  });
+});
+
+describe('Mensagem', () => {
+  it('is not offered on the own profile', async () => {
+    signInAs('u1');
+    await renderProfile('u1');
+
+    expect(screen.queryByRole('button', { name: 'Mensagem' })).toBeNull();
+  });
+
+  it('opens the conversation with the user', async () => {
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+
+    expect(startConversation).toHaveBeenCalledWith('u1');
+    expect(mockRouter.push).toHaveBeenCalledWith('/chat/c9');
+  });
+
+  it('ignores a second press while the conversation is starting', async () => {
+    let release: (id: string) => void = () => undefined;
+    startConversation.mockReturnValue(new Promise<string>((resolve) => (release = resolve)));
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    expect(startConversation).toHaveBeenCalledTimes(1);
+
+    await act(async () => release('c9'));
+    expect(mockRouter.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('is disabled while the conversation starts', async () => {
+    mockStart({ isPending: true });
+    await renderProfile('u1');
+
+    expect(screen.getByRole('button', { name: 'Mensagem' })).toBeDisabled();
+  });
+
+  it('tells the user when the conversation cannot start and allows trying again', async () => {
+    startConversation.mockRejectedValueOnce(new ApiError(500, 'boom', 'x'));
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(mockRouter.push).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mensagem' }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/chat/c9');
   });
 });
 

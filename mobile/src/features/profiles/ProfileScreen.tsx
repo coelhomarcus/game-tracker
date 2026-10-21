@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/http/errors';
 import { colors, space } from '@/theme/tokens';
 
 import { FollowButton } from './FollowButton';
+import { MessageButton } from './MessageButton';
 import { ProfileGames } from './ProfileGames';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfilePosts } from './ProfilePosts';
@@ -49,11 +50,14 @@ function ProfileTop({ profile, own, tab, onSelectTab }: TopProps) {
       onPress={() => router.push('/me/edit' as Href)}
     />
   ) : (
-    <FollowButton
-      userId={profile.id}
-      following={profile.isFollowedByMe}
-      name={displayName(profile)}
-    />
+    <View style={styles.actions}>
+      <MessageButton userId={profile.id} />
+      <FollowButton
+        userId={profile.id}
+        following={profile.isFollowedByMe}
+        name={displayName(profile)}
+      />
+    </View>
   );
   return (
     <View>
@@ -170,6 +174,7 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
 }
 
 const styles = StyleSheet.create({
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   tabs: { paddingVertical: space.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });
