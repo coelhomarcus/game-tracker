@@ -197,6 +197,18 @@ describe('PersonRow', () => {
     expect(screen.queryByText('Seguir')).toBeNull();
   });
 
+  it('can hide the follow button and relabel the press', async () => {
+    const onPress = jest.fn();
+    await render(
+      <PersonRow person={person} onPress={onPress} showFollow={false} pressLabel="Conversar com Bruno Lima" />,
+    );
+
+    expect(screen.queryByLabelText('Seguir Bruno Lima')).toBeNull();
+    expect(screen.queryByLabelText('Perfil de Bruno Lima')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Conversar com Bruno Lima'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the bio line', async () => {
     await render(<PersonRow person={person} onPress={jest.fn()} />);
 

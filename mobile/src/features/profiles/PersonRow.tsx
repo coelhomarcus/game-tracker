@@ -14,9 +14,13 @@ const AVATAR_SIZE = 48;
 export type PersonRowProps = {
   person: PersonResult;
   onPress: () => void;
+  /** Rows that lead somewhere other than the profile hide the follow button. Default: shown. */
+  showFollow?: boolean;
+  /** Replaces the default `Perfil de <name>` label when the press does something else. */
+  pressLabel?: string;
 };
 
-export function PersonRow({ person, onPress }: PersonRowProps) {
+export function PersonRow({ person, onPress, showFollow = true, pressLabel }: PersonRowProps) {
   const selfId = useSession((state) => state.user?.id);
   const name = displayName(person);
   const bio = person.bio?.trim();
@@ -25,7 +29,7 @@ export function PersonRow({ person, onPress }: PersonRowProps) {
     <View style={styles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Perfil de ${name}`}
+        accessibilityLabel={pressLabel ?? `Perfil de ${name}`}
         onPress={onPress}
         style={styles.body}
       >
@@ -42,7 +46,7 @@ export function PersonRow({ person, onPress }: PersonRowProps) {
           ) : null}
         </View>
       </Pressable>
-      {person.id === selfId ? null : (
+      {!showFollow || person.id === selfId ? null : (
         <FollowButton userId={person.id} following={person.isFollowedByMe} name={name} />
       )}
     </View>

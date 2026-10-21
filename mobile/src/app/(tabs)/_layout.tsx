@@ -4,6 +4,12 @@ import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 
 import { HeaderBell } from '@/components';
+import {
+  MESSAGES_TAB_UNREAD_LABEL,
+  MessagesTabIcon,
+  NewConversationButton,
+  useHasUnreadConversations,
+} from '@/features/chat/MessagesTab';
 import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
 import { colors } from '@/theme/tokens';
 
@@ -22,7 +28,6 @@ function makeIcon(name: IconName) {
 const HomeIcon = makeIcon('home');
 const LibraryIcon = makeIcon('library');
 const SearchIcon = makeIcon('search');
-const ChatIcon = makeIcon('chatbubbles');
 const PersonIcon = makeIcon('person');
 
 function LibraryHeaderRight() {
@@ -66,6 +71,7 @@ const styles = StyleSheet.create({
 });
 
 export default function TabsLayout() {
+  const unreadMessages = useHasUnreadConversations();
   return (
     <Tabs
       screenOptions={{
@@ -90,7 +96,13 @@ export default function TabsLayout() {
       <Tabs.Screen name="explore" options={{ title: 'Explorar', tabBarIcon: SearchIcon }} />
       <Tabs.Screen
         name="messages"
-        options={{ title: 'Mensagens', tabBarIcon: ChatIcon, headerRight: () => null }}
+        options={{
+          title: 'Mensagens',
+          tabBarIcon: MessagesTabIcon,
+          // Left to the tab bar's own label unless something is unread.
+          tabBarAccessibilityLabel: unreadMessages ? MESSAGES_TAB_UNREAD_LABEL : undefined,
+          headerRight: NewConversationButton,
+        }}
       />
       <Tabs.Screen
         name="profile"

@@ -1,9 +1,3 @@
-import { EmptyState, Screen } from '@/components';
+import ConversationsScreen from '@/features/chat/ConversationsScreen';
 
-export default function MessagesScreen() {
-  return (
-    <Screen>
-      <EmptyState title="Mensagens" message="Em construção" />
-    </Screen>
-  );
-}
+export default ConversationsScreen;
