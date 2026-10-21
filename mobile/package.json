@@ -46,7 +46,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "jest"
+    "test": "jest",
+    "test:integration": "jest -c jest.integration.config.js"
   },
   "private": true,
   "engines": {

@@ -8,6 +8,8 @@ const sourceTransformKey = Object.keys(preset.transform).find((key) => key.inclu
 module.exports = {
   preset: 'jest-expo',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  // The integration suites need a running test API; they run with `npm run test:integration`.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/integration/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
