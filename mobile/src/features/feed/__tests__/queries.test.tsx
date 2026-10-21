@@ -24,6 +24,7 @@ import {
   useToggleCommentLike,
   useTogglePostLike,
 } from "../queries";
+import { findCachedPost } from "../postCache";
 import type { Comment, Post, PostPage } from "../types";
 
 jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
@@ -370,6 +371,32 @@ describe("useTogglePostLike", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("updates a profile's post list and rolls it back when the request fails", async () => {
+    mocked.setLike.mockResolvedValueOnce(undefined);
+    const client = freshClient();
+    const target = post("p1");
+    const key = ["userPosts", "u1", "post"];
+    client.setQueryData(key, singlePage([target]));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(target);
+    });
+
+    expect(cachedPost(client, key)).toMatchObject({ likedByMe: true, likeCount: 3 });
+
+    mocked.setLike.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      result.current.mutate(cachedPost(client, key));
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(cachedPost(client, key)).toMatchObject({ likedByMe: true, likeCount: 3 });
+    expect(mocked.setLike).toHaveBeenLastCalledWith("p1", false);
   });
 
   it("cancels in-flight reads so a refetch cannot overwrite the optimistic state", async () => {
@@ -990,5 +1017,31 @@ describe("rapid and concurrent likes", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe("profile post lists", () => {
+  it("are searched for a post that no feed holds", () => {
+    const client = freshClient();
+    client.setQueryData(["userPosts", "u1", "activity"], singlePage([post("only-here")]));
+
+    expect(findCachedPost(client, "only-here")).toMatchObject({ id: "only-here" });
+    expect(findCachedPost(client, "missing")).toBeUndefined();
+  });
+
+  it("receive the new comment count", async () => {
+    mocked.addComment.mockResolvedValue(undefined as never);
+    const client = freshClient();
+    const key = ["userPosts", "u1", "activity"];
+    client.setQueryData(key, singlePage([post("p1")]));
+    const { result } = await renderHook(() => useAddComment("p1"), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: "hi" });
+    });
+
+    expect(cachedPost(client, key).commentCount).toBe(2);
   });
 });

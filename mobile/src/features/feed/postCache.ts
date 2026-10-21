@@ -10,7 +10,7 @@ import type { Post, PostPage } from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
-const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts']];
+const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts']];
 
 type Interrupted = { query: Query; nextPage: boolean };
 
@@ -71,7 +71,7 @@ function updatePages(data: PostPages, postId: string, update: (p: Post) => Post)
 }
 
 /**
- * Applies `update` to the post in every cached feed, game post list and post detail,
+ * Applies `update` to the post in every cached feed, game or profile post list and post detail,
  * immutably. Only entries that hold the post are written.
  */
 export function updatePostEverywhere(
@@ -100,7 +100,7 @@ export function updatePostEverywhere(
   }
 }
 
-/** The post as any cached feed or game post list holds it, to show before its own fetch ends. */
+/** The post as any cached feed, game or profile post list holds it, to show before its own fetch ends. */
 export function findCachedPost(client: QueryClient, postId: string): Post | undefined {
   for (const key of LIST_KEYS) {
     for (const [, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
