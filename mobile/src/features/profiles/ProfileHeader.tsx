@@ -57,7 +57,11 @@ export function ProfileHeader({ profile, actions }: ProfileHeaderProps) {
           </View>
           {actions}
         </View>
-        {bio ? <Text style={styles.bio}>{bio}</Text> : null}
+        {bio ? (
+          <Text testID="profile-bio" style={styles.bio}>
+            {bio}
+          </Text>
+        ) : null}
         <View style={styles.counts}>
           <Count value={profile.followerCount} word={plural(profile.followerCount, 'seguidor')} />
           <Count value={profile.followingCount} word=" seguindo" />

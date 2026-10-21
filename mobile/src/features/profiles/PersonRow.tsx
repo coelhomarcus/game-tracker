@@ -36,7 +36,7 @@ export function PersonRow({ person, onPress }: PersonRowProps) {
           </Text>
           <Text numberOfLines={1} style={styles.username}>{`@${person.username}`}</Text>
           {bio ? (
-            <Text numberOfLines={1} style={styles.bio}>
+            <Text testID="person-bio" numberOfLines={1} style={styles.bio}>
               {bio}
             </Text>
           ) : null}

@@ -95,12 +95,16 @@ describe('ProfileHeader', () => {
     expect(screen.getByLabelText('Capa de ana')).toBeOnTheScreen();
   });
 
-  it('hides the bio when it is null or blank', async () => {
-    const { rerender } = await render(<ProfileHeader profile={{ ...profile, bio: null }} />);
-    expect(screen.queryByText('Jogo de tudo um pouco')).toBeNull();
+  it('shows a real bio', async () => {
+    await render(<ProfileHeader profile={profile} />);
 
-    await rerender(<ProfileHeader profile={{ ...profile, bio: '   ' }} />);
-    expect(screen.queryByText('   ')).toBeNull();
+    expect(screen.getByTestId('profile-bio')).toHaveTextContent('Jogo de tudo um pouco');
+  });
+
+  it.each([null, '', '   '])('hides the bio when it is %j', async (bio) => {
+    await render(<ProfileHeader profile={{ ...profile, bio }} />);
+
+    expect(screen.queryByTestId('profile-bio')).toBeNull();
   });
 
   it('labels the missing banner and avatar', async () => {
@@ -193,9 +197,15 @@ describe('PersonRow', () => {
     expect(screen.queryByText('Seguir')).toBeNull();
   });
 
-  it('omits the bio line when there is no bio', async () => {
-    await render(<PersonRow person={{ ...person, bio: null }} onPress={jest.fn()} />);
+  it('shows the bio line', async () => {
+    await render(<PersonRow person={person} onPress={jest.fn()} />);
 
-    expect(screen.queryByText('Fã de RPG')).toBeNull();
+    expect(screen.getByTestId('person-bio')).toHaveTextContent('Fã de RPG');
+  });
+
+  it.each([null, '', '   '])('omits the bio line when the bio is %j', async (bio) => {
+    await render(<PersonRow person={{ ...person, bio }} onPress={jest.fn()} />);
+
+    expect(screen.queryByTestId('person-bio')).toBeNull();
   });
 });
