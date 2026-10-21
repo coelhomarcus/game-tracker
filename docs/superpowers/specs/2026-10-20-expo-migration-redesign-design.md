@@ -44,20 +44,20 @@ Out of scope:
 
 ## Stack
 
-| Concern | Choice |
-|---|---|
-| Language | TypeScript, strict |
-| Framework | Expo, React Native, `react-native-web` for the browser preview |
-| Navigation | Expo Router (file-based routes, bottom tabs) |
-| Server data | TanStack Query |
-| Local state | Zustand (session, preferences) |
-| Styling | `StyleSheet` with typed theme tokens |
-| Lists | `FlashList` |
-| Secrets | `expo-secure-store`, `localStorage` on web |
-| Realtime | `socket.io-client` against the existing server |
-| Push | `expo-notifications` |
-| Tests | Jest + React Native Testing Library, MSW for the API layer |
-| Release | `expo prebuild` + Gradle in GitHub Actions |
+| Concern     | Choice                                                         |
+| ----------- | -------------------------------------------------------------- |
+| Language    | TypeScript, strict                                             |
+| Framework   | Expo, React Native, `react-native-web` for the browser preview |
+| Navigation  | Expo Router (file-based routes, bottom tabs)                   |
+| Server data | TanStack Query                                                 |
+| Local state | Zustand (session, preferences)                                 |
+| Styling     | `StyleSheet` with typed theme tokens                           |
+| Lists       | `FlashList`                                                    |
+| Secrets     | `expo-secure-store`, `localStorage` on web                     |
+| Realtime    | `socket.io-client` against the existing server                 |
+| Push        | `expo-notifications`                                           |
+| Tests       | Jest + React Native Testing Library, MSW for the API layer     |
+| Release     | `expo prebuild` + Gradle in GitHub Actions                     |
 
 ## Structure
 
@@ -88,14 +88,14 @@ Rules:
 
 Tokens (`src/theme/tokens.ts`):
 
-| Token | Value | Use |
-|---|---|---|
-| `bg` | `#16181c` | screen background |
-| `surface` | `#272c37` | cards, inputs, bars |
-| `border` | `#2a2d3c` | cover outline, dividers |
-| `active` | `#3f4b64` | selected tab or chip, pressed item |
-| `text` | `#cbd4dc` | primary text |
-| `accent` | `#ea377a` | primary actions, links, stars, likes |
+| Token     | Value     | Use                                  |
+| --------- | --------- | ------------------------------------ |
+| `bg`      | `#16181c` | screen background                    |
+| `surface` | `#272c37` | cards, inputs, bars                  |
+| `border`  | `#2a2d3c` | cover outline, dividers              |
+| `active`  | `#3f4b64` | selected tab or chip, pressed item   |
+| `text`    | `#cbd4dc` | primary text                         |
+| `accent`  | `#ea377a` | primary actions, links, stars, likes |
 
 Derived tokens: `textMuted`, `textStrong`, and one color per status (playing,
 completed, backlog, dropped). Status is always shown with an icon and text,
@@ -163,10 +163,11 @@ memory; sort persists on the device.
 
 - `flutter.yml` becomes `mobile.yml` (typecheck, lint, tests) on push and Pull
   Request. The Flutter workflow is removed with `frontend/`.
-- `flutter-release.yml` becomes an Expo release: `expo prebuild`, Gradle
-  `assembleRelease`, signing with the existing four secrets, version from
-  `next-version.mjs`, Android build number from the run number, and refusal to
-  publish an APK signed with the debug key. It runs only on pushes to `main`.
+- Release is deferred. `flutter-release.yml` builds the Flutter client, so it
+  is removed with `frontend/`; until an Expo release workflow is added later
+  (`expo prebuild`, Gradle `assembleRelease`, the existing four signing
+  secrets, version from `next-version.mjs`, build number from the run number,
+  refusal to publish a debug-signed APK), pushes to `main` publish no APK.
 - The backend workflow is unchanged. The `flutter-integration` job is
   re-evaluated in the last sub-project: its equivalent runs the app's `api.ts`
   layer against a real backend.
@@ -180,8 +181,9 @@ Each sub-project gets its own plan and implementation cycle.
 2. Library and games: cover grid, status tabs, sorts, game page, record form.
 3. Social: feed, posts and comments, likes, profiles, follow, notifications.
 4. Chat and push: conversations, Socket.IO, read state, `expo-notifications`.
-5. Release and cleanup: signed APK workflow, remove `frontend/`, update
-   `AGENTS.md`, `README.md` and `docs/`.
+5. Cleanup: remove `frontend/`, update `AGENTS.md`, `README.md` and `docs/`.
+   The signed APK release workflow is deferred: it is not part of this
+   migration for now.
 
 Only the Foundation blocks the others; 2, 3 and 4 can be reordered.
 
