@@ -43,6 +43,7 @@ const metrics = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
+const POST_ID = '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b';
 const POST_LABEL = /^Post de Ana Souza, /;
 
 const ana = { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null };
@@ -51,7 +52,7 @@ const caio = { id: 'u3', username: 'caio', name: 'Caio', avatarUrl: null };
 
 function makePost(overrides: Partial<Post> = {}): Post {
   return {
-    id: 'p1',
+    id: POST_ID,
     author: ana,
     content: 'Zerei de primeira!',
     type: 'status',
@@ -74,7 +75,7 @@ function makeComment(
 ): Comment {
   return {
     id,
-    postId: 'p1',
+    postId: POST_ID,
     author,
     content: `texto ${id}`,
     createdAt: new Date('2026-10-20T11:58:00.000Z'),
@@ -136,7 +137,7 @@ beforeEach(() => {
     doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'],
   });
   jest.clearAllMocks();
-  mockParams = { postId: 'p1' };
+  mockParams = { postId: POST_ID };
   mockedUsePost.mockReturnValue(postResult());
   mockedUseComments.mockReturnValue(commentsResult());
   mutateAsync.mockResolvedValue(undefined);
@@ -164,10 +165,10 @@ describe('PostDetailScreen post', () => {
   it('reads the post and comments of the address', async () => {
     await renderScreen();
 
-    expect(mockedUsePost).toHaveBeenCalledWith('p1');
-    expect(mockedUseComments).toHaveBeenCalledWith('p1');
-    expect(mockedUseAddComment).toHaveBeenCalledWith('p1');
-    expect(mockedUseToggleCommentLike).toHaveBeenCalledWith('p1');
+    expect(mockedUsePost).toHaveBeenCalledWith(POST_ID);
+    expect(mockedUseComments).toHaveBeenCalledWith(POST_ID);
+    expect(mockedUseAddComment).toHaveBeenCalledWith(POST_ID);
+    expect(mockedUseToggleCommentLike).toHaveBeenCalledWith(POST_ID);
   });
 
   it('titles the header Post for a written post and shows it without being pressable', async () => {
@@ -237,6 +238,23 @@ describe('PostDetailScreen post', () => {
 
     expect(screen.getByText('Post não encontrado')).toBeOnTheScreen();
     expect(mockedUsePost).not.toHaveBeenCalled();
+  });
+
+  it('shows not found for an address that is not a post id without asking the API', async () => {
+    mockParams = { postId: 'abc' };
+    await renderScreen();
+
+    expect(screen.getByText('Post não encontrado')).toBeOnTheScreen();
+    expect(mockedUsePost).not.toHaveBeenCalled();
+    expect(mockedUseComments).not.toHaveBeenCalled();
+  });
+
+  it('accepts a post id in any letter case', async () => {
+    const upper = POST_ID.toUpperCase();
+    mockParams = { postId: upper };
+    await renderScreen();
+
+    expect(mockedUsePost).toHaveBeenCalledWith(upper);
   });
 
   it('offers a retry for other errors', async () => {

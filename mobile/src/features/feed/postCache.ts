@@ -79,6 +79,13 @@ export function updatePostEverywhere(
   postId: string,
   update: (p: Post) => Post,
 ): void {
+  const detailKey: QueryKey = ['post', postId];
+  // Read before the lists change: a detail that still shows a list's copy as its placeholder
+  // holds no data of its own, and that copy is where its next state comes from.
+  const detail =
+    client.getQueryData<Post>(detailKey) ??
+    (client.getQueryState(detailKey) ? findCachedPost(client, postId) : undefined);
+
   for (const key of LIST_KEYS) {
     for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
       if (data === undefined) continue;
@@ -88,9 +95,20 @@ export function updatePostEverywhere(
     }
   }
 
-  const detailKey: QueryKey = ['post', postId];
-  const detail = client.getQueryData<Post>(detailKey);
   if (detail !== undefined) {
     client.setQueryData(detailKey, update(detail));
   }
+}
+
+/** The post as any cached feed or game post list holds it, to show before its own fetch ends. */
+export function findCachedPost(client: QueryClient, postId: string): Post | undefined {
+  for (const key of LIST_KEYS) {
+    for (const [, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
+      for (const page of data?.pages ?? []) {
+        const found = page.items.find((item) => item.id === postId);
+        if (found) return found;
+      }
+    }
+  }
+  return undefined;
 }

@@ -15,6 +15,7 @@ import { anyLikeInFlight, beginLike, runInLane, settleLike } from "./likeLanes";
 import {
   cancelCommentQueries,
   cancelPostQueries,
+  findCachedPost,
   resumeInterrupted,
   updatePostEverywhere,
 } from "./postCache";
@@ -57,8 +58,14 @@ export function useGamePosts(gameId?: string) {
   });
 }
 
+/** Opens on the copy a cached feed already holds, then settles on the fetched post. */
 export function usePost(id: string) {
-  return useQuery({ queryKey: ["post", id], queryFn: () => feedApi.post(id) });
+  const client = useQueryClient();
+  return useQuery({
+    queryKey: ['post', id],
+    queryFn: () => feedApi.post(id),
+    placeholderData: () => findCachedPost(client, id),
+  });
 }
 
 export function useComments(postId: string) {

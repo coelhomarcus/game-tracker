@@ -20,6 +20,7 @@ import {
   useCreatePost,
   useFeed,
   useGamePosts,
+  usePost,
   useToggleCommentLike,
   useTogglePostLike,
 } from "../queries";
@@ -197,6 +198,79 @@ describe("feed queries", () => {
     });
 
     expect(sharedQueryClient.getQueryData(["feed", "general"])).toBeUndefined();
+  });
+});
+
+describe("usePost", () => {
+  it("shows the post found in a cached feed while the fetch is pending", async () => {
+    let finish!: (p: Post) => void;
+    mocked.post.mockReturnValue(new Promise<Post>((r) => (finish = r)));
+    const client = freshClient();
+    const cached = post("p1", { content: "from the feed" });
+    client.setQueryData(["feed", "general"], singlePage([post("other"), cached]));
+    const { result } = await renderHook(() => usePost("p1"), { wrapper: wrapperFor(client) });
+
+    expect(result.current.data).toBe(cached);
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(mocked.post).toHaveBeenCalledWith("p1");
+
+    await act(async () => finish(post("p1", { content: "from the server" })));
+    await waitFor(() => expect(result.current.data?.content).toBe("from the server"));
+    expect(result.current.isPlaceholderData).toBe(false);
+  });
+
+  it("finds the post in a cached game post list on a later page", async () => {
+    mocked.post.mockReturnValue(new Promise<Post>(() => {}));
+    const client = freshClient();
+    const cached = post("p9");
+    client.setQueryData(["gamePosts", "g1"], {
+      pages: [
+        { items: [post("a")], nextCursor: "c1" },
+        { items: [cached], nextCursor: null },
+      ],
+      pageParams: [undefined, "c1"],
+    });
+    const { result } = await renderHook(() => usePost("p9"), { wrapper: wrapperFor(client) });
+
+    expect(result.current.data).toBe(cached);
+  });
+
+  it("shows a like given while the cached copy is still the placeholder", async () => {
+    mocked.post.mockReturnValue(new Promise<Post>(() => {}));
+    let finishLike!: () => void;
+    mocked.setLike.mockReturnValue(new Promise<void>((r) => (finishLike = r)));
+    const client = freshClient();
+    client.setQueryData(["feed", "general"], singlePage([post("p1")]));
+    const { result } = await renderHook(
+      () => ({ detail: usePost("p1"), like: useTogglePostLike() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await act(async () => {
+      result.current.like.mutate(post("p1"));
+    });
+
+    // The screen that shows the placeholder is not re-rendered by the like, so the detail
+    // query itself must hold the new state.
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+    });
+    await waitFor(() =>
+      expect(result.current.detail.data).toMatchObject({ likedByMe: true, likeCount: 3 }),
+    );
+    await act(async () => finishLike());
+    await waitFor(() => expect(result.current.like.isSuccess).toBe(true));
+  });
+
+  it("has no data while pending when no cached list holds the post", async () => {
+    mocked.post.mockReturnValue(new Promise<Post>(() => {}));
+    const client = freshClient();
+    client.setQueryData(["feed", "general"], singlePage([post("other")]));
+    const { result } = await renderHook(() => usePost("p1"), { wrapper: wrapperFor(client) });
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isPending).toBe(true);
   });
 });
 

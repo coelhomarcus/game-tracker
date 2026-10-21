@@ -21,6 +21,9 @@ import { PostCard } from './PostCard';
 import { useAddComment, useComments, usePost, useToggleCommentLike } from './queries';
 import type { Post } from './types';
 
+// The API answers 500 to an id that is not a UUID, so such an address is simply not a post.
+const POST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -29,7 +32,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export function PostDetailScreen() {
   const params = useLocalSearchParams<{ postId?: string | string[] }>();
   const postId = firstParam(params.postId)?.trim() ?? '';
-  if (postId === '') return <PostNotFound />;
+  if (!POST_ID_PATTERN.test(postId)) return <PostNotFound />;
   return <PostLoader postId={postId} />;
 }
 
