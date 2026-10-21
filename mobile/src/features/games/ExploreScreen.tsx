@@ -1,4 +1,5 @@
-import { useRouter, type Href } from "expo-router";
+import type { FlashListRef } from "@shopify/flash-list";
+import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +19,7 @@ import {
   type TextFieldInput,
 } from "@/components";
 import { useLibrary } from "@/features/library/queries";
+import { useScrollToTopOnTabPress } from "@/lib/useScrollToTopOnTabPress";
 import { colors, fontSize, space } from "@/theme/tokens";
 
 import { useGameSearch } from "./queries";
@@ -91,6 +93,8 @@ export function ExploreScreen() {
   const router = useRouter();
   const [term, setTerm] = useState("");
   const inputRef = useRef<TextFieldInput>(null);
+  const listRef = useRef<FlashListRef<GameSummary>>(null);
+  useScrollToTopOnTabPress(listRef);
   const search = useGameSearch(term);
   const library = useLibrary();
 
@@ -107,8 +111,7 @@ export function ExploreScreen() {
     [library.data],
   );
 
-  // The game route is added by a later task, so it is not in the typed routes yet.
-  const openGame = (igdbId: number) => router.push(`/games/${igdbId}` as Href);
+  const openGame = (igdbId: number) => router.push(`/games/${igdbId}`);
 
   const empty = (() => {
     if (!searching) {
@@ -151,6 +154,7 @@ export function ExploreScreen() {
           data={results}
           keyExtractor={(game) => String(game.igdbId)}
           minItemWidth={MIN_ITEM_WIDTH}
+          listRef={listRef}
           renderItem={(game, width) => (
             <ExploreCard
               game={game}

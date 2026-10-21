@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import type { FlashListRef } from '@shopify/flash-list';
+import { createRef } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { CoverFooter, CoverGrid, GameCover, RatingStars, StatusIcon } from '..';
@@ -161,6 +163,21 @@ describe('CoverGrid', () => {
     const renderItem = jest.fn(() => <Text>item</Text>);
     await render(<CoverGrid data={items} keyExtractor={(i) => i.id} renderItem={renderItem} />);
     expect(renderItem).not.toHaveBeenCalled();
+  });
+
+  it('hands the list ref to the caller so it can scroll', async () => {
+    const listRef = createRef<FlashListRef<{ id: string }>>();
+    await render(
+      <CoverGrid
+        data={items}
+        listRef={listRef}
+        keyExtractor={(i) => i.id}
+        renderItem={(item) => <Text>{`item ${item.id}`}</Text>}
+      />,
+    );
+    await layout(358);
+    await screen.findByText('item a');
+    expect(listRef.current?.scrollToOffset).toEqual(expect.any(Function));
   });
 
   it('hands 4-column item widths to renderItem in a 358 px container', async () => {

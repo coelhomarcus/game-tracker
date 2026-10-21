@@ -1,5 +1,6 @@
-import { useRouter, type Href } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import type { FlashListRef } from '@shopify/flash-list';
+import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -13,6 +14,8 @@ import {
   TextField,
 } from '@/components';
 import { useMyFavorites } from '@/features/games/queries';
+import { showToast } from '@/lib/toast';
+import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
 import { colors, fontSize, radii, space, type GameStatus } from '@/theme/tokens';
 
 import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
@@ -97,6 +100,8 @@ export function LibraryScreen() {
   const { query, status, platformKey } = useLibraryFilter();
   const sort = useLibraryPrefs((state) => state.sort);
   const [sheet, setSheet] = useState<'platform' | 'sort' | null>(null);
+  const listRef = useRef<FlashListRef<LibraryGroup>>(null);
+  useScrollToTopOnTabPress(listRef);
 
   const { data } = library;
   const overview = useMemo(
@@ -110,10 +115,17 @@ export function LibraryScreen() {
   );
 
   const openGame = useCallback(
-    // The game route is added by a later task, so it is not in the typed routes yet.
-    (igdbId: number) => router.push(`/games/${igdbId}?tab=progress` as Href),
+    (igdbId: number) => router.push(`/games/${igdbId}?tab=progress`),
     [router],
   );
+  // `refetch` resolves with the error instead of throwing, so both outcomes are handled.
+  const refresh = useCallback(async () => {
+    const failed = await library.refetch().then(
+      (result) => result.isError,
+      () => true,
+    );
+    if (failed) showToast('Não foi possível atualizar a biblioteca');
+  }, [library]);
   const clear = useCallback(() => useLibraryFilter.getState().clear(), []);
 
   if (library.isPending) return <LibrarySkeleton />;
@@ -188,7 +200,8 @@ export function LibraryScreen() {
               onPress={openGame}
             />
           )}
-          onRefresh={() => void library.refetch()}
+          listRef={listRef}
+          onRefresh={() => void refresh()}
           refreshing={library.isRefetching}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}

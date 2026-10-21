@@ -1,5 +1,5 @@
-import { FlashList } from '@shopify/flash-list';
-import { useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useState, type ComponentType, type ReactElement, type ReactNode, type Ref } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 const GAP = 8;
@@ -28,6 +28,8 @@ export type CoverGridProps<T> = {
   ListHeaderComponent?: Slot;
   ListEmptyComponent?: Slot;
   minItemWidth?: number;
+  /** Handle to the underlying list, e.g. to scroll it to the top. */
+  listRef?: Ref<FlashListRef<T>>;
 };
 
 export function CoverGrid<T>({
@@ -39,6 +41,7 @@ export function CoverGrid<T>({
   ListHeaderComponent,
   ListEmptyComponent,
   minItemWidth,
+  listRef,
 }: CoverGridProps<T>) {
   const [width, setWidth] = useState<number | null>(null);
 
@@ -56,6 +59,7 @@ export function CoverGrid<T>({
         // gutters sit between columns and the covers line up with the page edges.
         <View testID="cover-grid-list" style={styles.list}>
           <FlashList
+            ref={listRef}
             key={grid.columns}
             data={data}
             numColumns={grid.columns}

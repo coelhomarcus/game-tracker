@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { showToast } from '@/lib/toast';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useMyFavorites } from '@/features/games/queries';
@@ -16,11 +17,16 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({ useLibrary: jest.fn() }));
 jest.mock('@/features/games/queries', () => ({ useMyFavorites: jest.fn() }));
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush }),
+  useNavigation: () => mockNavigation,
+}));
 
 const metrics = {
   frame: { x: 0, y: 0, width: 358, height: 800 },
@@ -114,6 +120,12 @@ beforeEach(() => {
   mockFavorites([]);
   mockPush.mockReset();
   refetch.mockReset();
+  refetch.mockResolvedValue({ isError: false });
+  jest.mocked(showToast).mockReset();
+  mockNavigation.addListener.mockReset();
+  mockNavigation.addListener.mockReturnValue(jest.fn());
+  mockNavigation.isFocused.mockReset();
+  mockNavigation.isFocused.mockReturnValue(true);
   useLibraryFilter.getState().clear();
   useLibraryPrefs.setState({ sort: 'recent' });
   mockLibrary();
@@ -345,6 +357,30 @@ describe('states', () => {
     expect(control.props.refreshing).toBe(true);
     await act(async () => control.props.onRefresh());
     expect(refetch).toHaveBeenCalledTimes(1);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('tells the user when a pull to refresh fails', async () => {
+    refetch.mockResolvedValue({ isError: true });
+    await renderLibrary();
+    const control = findRefreshControl(screen.toJSON());
+    await act(async () => control.props.onRefresh());
+    expect(showToast).toHaveBeenCalledWith('Não foi possível atualizar a biblioteca');
+  });
+
+  it('tells the user when the refresh request rejects', async () => {
+    refetch.mockRejectedValue(new Error('offline'));
+    await renderLibrary();
+    const control = findRefreshControl(screen.toJSON());
+    await act(async () => control.props.onRefresh());
+    expect(showToast).toHaveBeenCalledWith('Não foi possível atualizar a biblioteca');
+  });
+
+  it('listens for a press on its own tab to scroll back to the top', async () => {
+    await renderLibrary();
+    expect(mockNavigation.addListener).toHaveBeenCalledWith('tabPress', expect.any(Function));
+    const listener = mockNavigation.addListener.mock.calls[0][1];
+    expect(() => listener()).not.toThrow();
   });
 });
 

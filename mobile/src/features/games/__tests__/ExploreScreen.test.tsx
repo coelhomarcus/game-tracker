@@ -12,7 +12,11 @@ jest.mock("../queries", () => ({ useGameSearch: jest.fn() }));
 jest.mock("@/features/library/queries", () => ({ useLibrary: jest.fn() }));
 
 const mockPush = jest.fn();
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
+const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: mockPush }),
+  useNavigation: () => mockNavigation,
+}));
 
 const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 800 },
@@ -79,6 +83,8 @@ async function type(text: string) {
 beforeEach(() => {
   mockPush.mockReset();
   refetch.mockReset();
+  mockNavigation.addListener.mockReset();
+  mockNavigation.addListener.mockReturnValue(jest.fn());
   mockSearch();
   mockLibrary([]);
 });
@@ -132,6 +138,14 @@ describe("ExploreScreen", () => {
       screen.getByRole("button", { name: "Hades, Na biblioteca" }),
     ).toBeOnTheScreen();
     expect(screen.queryByText("PC")).not.toBeOnTheScreen();
+  });
+
+  it("listens for a press on its own tab to scroll back to the top", async () => {
+    await renderExplore();
+    expect(mockNavigation.addListener).toHaveBeenCalledWith(
+      "tabPress",
+      expect.any(Function),
+    );
   });
 
   it("opens the game when a result is pressed", async () => {
