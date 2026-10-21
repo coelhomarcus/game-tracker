@@ -24,6 +24,7 @@ function SheetContent({ onClose }: ContentProps) {
   const search = usePeopleSearch(term);
   const start = useStartConversation();
   const starting = useRef(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const trimmed = term.trim();
   const searching = trimmed.length >= MIN_TERM_LENGTH;
@@ -33,12 +34,16 @@ function SheetContent({ onClose }: ContentProps) {
   async function choose(userId: string) {
     if (starting.current) return;
     starting.current = true;
+    setFailure(null);
     try {
       const id = await start.mutateAsync(userId);
       onClose();
       router.push(`/chat/${id}` as Href);
     } catch (error) {
-      showToast(authErrorMessage(error));
+      // A native Modal covers the root toast host, so the sheet shows the failure itself too.
+      const message = authErrorMessage(error);
+      setFailure(message);
+      showToast(message);
     } finally {
       starting.current = false;
     }
@@ -88,7 +93,10 @@ function SheetContent({ onClose }: ContentProps) {
           <TextField
             label="Buscar pessoas"
             value={term}
-            onChangeText={setTerm}
+            onChangeText={(text) => {
+              setTerm(text);
+              setFailure(null);
+            }}
             returnKeyType="search"
             maxLength={50}
           />
@@ -101,6 +109,11 @@ function SheetContent({ onClose }: ContentProps) {
           />
         ) : null}
       </View>
+      {failure ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.failure}>
+          {failure}
+        </Text>
+      ) : null}
       <FlatList
         data={results}
         keyExtractor={(person) => person.id}
@@ -153,4 +166,10 @@ const styles = StyleSheet.create({
   },
   field: { flex: 1 },
   busy: { height: 48 },
+  failure: {
+    color: colors.danger,
+    fontSize: fontSize.sm,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+  },
 });

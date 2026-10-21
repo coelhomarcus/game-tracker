@@ -364,8 +364,43 @@ describe('NewConversationSheet', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Erro no servidor'));
+    // The root toast host sits under the native Modal: the sheet shows the failure itself.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Erro no servidor');
     expect(screen.getByLabelText('Buscar pessoas')).toBeOnTheScreen();
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('clears the inline failure when typing or choosing again', async () => {
+    mockedApi.create
+      .mockRejectedValueOnce(new ApiError(500, 'server_error', 'Erro no servidor'))
+      .mockResolvedValueOnce('conv-9');
+    await renderSheet();
+    await type('Buscar pessoas', 'bi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+    await screen.findByRole('alert');
+
+    await type('Buscar pessoas', 'bia');
+    expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
+
+    mockedApi.create.mockReset();
+    mockedApi.create.mockRejectedValueOnce(new ApiError(500, 'server_error', 'Erro no servidor'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+    await screen.findByRole('alert');
+    mockedApi.create.mockResolvedValueOnce('conv-9');
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/chat/conv-9'));
+    expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
+  });
+
+  it('closes on the Android back button', async () => {
+    await renderSheet();
+    // The Modal sits above the field; Android's back button calls its onRequestClose.
+    let node = screen.getByLabelText('Buscar pessoas').parent;
+    while (node && typeof node.props.onRequestClose !== 'function') node = node.parent;
+    const onRequestClose = node?.props.onRequestClose as () => void;
+    await act(async () => onRequestClose());
+
+    expect(screen.queryByLabelText('Buscar pessoas')).not.toBeOnTheScreen();
   });
 
   it('closes from the close button', async () => {
