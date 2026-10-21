@@ -1,9 +1,3 @@
-import { EmptyState, Screen } from '@/components';
+import { HomeScreen } from '@/features/feed/HomeScreen';
 
-export default function HomeScreen() {
-  return (
-    <Screen>
-      <EmptyState title="Início" message="Em construção" />
-    </Screen>
-  );
-}
+export default HomeScreen;
