@@ -6,6 +6,15 @@ export type PushPermission = 'granted' | 'denied' | 'notDetermined';
 /** The data payload of a push (`type`, `recipientId`, ids). Untrusted: read it defensively. */
 export type PushData = Record<string, unknown>;
 
+/** A tapped notification. */
+export type PushTap = {
+  /** The notification's id: the same tap delivered twice carries the same one. */
+  id: string | null;
+  data: PushData;
+  /** When the notification was posted (epoch ms), if known. */
+  postedAt: number | null;
+};
+
 type Unsubscribe = () => void;
 
 export type PushPlatform = {
@@ -17,9 +26,9 @@ export type PushPlatform = {
   token(): Promise<string>;
   onTokenRefresh(handler: (token: string) => void): Unsubscribe;
   /** The user tapped a notification while the app was running. */
-  onOpened(handler: (data: PushData) => void): Unsubscribe;
-  /** The notification whose tap launched the app, if any. */
-  initialMessage(): Promise<PushData | null>;
+  onOpened(handler: (tap: PushTap) => void): Unsubscribe;
+  /** The notification whose tap launched the app, if any; it is read once and then forgotten. */
+  initialMessage(): Promise<PushTap | null>;
 };
 
 type Notifications = typeof import('expo-notifications');
@@ -54,15 +63,23 @@ function toPermission(answer: PermissionAnswer): PushPermission {
   return 'denied';
 }
 
-function dataOf(response: unknown): PushData {
-  const request = (response as { notification?: { request?: Record<string, unknown> } } | null)
-    ?.notification?.request;
+type RawNotification = { date?: unknown; request?: Record<string, unknown> };
+
+function tapOf(response: unknown): PushTap {
+  const notification = (response as { notification?: RawNotification } | null)?.notification;
+  const request = notification?.request;
   const content = (request?.content as { data?: unknown } | undefined)?.data;
   const remote = (request?.trigger as { remoteMessage?: { data?: unknown } } | undefined)
     ?.remoteMessage?.data;
   const asRecord = (value: unknown) =>
     typeof value === 'object' && value !== null ? (value as PushData) : {};
-  return { ...asRecord(remote), ...asRecord(content) };
+  const id = request?.identifier;
+  const date = notification?.date;
+  return {
+    id: typeof id === 'string' && id !== '' ? id : null,
+    data: { ...asRecord(remote), ...asRecord(content) },
+    postedAt: typeof date === 'number' && Number.isFinite(date) && date > 0 ? date : null,
+  };
 }
 
 export const pushPlatform: PushPlatform = {
@@ -95,13 +112,21 @@ export const pushPlatform: PushPlatform = {
 
   onOpened(handler) {
     const subscription = notifications().addNotificationResponseReceivedListener((response) =>
-      handler(dataOf(response)),
+      handler(tapOf(response)),
     );
     return () => subscription.remove();
   },
 
   async initialMessage() {
-    const response = await notifications().getLastNotificationResponseAsync();
-    return response ? dataOf(response) : null;
+    const module = notifications();
+    const response = module.getLastNotificationResponse();
+    if (!response) return null;
+    try {
+      // Read once: a later read (another sign-in, a reload) must not open it again.
+      module.clearLastNotificationResponse();
+    } catch {
+      // Unavailable: the tap's id still keeps it from opening twice in this run.
+    }
+    return tapOf(response);
   },
 };

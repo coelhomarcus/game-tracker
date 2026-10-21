@@ -40,7 +40,8 @@ const mockNotifications = {
   requestPermissionsAsync: jest.fn(),
   getDevicePushTokenAsync: jest.fn(),
   setNotificationChannelAsync: jest.fn(),
-  getLastNotificationResponseAsync: jest.fn(),
+  getLastNotificationResponse: jest.fn(),
+  clearLastNotificationResponse: jest.fn(),
   addPushTokenListener: jest.fn(mockSubscribe(mockListeners.token)),
   addNotificationResponseReceivedListener: jest.fn(mockSubscribe(mockListeners.response)),
   AndroidImportance: { HIGH: 5 },
@@ -65,12 +66,23 @@ const granted = { status: 'granted', granted: true, canAskAgain: true };
 const undetermined = { status: 'undetermined', granted: false, canAskAgain: true };
 const denied = { status: 'denied', granted: false, canAskAgain: false };
 
-function response(data: Record<string, unknown>) {
-  return { actionIdentifier: 'default', notification: { request: { content: { data } } } };
+type Posted = { id?: string; date?: number };
+
+function response(data: Record<string, unknown>, { id, date }: Posted = {}) {
+  return {
+    actionIdentifier: 'default',
+    notification: { date, request: { identifier: id, content: { data } } },
+  };
 }
 
-function tap(data: Record<string, unknown>) {
-  for (const listener of [...mockListeners.response]) listener(response(data));
+function tap(data: Record<string, unknown>, posted: Posted = {}) {
+  for (const listener of [...mockListeners.response]) listener(response(data, posted));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
 }
 
 function refreshToken(token: string) {
@@ -96,7 +108,7 @@ beforeEach(async () => {
   mockNotifications.requestPermissionsAsync.mockResolvedValue(granted);
   mockNotifications.getDevicePushTokenAsync.mockResolvedValue({ type: 'android', data: 'tok-1' });
   mockNotifications.setNotificationChannelAsync.mockResolvedValue(null);
-  mockNotifications.getLastNotificationResponseAsync.mockResolvedValue(null);
+  mockNotifications.getLastNotificationResponse.mockReturnValue(null);
   api.register.mockResolvedValue(undefined);
   api.revoke.mockResolvedValue(undefined);
   useChatStore.getState().clear();
@@ -123,7 +135,7 @@ describe('without push support', () => {
     expect(mockNotifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
     expect(mockNotifications.addPushTokenListener).not.toHaveBeenCalled();
     expect(mockNotifications.addNotificationResponseReceivedListener).not.toHaveBeenCalled();
-    expect(mockNotifications.getLastNotificationResponseAsync).not.toHaveBeenCalled();
+    expect(mockNotifications.getLastNotificationResponse).not.toHaveBeenCalled();
     expect(api.register).not.toHaveBeenCalled();
   });
 
@@ -267,7 +279,72 @@ describe('registration', () => {
 
     refreshToken('tok-2');
 
-    await waitFor(() => expect(api.register).toHaveBeenLastCalledWith(expect.any(String), 'tok-2'));
+    const id = await AsyncStorage.getItem(INSTALLATION_ID_KEY);
+    expect(id).not.toBeNull();
+    await waitFor(() => expect(api.register).toHaveBeenLastCalledWith(id, 'tok-2'));
+    expect(usePush.getState().status).toBe('on');
+  });
+
+  it('keeps registering while the sign-in check answers during enable', async () => {
+    const silent = deferred<typeof undetermined>();
+    mockNotifications.getPermissionsAsync
+      .mockReturnValueOnce(silent.promise)
+      .mockResolvedValue(undetermined);
+    const prompt = deferred<typeof granted>();
+    mockNotifications.requestPermissionsAsync.mockReturnValueOnce(prompt.promise);
+    signIn();
+    await settle();
+
+    const enabling = usePush.getState().enable();
+    await settle();
+    expect(mockNotifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+    silent.resolve(undetermined);
+    await settle();
+    expect(usePush.getState().status).toBe('registering');
+
+    prompt.resolve(granted);
+    await enabling;
+    expect(usePush.getState().status).toBe('on');
+    expect(api.register).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays on when the sign-in check answers after enable finished', async () => {
+    const silent = deferred<typeof undetermined>();
+    mockNotifications.getPermissionsAsync
+      .mockReturnValueOnce(silent.promise)
+      .mockResolvedValue(undetermined);
+    signIn();
+    await settle();
+
+    await usePush.getState().enable();
+    expect(usePush.getState().status).toBe('on');
+    silent.resolve(undetermined);
+    await settle();
+
+    expect(usePush.getState().status).toBe('on');
+  });
+
+  it('asks for the permission once when enable is called again while it runs', async () => {
+    const silent = deferred<typeof undetermined>();
+    mockNotifications.getPermissionsAsync
+      .mockReturnValueOnce(silent.promise)
+      .mockResolvedValue(undetermined);
+    const prompt = deferred<typeof granted>();
+    mockNotifications.requestPermissionsAsync.mockReturnValueOnce(prompt.promise);
+    signIn();
+    await settle();
+
+    const first = usePush.getState().enable();
+    await settle();
+    silent.resolve(undetermined);
+    await settle();
+    const second = usePush.getState().enable();
+    await settle();
+    prompt.resolve(granted);
+    await Promise.all([first, second]);
+
+    expect(mockNotifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(api.register).toHaveBeenCalledTimes(1);
     expect(usePush.getState().status).toBe('on');
   });
 
@@ -389,7 +466,7 @@ describe('opening a notification', () => {
   });
 
   it('opens the notification that launched the app after sign-in, once', async () => {
-    mockNotifications.getLastNotificationResponseAsync.mockResolvedValue(
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
       response({ type: 'message', recipientId: ME, conversationId: CONV }),
     );
     // Signed out: the controller is not running yet, so nothing opens.
@@ -398,25 +475,62 @@ describe('opening a notification', () => {
 
     signIn();
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith(`/chat/${CONV}`));
+    // Forgotten once read, so nothing reads it again.
+    expect(mockNotifications.clearLastNotificationResponse).toHaveBeenCalledTimes(1);
 
     pushController.stop();
     signIn();
     await settle();
     expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(mockNotifications.getLastNotificationResponseAsync).toHaveBeenCalledTimes(1);
+    expect(mockNotifications.getLastNotificationResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a launch tap delivered by both the listener and the launch read once', async () => {
+    const data = { type: 'message', recipientId: ME, conversationId: CONV };
+    const posted = { id: 'n-1', date: Date.now() };
+    mockNotifications.getLastNotificationResponse.mockReturnValue(response(data, posted));
+    // The launch tap also reaches the listener as soon as it is added.
+    mockNotifications.addNotificationResponseReceivedListener.mockImplementationOnce(
+      (listener: Listener) => {
+        mockListeners.response.add(listener);
+        listener(response(data, posted));
+        return { remove: () => mockListeners.response.delete(listener) };
+      },
+    );
+
+    signIn();
+    await settle();
+    tap(data, posted);
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(`/chat/${CONV}`);
+    // Another notification still opens.
+    tap({ type: 'follow', recipientId: ME }, { id: 'n-2', date: Date.now() });
+    expect(mockPush).toHaveBeenLastCalledWith('/notifications');
+  });
+
+  it('still opens the launch tap when forgetting it is not available', async () => {
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
+      response({ type: 'follow', recipientId: ME }),
+    );
+    mockNotifications.clearLastNotificationResponse.mockImplementation(() => {
+      throw new Error('unavailable');
+    });
+
+    signIn();
+    await settle();
+
+    expect(mockPush).toHaveBeenCalledWith('/notifications');
   });
 
   it('keeps a route that arrives while signed out and opens it after the next sign-in', async () => {
-    let release: (value: unknown) => void = () => {};
-    mockNotifications.getLastNotificationResponseAsync.mockReturnValue(
-      new Promise((resolve) => (release = resolve)),
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
+      response({ type: 'follow', recipientId: ME, actorId: 'u2' }),
     );
+    // Signed out before the launch read answered.
     signIn();
-    await settle();
     pushController.stop();
     useSession.setState({ status: 'signedOut', user: null });
-
-    release(response({ type: 'follow', recipientId: ME, actorId: 'u2' }));
     await settle();
     expect(mockPush).not.toHaveBeenCalled();
 
@@ -426,14 +540,12 @@ describe('opening a notification', () => {
 
   it('drops a kept route that is too old', async () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
-    let release: (value: unknown) => void = () => {};
-    mockNotifications.getLastNotificationResponseAsync.mockReturnValue(
-      new Promise((resolve) => (release = resolve)),
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
+      response({ type: 'follow', recipientId: ME }),
     );
     signIn();
-    await settle();
     pushController.stop();
-    release(response({ type: 'follow', recipientId: ME }));
+    useSession.setState({ status: 'signedOut', user: null });
     await settle();
 
     now.mockReturnValue(1_000_000 + 2 * 60_000 + 1);
@@ -442,5 +554,41 @@ describe('opening a notification', () => {
 
     expect(mockPush).not.toHaveBeenCalled();
     now.mockRestore();
+  });
+
+  it('counts the 2 minutes of a launch tap from when its notification was posted', async () => {
+    // Tapped while signed out; the sign-in that reads it comes over 2 minutes after the post.
+    const postedAt = Date.now() + 60_000;
+    const now = jest.spyOn(Date, 'now').mockReturnValue(postedAt + 2 * 60_000 + 1);
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
+      response({ type: 'follow', recipientId: ME }, { id: 'n-1', date: postedAt }),
+    );
+
+    signIn();
+    await settle();
+
+    expect(mockPush).not.toHaveBeenCalled();
+    now.mockRestore();
+  });
+
+  it('opens a launch tap of an older notification right after the app started', async () => {
+    // Waited in the tray: the tap that launched the app is recent even if the post is not.
+    mockNotifications.getLastNotificationResponse.mockReturnValue(
+      response({ type: 'follow', recipientId: ME }, { id: 'n-1', date: Date.now() - 60 * 60_000 }),
+    );
+
+    signIn();
+    await settle();
+
+    expect(mockPush).toHaveBeenCalledWith('/notifications');
+  });
+
+  it('opens a tap on an older notification while running', async () => {
+    signIn();
+    await settle();
+
+    tap({ type: 'follow', recipientId: ME }, { id: 'n-1', date: Date.now() - 60 * 60_000 });
+
+    expect(mockPush).toHaveBeenCalledWith('/notifications');
   });
 });
