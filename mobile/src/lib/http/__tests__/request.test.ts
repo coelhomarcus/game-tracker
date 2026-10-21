@@ -183,4 +183,30 @@ describe('request', () => {
       jest.useRealTimers();
     }
   });
+
+  it('arms the abort timer with timeoutMs instead of 20 seconds', async () => {
+    const timerSpy = jest.spyOn(globalThis, 'setTimeout');
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    try {
+      const outcome = request(BASE, '/upload', { timeoutMs: 120_000 }).catch((e: unknown) => e);
+      const delays = timerSpy.mock.calls.map(([, ms]) => ms);
+      expect(delays).toContain(120_000);
+      expect(delays).not.toContain(20_000);
+      expect(fetchSpy.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+
+      // Fire the timer that was armed with the custom delay.
+      const call = timerSpy.mock.calls.find(([, ms]) => ms === 120_000)!;
+      (call[0] as () => void)();
+
+      await expect(outcome).resolves.toBeInstanceOf(NetworkError);
+    } finally {
+      fetchSpy.mockRestore();
+      timerSpy.mockRestore();
+    }
+  });
 });

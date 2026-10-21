@@ -198,27 +198,18 @@ describe('profilesApi', () => {
     expect(methods).toEqual(['POST', 'DELETE']);
   });
 
-  it('update sends only the given keys and returns the user', async () => {
+  it('update sends only the given keys and resolves on 204', async () => {
     let seenBody: unknown;
     server.use(
       http.patch(`${apiBaseUrl}/users/me`, async ({ request }) => {
         seenBody = await request.json();
-        return HttpResponse.json({
-          id: 'u1',
-          username: 'ana',
-          name: 'Ana Maria',
-          email: 'ana@example.com',
-          avatarUrl: null,
-          bannerUrl: null,
-          bio: null,
-        });
+        return new HttpResponse(null, { status: 204 });
       }),
     );
 
-    const user = await profilesApi.update({ name: 'Ana Maria' });
+    await expect(profilesApi.update({ name: 'Ana Maria' })).resolves.toBeUndefined();
 
     expect(seenBody).toEqual({ name: 'Ana Maria' });
-    expect(user).toMatchObject({ id: 'u1', name: 'Ana Maria', email: 'ana@example.com' });
   });
 
   describe('upload', () => {
@@ -275,10 +266,13 @@ describe('profilesApi', () => {
         }),
       );
 
+      const timeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+
       const url = await profilesApi.upload('avatar', image);
 
       expect(url).toBe('https://img/avatar.jpg');
       expect(seenPath.endsWith('/users/me/avatar')).toBe(true);
+      expect(timeoutSpy.mock.calls.some(([, ms]) => ms === 120_000)).toBe(true);
       expect(appended).toEqual([
         ['avatar', { uri: image.uri, name: 'photo.jpg', type: 'image/jpeg' }],
       ]);

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { api, type User } from '@/features/auth';
+import { api } from '@/features/auth';
 import { parsePostPage, type PostPage } from '@/features/feed/types';
 import { parseGame, type Game } from '@/features/games/types';
 import { parseEntry, type GameEntry } from '@/features/library/types';
@@ -15,6 +15,8 @@ import {
 } from './types';
 
 const PAGE_SIZE = 20;
+/** Images are up to 8 MB; a slow mobile connection needs far more than the default. */
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 type Json = Record<string, unknown>;
 
@@ -71,13 +73,13 @@ export const profilesApi = {
     else await api.delete<void>(`/users/${id}/follow`);
   },
 
-  /** Sends only the given keys; the backend keeps whatever is omitted. */
-  async update(changes: ProfileChanges): Promise<User> {
+  /** Sends only the given keys (the backend keeps the rest); it answers 204 with no body. */
+  async update(changes: ProfileChanges): Promise<void> {
     const body: ProfileChanges = {};
     if (changes.username !== undefined) body.username = changes.username;
     if (changes.name !== undefined) body.name = changes.name;
     if (changes.bio !== undefined) body.bio = changes.bio;
-    return api.patch<User>('/users/me', body);
+    await api.patch<void>('/users/me', body);
   },
 
   /** Uploads the image and returns its new URL. */
@@ -85,6 +87,7 @@ export const profilesApi = {
     const json = await api.post<{ avatarUrl?: string; bannerUrl?: string }>(
       `/users/me/${kind}`,
       await imageForm(kind, image),
+      { timeoutMs: UPLOAD_TIMEOUT_MS },
     );
     return (kind === 'avatar' ? json.avatarUrl : json.bannerUrl) as string;
   },

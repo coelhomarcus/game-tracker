@@ -6,9 +6,11 @@ export type RequestOptions = {
   query?: Record<string, string | number | undefined>;
   token?: string | null;
   signal?: AbortSignal;
+  /** Aborts the request after this long; uploads need more than the default. */
+  timeoutMs?: number;
 };
 
-const TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 function buildUrl(baseUrl: string, path: string, query: RequestOptions['query']): string {
   const params = new URLSearchParams();
@@ -37,7 +39,7 @@ export async function request<T>(
   path: string,
   opts: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, query, token, signal } = opts;
+  const { method = 'GET', body, query, token, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
 
   // A FormData body is sent untouched: the runtime adds the multipart boundary itself.
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -49,7 +51,7 @@ export async function request<T>(
   // The timeout and the caller's signal both feed one controller, so this
   // works on runtimes without AbortSignal.timeout / AbortSignal.any.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const forwardAbort = () => controller.abort();
   if (signal?.aborted) controller.abort();
   else signal?.addEventListener('abort', forwardAbort);
