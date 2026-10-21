@@ -13,6 +13,8 @@ const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
 /** Refreshes in a row that may be followed by an immediate retry before backing off. */
 const MAX_IMMEDIATE_REFRESH_RETRIES = 2;
 const DEFAULT_ACK_TIMEOUT_MS = 10_000;
+/** How long one connection attempt may take before it counts as failed. */
+const ATTEMPT_TIMEOUT_MS = 15_000;
 
 export function backoffDelay(attempt: number): number {
   return BACKOFF_MS[Math.min(Math.max(attempt, 1), BACKOFF_MS.length) - 1];
@@ -37,6 +39,7 @@ class ChatSocket {
   /** The token of the attempt in flight, to tell the session which one was rejected. */
   private usedToken: string | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private attemptTimer: ReturnType<typeof setTimeout> | null = null;
   private appStateSubscription: NativeEventSubscription | null = null;
   private readonly connectedHandlers = new Set<() => void>();
   private readonly pending = new Set<Pending>();
@@ -61,6 +64,7 @@ class ChatSocket {
     this.running = false;
     this.generation += 1;
     this.clearRetryTimer();
+    this.clearAttemptTimer();
     this.appStateSubscription?.remove();
     this.appStateSubscription = null;
     this.attempt = 0;
@@ -146,10 +150,31 @@ class ChatSocket {
     this.usedToken = token;
     socket.auth = { token };
     this.setStatus('connecting');
+    this.startAttemptTimer();
     socket.connect();
   }
 
+  /** A handshake the server never answers is not covered by the transport's own timeout. */
+  private startAttemptTimer(): void {
+    this.clearAttemptTimer();
+    const generation = this.generation;
+    this.attemptTimer = setTimeout(() => {
+      this.attemptTimer = null;
+      if (generation !== this.generation || !this.running) return;
+      if (useChatConnection.getState().status !== 'connecting') return;
+      // Schedule first so the disconnect this triggers is seen as already handled.
+      this.scheduleRetry();
+      this.socket?.disconnect();
+    }, ATTEMPT_TIMEOUT_MS);
+  }
+
+  private clearAttemptTimer(): void {
+    if (this.attemptTimer) clearTimeout(this.attemptTimer);
+    this.attemptTimer = null;
+  }
+
   private handleConnect(): void {
+    this.clearAttemptTimer();
     if (!this.running) {
       this.socket?.disconnect();
       return;
@@ -168,13 +193,17 @@ class ChatSocket {
 
   private handleDisconnect(): void {
     this.rejectPending();
+    this.clearAttemptTimer();
     if (!this.running) return;
-    // Only a drop after being connected retries at once; the backoff covers failed attempts.
-    if (useChatConnection.getState().status !== 'connected') return;
-    this.connect();
+    const { status } = useChatConnection.getState();
+    // A drop after being connected retries at once; the backoff covers failed attempts.
+    if (status === 'connected') this.connect();
+    // The transport closed before the handshake finished, which reports no connect_error.
+    else if (status === 'connecting') this.scheduleRetry();
   }
 
   private handleConnectError(error: Error): void {
+    this.clearAttemptTimer();
     if (!this.running) return;
     const generation = this.generation;
     if (error.message === 'unauthorized') {
@@ -197,6 +226,8 @@ class ChatSocket {
       this.stop();
       return;
     }
+    // A drop while the refresh was running already scheduled the next attempt.
+    if (useChatConnection.getState().status !== 'connecting') return;
     // The server may reject for another reason too, so immediate retries are capped.
     if (outcome === 'refreshed' && this.refreshRetries < MAX_IMMEDIATE_REFRESH_RETRIES) {
       this.refreshRetries += 1;

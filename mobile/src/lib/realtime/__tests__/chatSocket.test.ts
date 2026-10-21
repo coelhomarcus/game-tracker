@@ -224,6 +224,51 @@ describe('chatSocket', () => {
     expect(state()).toEqual({ status: 'waiting', attempt: 1 });
   });
 
+  it('treats a drop during the handshake as a failed attempt', () => {
+    chat.start();
+    socket().serverDrops('transport close');
+
+    expect(state()).toEqual({ status: 'waiting', attempt: 1 });
+    jest.advanceTimersByTime(1000);
+    expect(socket().connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not schedule twice when connect_error is followed by a disconnect', () => {
+    chat.start();
+    socket().serverRejects();
+    socket().serverDrops();
+
+    expect(state()).toEqual({ status: 'waiting', attempt: 1 });
+    jest.advanceTimersByTime(1000);
+    expect(socket().connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up on an attempt the server never answers after 15 s', () => {
+    chat.start();
+
+    jest.advanceTimersByTime(14_999);
+    expect(state().status).toBe('connecting');
+    jest.advanceTimersByTime(1);
+    expect(state()).toEqual({ status: 'waiting', attempt: 1 });
+    expect(socket().disconnect).toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1000);
+    expect(socket().connect).toHaveBeenCalledTimes(2);
+    expect(state().status).toBe('connecting');
+  });
+
+  it('clears the attempt timer when the connection succeeds or stops', () => {
+    chat.start();
+    expect(jest.getTimerCount()).toBe(1);
+    socket().serverAccepts();
+    expect(jest.getTimerCount()).toBe(0);
+
+    socket().serverDrops();
+    expect(jest.getTimerCount()).toBe(1);
+    chat.stop();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('ignores a late connect_error after stop', async () => {
     mockSession.refreshAfterUnauthorized.mockResolvedValue('refreshed');
     chat.start();
@@ -298,7 +343,9 @@ describe('chatSocket', () => {
     appStateListener?.('active');
     expect(socket().connect).toHaveBeenCalledTimes(2);
     expect(state().status).toBe('connecting');
-    expect(jest.getTimerCount()).toBe(0);
+    // The cancelled backoff does not fire a second attempt.
+    jest.advanceTimersByTime(1000);
+    expect(socket().connect).toHaveBeenCalledTimes(2);
   });
 
   it('reconnectNow starts when stopped and does nothing while connecting or connected', () => {
@@ -402,7 +449,8 @@ describe('chatSocket', () => {
       socket().serverDrops();
 
       await assertion;
-      expect(jest.getTimerCount()).toBe(0);
+      // Only the retry attempt's timer is left; the ack timer was cleared.
+      expect(jest.getTimerCount()).toBe(1);
     });
   });
 });
