@@ -2,6 +2,7 @@ import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -20,7 +21,15 @@ import {
 export const gameEntryStatusEnum = pgEnum('game_entry_status', ['backlog', 'playing', 'completed', 'dropped']);
 export const postTypeEnum = pgEnum('post_type', ['status', 'review', 'activity']);
 export const pushProviderEnum = pgEnum('push_provider', ['fcm']);
-export const notificationTypeEnum = pgEnum('notification_type', ['like', 'comment', 'follow']);
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'like',
+  'comment',
+  'follow',
+  'reply',
+  'mention',
+  'repost',
+  'quote',
+]);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -134,13 +143,76 @@ export const posts = pgTable(
     activityStatus: gameEntryStatusEnum('activity_status'),
     type: postTypeEnum('type').notNull().default('status'),
     imageUrl: varchar('image_url', { length: 500 }),
+    // Post citado (quote post). Se o original for apagado o quote continua, só perde a referência.
+    quotedPostId: uuid('quoted_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     userIdIdx: index('posts_user_id_idx').on(table.userId),
+    quotedPostIdIdx: index('posts_quoted_post_id_idx').on(table.quotedPostId),
     // composto pra keyset pagination (order by created_at desc, id desc)
     createdAtIdx: index('posts_created_at_id_idx').on(table.createdAt, table.id),
     gameIdIdx: index('posts_game_id_idx').on(table.gameId),
+  }),
+);
+
+/** Um repost por (post, usuário) — o repost não tem conteúdo próprio (quote post é um post novo). */
+export const reposts = pgTable(
+  'reposts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    postUserUnique: unique('reposts_post_id_user_id_unique').on(table.postId, table.userId),
+    // composto pra keyset pagination (order by created_at desc, id desc)
+    createdAtIdx: index('reposts_created_at_id_idx').on(table.createdAt, table.id),
+    userIdIdx: index('reposts_user_id_idx').on(table.userId),
+  }),
+);
+
+/** Posts salvos — privados: só o próprio usuário os enxerga. */
+export const bookmarks = pgTable(
+  'bookmarks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    postUserUnique: unique('bookmarks_post_id_user_id_unique').on(table.postId, table.userId),
+    userCreatedIdx: index('bookmarks_user_id_created_at_idx').on(table.userId, table.createdAt),
+  }),
+);
+
+/** Até 4 imagens por post, ordenadas por `position` (0–3). `posts.image_url` segue existindo por compatibilidade. */
+export const postImages = pgTable(
+  'post_images',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    url: varchar('url', { length: 500 }).notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    position: smallint('position').notNull(),
+    alt: varchar('alt', { length: 1000 }),
+  },
+  (table) => ({
+    postPositionUnique: unique('post_images_post_id_position_unique').on(table.postId, table.position),
+    positionRange: check('post_images_position_range', sql`${table.position} between 0 and 3`),
   }),
 );
 
@@ -229,6 +301,8 @@ export const notifications = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     type: notificationTypeEnum('type').notNull(),
     postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    // Preenchido nas notificações de reply/mention que nascem de um comentário.
+    commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'cascade' }),
     read: boolean('read').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -333,6 +407,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   comments: many(comments),
   likes: many(likes),
+  reposts: many(reposts),
+  bookmarks: many(bookmarks),
   following: many(follows, { relationName: 'follower' }),
   followers: many(follows, { relationName: 'following' }),
   notificationsReceived: many(notifications, { relationName: 'notificationRecipient' }),
@@ -365,8 +441,17 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, { fields: [posts.userId], references: [users.id] }),
   gameEntry: one(gameEntries, { fields: [posts.gameEntryId], references: [gameEntries.id] }),
   game: one(games, { fields: [posts.gameId], references: [games.id] }),
+  quotedPost: one(posts, {
+    fields: [posts.quotedPostId],
+    references: [posts.id],
+    relationName: 'postQuotes',
+  }),
+  quotes: many(posts, { relationName: 'postQuotes' }),
   comments: many(comments),
   likes: many(likes),
+  reposts: many(reposts),
+  bookmarks: many(bookmarks),
+  images: many(postImages),
   notifications: many(notifications),
 }));
 
@@ -380,11 +465,26 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   }),
   replies: many(comments, { relationName: 'commentReplies' }),
   likes: many(commentLikes),
+  notifications: many(notifications),
 }));
 
 export const likesRelations = relations(likes, ({ one }) => ({
   post: one(posts, { fields: [likes.postId], references: [posts.id] }),
   user: one(users, { fields: [likes.userId], references: [users.id] }),
+}));
+
+export const repostsRelations = relations(reposts, ({ one }) => ({
+  post: one(posts, { fields: [reposts.postId], references: [posts.id] }),
+  user: one(users, { fields: [reposts.userId], references: [users.id] }),
+}));
+
+export const bookmarksRelations = relations(bookmarks, ({ one }) => ({
+  post: one(posts, { fields: [bookmarks.postId], references: [posts.id] }),
+  user: one(users, { fields: [bookmarks.userId], references: [users.id] }),
+}));
+
+export const postImagesRelations = relations(postImages, ({ one }) => ({
+  post: one(posts, { fields: [postImages.postId], references: [posts.id] }),
 }));
 
 export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
@@ -409,6 +509,7 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     relationName: 'notificationActor',
   }),
   post: one(posts, { fields: [notifications.postId], references: [posts.id] }),
+  comment: one(comments, { fields: [notifications.commentId], references: [comments.id] }),
 }));
 
 export const conversationsRelations = relations(conversations, ({ many }) => ({

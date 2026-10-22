@@ -9,6 +9,10 @@ const PUSH_MESSAGES: Record<NotificationType, (actor: string) => { title: string
   like: (actor) => ({ title: 'Nova curtida', body: `${actor} curtiu seu post` }),
   comment: (actor) => ({ title: 'Novo comentário', body: `${actor} comentou no seu post` }),
   follow: (actor) => ({ title: 'Novo seguidor', body: `${actor} começou a seguir você` }),
+  reply: (actor) => ({ title: 'Nova resposta', body: `${actor} respondeu ao seu comentário` }),
+  mention: (actor) => ({ title: 'Nova menção', body: `${actor} mencionou você` }),
+  repost: (actor) => ({ title: 'Novo repost', body: `${actor} repostou seu post` }),
+  quote: (actor) => ({ title: 'Nova citação', body: `${actor} citou seu post` }),
 };
 
 interface NotifyInput {
