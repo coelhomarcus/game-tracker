@@ -59,9 +59,14 @@ export type Post = {
   likedByMe: boolean;
   repostedByMe: boolean;
   bookmarkedByMe: boolean;
-  /** Set on a quote post; `quotedPost` is null when the original was deleted. */
+  /**
+   * Set on a quote post; `quotedPost` is null when the original was deleted. Then `quotedPostId`
+   * is null as well and `quotedPostRemoved` is true (show "post removido"); a post that quotes
+   * nothing has all three empty.
+   */
   quotedPostId: string | null;
   quotedPost: QuotedPost | null;
+  quotedPostRemoved: boolean;
   /** Only on feed, profile and bookmark items; the same post can appear once per reposter. */
   reason: PostReason | null;
 };
@@ -178,6 +183,7 @@ export function parsePost(json: Json): Post {
     bookmarkedByMe: json.bookmarkedByMe === true,
     quotedPostId: nullableString(json.quotedPostId),
     quotedPost: json.quotedPost == null ? null : parseQuotedPost(json.quotedPost),
+    quotedPostRemoved: json.quotedPostRemoved === true,
     reason: parseReason(json.reason),
   };
 }

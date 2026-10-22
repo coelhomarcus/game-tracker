@@ -24,7 +24,7 @@ import {
   useToggleCommentLike,
   useTogglePostLike,
 } from "../queries";
-import { findCachedPost } from "../postCache";
+import { findCachedPost, updatePostEverywhere } from "../postCache";
 import type { Comment, Post, PostPage } from "../types";
 import { socialDefaults } from '@/test-utils/postDefaults';
 
@@ -1072,6 +1072,37 @@ describe("profile post lists", () => {
 
     expect(findCachedPost(client, "only-here")).toMatchObject({ id: "only-here" });
     expect(findCachedPost(client, "missing")).toBeUndefined();
+  });
+
+  it("hand out a reposter's copy without its reason, for the post detail", () => {
+    const client = freshClient();
+    const reason: Post["reason"] = {
+      type: "repost",
+      by: { id: "u2", username: "bia", name: null, avatarUrl: null },
+      at: new Date("2026-01-02T00:00:00Z"),
+    };
+    client.setQueryData(["feed", "general"], singlePage([post("p1", { reason })]));
+
+    expect(findCachedPost(client, "p1")).toEqual(post("p1"));
+    // The list still shows who reposted it.
+    expect(cachedPost(client, ["feed", "general"])).toMatchObject({ reason });
+  });
+
+  it("seed a post detail from a reposted copy without its reason", () => {
+    const client = freshClient();
+    const reason: Post["reason"] = {
+      type: "repost",
+      by: { id: "u2", username: "bia", name: null, avatarUrl: null },
+      at: new Date("2026-01-02T00:00:00Z"),
+    };
+    client.setQueryData(["feed", "general"], singlePage([post("p1", { reason })]));
+    // A detail that is only fetching holds no data of its own: its next state comes from the list.
+    client.getQueryCache().build(client, { queryKey: ["post", "p1"] });
+
+    updatePostEverywhere(client, "p1", (p) => ({ ...p, likeCount: p.likeCount + 1 }));
+
+    expect(client.getQueryData<Post>(["post", "p1"])).toEqual(post("p1", { likeCount: 3 }));
+    expect(cachedPost(client, ["feed", "general"])).toMatchObject({ likeCount: 3, reason });
   });
 
   it("receive the new comment count", async () => {

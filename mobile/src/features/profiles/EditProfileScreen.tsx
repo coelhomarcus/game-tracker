@@ -273,7 +273,7 @@ export function EditProfileScreen() {
               onChangeText={(text) => edit('bio', text)}
               error={fieldErrors.bio}
             />
-            <Text size="xs" tone="medium" style={styles.counter}>{`${countGraphemes(current.bio)}/${BIO_MAX}`}</Text>
+            <Text size="xs" tone="medium" style={styles.counter}>{`${countGraphemes(current.bio.trim())}/${BIO_MAX}`}</Text>
           </View>
         </Section>
 

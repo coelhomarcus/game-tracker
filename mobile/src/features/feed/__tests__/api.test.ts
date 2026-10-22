@@ -87,6 +87,7 @@ describe('parsePost', () => {
       bookmarkedByMe: false,
       quotedPostId: null,
       quotedPost: null,
+      quotedPostRemoved: false,
       reason: null,
     });
   });
@@ -160,6 +161,19 @@ describe('parsePost social fields', () => {
     const post = parsePost({ ...postJson, quotedPostId: null, quotedPost: null });
 
     expect(post.quotedPostId).toBeNull();
+    expect(post.quotedPost).toBeNull();
+    expect(post.quotedPostRemoved).toBe(false);
+  });
+
+  it('flags a quote whose original was deleted', () => {
+    const post = parsePost({
+      ...postJson,
+      quotedPostId: null,
+      quotedPost: null,
+      quotedPostRemoved: true,
+    });
+
+    expect(post.quotedPostRemoved).toBe(true);
     expect(post.quotedPost).toBeNull();
   });
 

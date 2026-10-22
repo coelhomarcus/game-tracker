@@ -195,6 +195,8 @@ describeBackend('quotes against the test API', () => {
     const after = await b.feed.post(quote.id);
     expect(after.quotedPost).toBeNull();
     expect(after.quotedPostId).toBeNull();
+    expect(after.quotedPostRemoved).toBe(true);
+    expect(quote.quotedPostRemoved).toBe(false);
   });
 
   it('a missing quoted post is 404 and a malformed id is 400', async () => {

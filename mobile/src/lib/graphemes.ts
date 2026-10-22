@@ -63,3 +63,8 @@ export function countGraphemes(text: string): number {
 
 /** The fallback alone, exported so it can be tested where `Intl.Segmenter` exists. */
 export const countGraphemesApproximately = approximateCount;
+
+/** The number of Unicode code points (what the server's column widths count). */
+export function countCodePoints(text: string): number {
+  return Array.from(text).length;
+}

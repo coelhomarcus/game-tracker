@@ -11,6 +11,7 @@ export const socialDefaults: Pick<
   | 'bookmarkedByMe'
   | 'quotedPostId'
   | 'quotedPost'
+  | 'quotedPostRemoved'
   | 'reason'
 > = {
   images: [],
@@ -21,5 +22,6 @@ export const socialDefaults: Pick<
   bookmarkedByMe: false,
   quotedPostId: null,
   quotedPost: null,
+  quotedPostRemoved: false,
   reason: null,
 };

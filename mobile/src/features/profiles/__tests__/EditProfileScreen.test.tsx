@@ -114,6 +114,14 @@ describe('EditProfileScreen form', () => {
     expect(screen.getByText('12/256')).toBeOnTheScreen();
   });
 
+  it('counts the bio trimmed, like the validation does', async () => {
+    await renderScreen();
+
+    await fireEvent.changeText(screen.getByLabelText('Bio'), '   abc  \n');
+
+    expect(screen.getByText('3/256')).toBeOnTheScreen();
+  });
+
   it('falls back to the session user while the profile is not loaded', async () => {
     mockProfileData = undefined;
     await renderScreen();
