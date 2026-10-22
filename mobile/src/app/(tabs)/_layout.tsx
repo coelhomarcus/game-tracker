@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
 
 import { HeaderBell, Layout } from '@/components';
+import { fontFamily } from '@/components/Text';
 import {
   MESSAGES_TAB_UNREAD_LABEL,
   MessagesTabIcon,
@@ -80,6 +81,7 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.borderLow, borderTopWidth: hairline },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMedium,
+        tabBarLabelStyle: { fontFamily: fontFamily.medium },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >

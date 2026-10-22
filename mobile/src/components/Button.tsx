@@ -103,7 +103,7 @@ export function Button({
         <View style={styles.content}>
           {icon ? <Ionicons name={icon} size={iconSize[size]} color={textColor} /> : null}
           {label && !round ? (
-            <Text size={size === 'tiny' ? 'sm' : 'md'} weight="medium" style={{ color: textColor }}>
+            <Text size={size === 'tiny' ? 'sm' : 'md'} weight="medium" style={[styles.label, { color: textColor }]}>
               {label}
             </Text>
           ) : null}
@@ -115,7 +115,8 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-  content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, maxWidth: '100%' },
+  label: { flexShrink: 1 },
   largeRadius: { borderRadius: radii.md },
   fullRadius: { borderRadius: radii.full },
   /** Secondary buttons share the card and sheet fill, so they keep a hairline edge. */

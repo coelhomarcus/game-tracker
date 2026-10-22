@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'center', padding: space._2xl },
   backdrop: { flex: 1, backgroundColor: `${colors.bg}${ALPHA_60}` },
   dialog: {
-    backgroundColor: colors.bgContrast25,
+    backgroundColor: colors.bgContrast50,
     borderWidth: hairline,
-    borderColor: colors.borderLow,
+    borderColor: colors.borderMedium,
     borderRadius: radii.md,
     padding: space._2xl,
     gap: space.md,

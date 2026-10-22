@@ -27,7 +27,7 @@ export function EmptyState({ title, message, icon, action, fill }: EmptyStatePro
           importantForAccessibility="no"
         />
       ) : null}
-      <Text accessibilityRole="header" size="lg" weight="semibold" style={styles.centered}>
+      <Text accessibilityRole="header" size="lg" weight="semibold" tone="high" style={styles.centered}>
         {title}
       </Text>
       {message ? (

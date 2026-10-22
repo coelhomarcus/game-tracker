@@ -24,7 +24,7 @@ export function ErrorState({ title = 'Algo deu errado', message, onRetry, fill }
         accessibilityElementsHidden
         importantForAccessibility="no"
       />
-      <Text accessibilityRole="header" size="_2xl" weight="semibold" style={styles.centered}>
+      <Text accessibilityRole="header" size="_2xl" weight="semibold" tone="high" style={styles.centered}>
         {title}
       </Text>
       {message ? (
