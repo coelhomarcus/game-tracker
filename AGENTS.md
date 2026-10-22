@@ -77,8 +77,9 @@ npm run lint
 npm test
 ```
 
-Mobile integration tests run against the local test API. Start it with
-`npm run test:seed` and `npm run dev:test` in `backend/`, then run:
+Mobile integration tests run against the local test API. After the backend test
+setup described in `README.md` (`.env.test` and the disposable services), start
+it with `npm run test:seed` and `npm run dev:test` in `backend/`, then run:
 
 ```bash
 cd mobile
