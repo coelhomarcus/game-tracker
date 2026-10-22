@@ -1,0 +1,130 @@
+name: Android release
+
+# Every push to main produces one signed APK release after the mobile quality gate.
+# Pull Requests that touch the app only build and sign the APK, to catch build problems before
+# merging; they publish nothing and upload no artifact.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/android-release.yml', '.github/scripts/next-version.mjs']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.event_name == 'push' && 'main' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  API_URL: ${{ vars.API_URL }}
+
+jobs:
+  release:
+    # Secrets are not available to Pull Requests from forks.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Calculate SemVer release
+        id: version
+        run: node .github/scripts/next-version.mjs
+      - name: Calculate Android build number
+        id: build
+        # The first Flutter release was versionCode 1 and this workflow's run numbers restart at 1,
+        # so the offset keeps every new APK above the one already installed on devices.
+        run: echo "number=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+      - name: Quality gate
+        if: github.event_name == 'push'
+        working-directory: mobile
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test -- --ci
+      - name: Validate production API URL
+        run: |
+          test -n "$API_URL" || { echo "Repository variable API_URL is missing" >&2; exit 1; }
+          case "$API_URL" in
+            https://*) ;;
+            *) echo "API_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+          case "$API_URL" in
+            */api|*/api/|*/) echo "API_URL must not end with / or /api" >&2; exit 1 ;;
+          esac
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "ANDROID_KEYSTORE_BASE64 is missing" >&2; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD is missing" >&2; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS is missing" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD is missing" >&2; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "GT_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Generate the Android project
+        working-directory: mobile
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.build.outputs.number }}
+          EXPO_PUBLIC_API_URL: ${{ vars.API_URL }}
+        run: npx expo prebuild --platform android --no-install --clean
+      - name: Build signed APK
+        working-directory: mobile/android
+        env:
+          EXPO_PUBLIC_API_URL: ${{ vars.API_URL }}
+          GT_REQUIRE_RELEASE_SIGNING: '1'
+          GT_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Remove signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+      - name: Verify APK signature
+        run: |
+          APK=mobile/android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "APK not found at $APK" >&2; exit 1; }
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          CERT=$("$APKSIGNER" verify --print-certs "$APK")
+          echo "$CERT"
+          if echo "$CERT" | grep -qi "Android Debug"; then
+            echo "The APK is signed with the Android debug key" >&2
+            exit 1
+          fi
+          cp "$APK" "gametracker-${{ steps.version.outputs.version }}.apk"
+          sha256sum "gametracker-${{ steps.version.outputs.version }}.apk"
+      - name: Create Git tag
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "$RELEASE_TAG"
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" "gametracker-${RELEASE_VERSION}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "GameTracker ${RELEASE_TAG}" \
+            --generate-notes
