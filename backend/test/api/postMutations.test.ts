@@ -257,13 +257,36 @@ describe('quote posts', () => {
     assert.equal((await send('POST', '/posts', quoter, { content: 'x', quotedPostId: 'abc' })).status, 400);
   });
 
-  it('deleting the original leaves the quote with quotedPost null', async () => {
+  it('deleting the original leaves the quote with quotedPost null and quotedPostRemoved true', async () => {
     const orig = await createPost(author, { content: 'vai sumir' });
+    const other = await createPost(author, { content: 'fica' });
     const quote = await createPost(quoter, { content: 'citação órfã', quotedPostId: orig.id });
+    const keeps = await createPost(quoter, { content: 'cita outro', quotedPostId: other.id });
+    const plain = await createPost(quoter, { content: 'post comum' });
+    assert.equal((await getPost(quote.id, quoter)).quotedPostRemoved, false);
     assert.equal((await send('DELETE', `/posts/${orig.id}`, author)).status, 204);
     const after = await getPost(quote.id, quoter);
     assert.equal(after.quotedPost, null);
     assert.equal(after.quotedPostId, null);
+    assert.equal(after.quotedPostRemoved, true);
+    // Só a citação do apagado é marcada; as demais seguem iguais.
+    const stillQuoting = await getPost(keeps.id, quoter);
+    assert.equal(stillQuoting.quotedPostRemoved, false);
+    assert.equal(stillQuoting.quotedPost.id, other.id);
+    assert.equal((await getPost(plain.id, quoter)).quotedPostRemoved, false);
+    assert.equal(plain.quotedPostRemoved, false);
+  });
+
+  it('keeps quotedPostRemoved on the feed items too', async () => {
+    const orig = await createPost(author, { content: 'some do feed' });
+    const quote = await createPost(quoter, { content: 'citação no feed', quotedPostId: orig.id });
+    assert.equal((await send('DELETE', `/posts/${orig.id}`, author)).status, 204);
+    const feed = await send('GET', '/feed?scope=general&limit=50', quoter);
+    assert.equal(feed.status, 200);
+    const item = feed.body.items.find((p: Json) => p.id === quote.id);
+    assert.ok(item, 'a citação aparece no feed');
+    assert.equal(item.quotedPostRemoved, true);
+    assert.equal(item.quotedPost, null);
   });
 });
 

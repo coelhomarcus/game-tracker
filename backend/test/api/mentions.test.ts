@@ -214,6 +214,19 @@ describe('notification payload', () => {
     assert.equal((await inbox(a)).find((n) => n.commentId === c3.id)!.excerpt, exact);
   });
 
+  it('cuts the excerpt by graphemes, never inside an emoji', async () => {
+    const post = await createPost(a, 'post');
+    const family = '👨‍👩‍👧';
+    const c1 = await comment(b, post.id, `${'x'.repeat(118)}${family.repeat(5)}`);
+    const cut = (await inbox(a)).find((n) => n.commentId === c1.id)!;
+    assert.equal(cut.excerpt, `${'x'.repeat(118)}${family}…`);
+
+    // 120 graphemes made of 2-code-point emoji still fit as they are.
+    const exact = '👍🏽'.repeat(120);
+    const c2 = await comment(b, post.id, exact);
+    assert.equal((await inbox(a)).find((n) => n.commentId === c2.id)!.excerpt, exact);
+  });
+
   it('post-based notifications carry the post text; follows carry none; existing fields stay', async () => {
     const post = await createPost(a, 'texto do post curtido');
     await send('POST', `/posts/${post.id}/like`, b);

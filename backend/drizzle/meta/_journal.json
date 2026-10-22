@@ -99,6 +99,13 @@
       "when": 1792684105292,
       "tag": "0013_widen_profile_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792685939240,
+      "tag": "0014_abnormal_paibok",
+      "breakpoints": true
     }
   ]
 }

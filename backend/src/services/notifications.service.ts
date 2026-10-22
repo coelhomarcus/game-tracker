@@ -10,7 +10,7 @@ const PUSH_MESSAGES: Record<NotificationType, (actor: string) => { title: string
   like: (actor) => ({ title: 'Nova curtida', body: `${actor} curtiu seu post` }),
   comment: (actor) => ({ title: 'Novo comentário', body: `${actor} comentou no seu post` }),
   follow: (actor) => ({ title: 'Novo seguidor', body: `${actor} começou a seguir você` }),
-  reply: (actor) => ({ title: 'Nova resposta', body: `${actor} respondeu ao seu comentário` }),
+  reply: (actor) => ({ title: 'Nova resposta', body: `${actor} respondeu seu comentário` }),
   mention: (actor) => ({ title: 'Nova menção', body: `${actor} mencionou você` }),
   repost: (actor) => ({ title: 'Novo repost', body: `${actor} repostou seu post` }),
   quote: (actor) => ({ title: 'Nova citação', body: `${actor} citou seu post` }),
@@ -87,13 +87,15 @@ export async function notifyMentions({
 }
 
 const EXCERPT_MAX = 120;
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
-/** Trecho curto do texto para a prévia: espaços e quebras de linha viram um espaço; até 120 caracteres. */
+/** Trecho curto do texto para a prévia: espaços e quebras de linha viram um espaço; até 120 grafemas. */
 export function excerptOf(text: string | null | undefined): string | null {
   const flat = text?.replace(/\s+/g, ' ').trim();
   if (!flat) return null;
-  const chars = Array.from(flat);
-  return chars.length <= EXCERPT_MAX ? flat : `${chars.slice(0, EXCERPT_MAX - 1).join('').trimEnd()}…`;
+  // Corta por grafemas (o que o usuário enxerga), nunca no meio de um emoji de vários pontos de código.
+  const graphemes = Array.from(segmenter.segment(flat), (part) => part.segment);
+  return graphemes.length <= EXCERPT_MAX ? flat : `${graphemes.slice(0, EXCERPT_MAX - 1).join('').trimEnd()}…`;
 }
 
 export async function list(userId: string) {

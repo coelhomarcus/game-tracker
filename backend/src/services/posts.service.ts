@@ -553,7 +553,7 @@ export async function getBookmarks(userId: string, cursor: string | undefined, l
 
 /**
  * Só o autor apaga. Likes, comentários (com as respostas), reposts, salvos, imagens e notificações
- * saem em cascata pelo banco; as citações ficam, com `quotedPost: null`. Os arquivos das imagens
+ * saem em cascata pelo banco; as citações ficam, com `quotedPost: null`, `quotedPostId: null` e `quotedPostRemoved: true`. Os arquivos das imagens
  * saem do disco, menos os que outro post ainda usa.
  */
 export async function deletePost(userId: string, postId: string) {
@@ -561,7 +561,11 @@ export async function deletePost(userId: string, postId: string) {
   if (post.userId !== userId) throw new AppError(403, 'forbidden', 'Só o autor pode apagar este post');
 
   const images = await db.select({ url: postImages.url }).from(postImages).where(eq(postImages.postId, postId));
-  await db.delete(posts).where(eq(posts.id, postId));
+  // Marca as citações antes: o apagar zera `quoted_post_id` pela FK, e a marca é o que sobra.
+  await db.transaction(async (tx) => {
+    await tx.update(posts).set({ quotedPostRemoved: true }).where(eq(posts.quotedPostId, postId));
+    await tx.delete(posts).where(eq(posts.id, postId));
+  });
 
   for (const { url } of images) {
     const stillUsed = await db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1);

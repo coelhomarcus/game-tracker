@@ -31,17 +31,24 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'quote',
 ]);
 
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  username: varchar('username', { length: 30 }).notNull().unique(),
-  name: varchar('name', { length: 256 }),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  avatarUrl: varchar('avatar_url', { length: 500 }),
-  bannerUrl: varchar('banner_url', { length: 500 }),
-  bio: varchar('bio', { length: 1024 }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    username: varchar('username', { length: 30 }).notNull().unique(),
+    name: varchar('name', { length: 256 }),
+    email: varchar('email', { length: 255 }).notNull().unique(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    avatarUrl: varchar('avatar_url', { length: 500 }),
+    bannerUrl: varchar('banner_url', { length: 500 }),
+    bio: varchar('bio', { length: 1024 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // A busca de menções compara `lower(username)`; sem este índice ela varre a tabela.
+    usernameLowerIdx: index('users_username_lower_idx').on(sql`lower(${table.username})`),
+  }),
+);
 
 export const refreshTokens = pgTable(
   'refresh_tokens',
@@ -145,6 +152,9 @@ export const posts = pgTable(
     imageUrl: varchar('image_url', { length: 500 }),
     // Post citado (quote post). Se o original for apagado o quote continua, só perde a referência.
     quotedPostId: uuid('quoted_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+    // Vira true quando o original citado é apagado (a FK zera quoted_post_id): sem isto a citação
+    // órfã não se distingue de um post comum e o cliente não consegue mostrar "post removido".
+    quotedPostRemoved: boolean('quoted_post_removed').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

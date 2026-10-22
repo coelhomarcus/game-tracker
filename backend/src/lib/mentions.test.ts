@@ -22,6 +22,16 @@ describe('extractMentions', () => {
     assert.deepEqual(extractMentions('a@bcd e @efg'), ['efg']);
   });
 
+  it('treats accented letters and URL paths as part of the surrounding word, not as a boundary', () => {
+    assert.deepEqual(extractMentions('café@bar.com'), []);
+    assert.deepEqual(extractMentions('olá@ana_b'), []);
+    assert.deepEqual(extractMentions('site.com/@user12'), []);
+    assert.deepEqual(extractMentions('oi @ana_b!'), ['ana_b']);
+    assert.deepEqual(extractMentions('@abcé'), []);
+    assert.deepEqual(extractMentions('é @abc'), ['abc']);
+    assert.deepEqual(extractMentions('(@abc)'), ['abc']);
+  });
+
   it('stops at punctuation, which is not part of the username', () => {
     assert.deepEqual(extractMentions('(@abc) e "@def", @ghi! @jkl? @mno; @pqr.'), ['abc', 'def', 'ghi', 'jkl', 'mno', 'pqr']);
     assert.deepEqual(extractMentions('@abc-def'), ['abc']);

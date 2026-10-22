@@ -1,9 +1,10 @@
 /**
- * `@usuario` no texto: precedido de início de texto ou de algo que não seja letra, número, `_`,
- * `@` ou `.` (assim `fulano@example.com`, `abc@def` e `@@x` não contam) e seguido de 3 a 30 letras,
- * números ou `_`, que é o formato dos nomes de usuário.
+ * `@usuario` no texto: precedido de início de texto ou de algo que não seja letra (de qualquer
+ * alfabeto, com acento), número, `_`, `@`, `.` ou `/` (assim `fulano@example.com`, `café@bar.com`,
+ * `site.com/@user` e `@@x` não contam) e seguido de 3 a 30 letras ASCII, números ou `_` (o formato
+ * dos nomes de usuário), sem outra letra ou número logo depois (`@abcé` não conta).
  */
-const MENTION = /(^|[^\w@.])@([A-Za-z0-9_]{3,30})\b/g;
+const MENTION = /(^|[^\p{L}\p{N}_@./])@([A-Za-z0-9_]{3,30})(?![\p{L}\p{N}_])/gu;
 
 /** No máximo tantas menções distintas por texto geram notificação (evita spam de notificações). */
 export const MAX_MENTIONS = 10;
