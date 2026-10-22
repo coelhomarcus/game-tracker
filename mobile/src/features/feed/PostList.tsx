@@ -18,7 +18,7 @@ import { colors, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
 import { PostCard } from './PostCard';
-import type { Post, PostPage } from './types';
+import { postKey, type Post, type PostPage } from './types';
 
 type Slot = ReactElement | ComponentType;
 
@@ -44,7 +44,8 @@ export type PostListProps = {
 
 type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
 
-const keyExtractor = (post: Post) => post.id;
+// The same post can be listed as the original and once per reposter.
+const keyExtractor = postKey;
 
 export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostList(
   {

@@ -5,6 +5,7 @@ import { Button, Text } from '@/components';
 import { ActivityCard } from '@/features/feed/ActivityCard';
 import { PostCard } from '@/features/feed/PostCard';
 import { useGamePosts } from '@/features/feed/queries';
+import { postKey } from '@/features/feed/types';
 import { colors, space } from '@/theme/tokens';
 
 export type GamePostsProps = {
@@ -44,14 +45,14 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
             {posts.map((post) =>
               post.type === 'activity' ? (
                 <ActivityCard
-                  key={post.id}
+                  key={postKey(post)}
                   post={post}
                   hideGame
                   onPress={() => open(post.id)}
                 />
               ) : (
                 <PostCard
-                  key={post.id}
+                  key={postKey(post)}
                   post={post}
                   hideGame
                   onPress={() => open(post.id)}

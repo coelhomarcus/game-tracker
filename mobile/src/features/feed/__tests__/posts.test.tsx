@@ -10,6 +10,7 @@ import { PostCard } from '../PostCard';
 import { PostGameLink } from '../PostGameLink';
 import { PostList } from '../PostList';
 import type { Post, PostPage } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 const mockMutate = jest.fn();
 jest.mock('../queries', () => ({ useTogglePostLike: () => ({ mutate: mockMutate }) }));
@@ -59,6 +60,7 @@ function post(overrides: Partial<Post> = {}): Post {
     likeCount: 3,
     commentCount: 2,
     likedByMe: false,
+    ...socialDefaults,
     ...overrides,
   };
 }

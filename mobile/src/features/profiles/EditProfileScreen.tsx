@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, ConfirmDialog, Screen, Text, TextField } from '@/components';
 import { authErrorMessage, useSession } from '@/features/auth';
+import { countGraphemes } from '@/lib/graphemes';
 import { ApiError } from '@/lib/http/errors';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { showToast } from '@/lib/toast';
@@ -268,12 +269,11 @@ export function EditProfileScreen() {
               label="Bio"
               multiline
               placeholder="Conte um pouco sobre você"
-              maxLength={BIO_MAX}
               value={current.bio}
               onChangeText={(text) => edit('bio', text)}
               error={fieldErrors.bio}
             />
-            <Text size="xs" tone="medium" style={styles.counter}>{`${current.bio.length}/${BIO_MAX}`}</Text>
+            <Text size="xs" tone="medium" style={styles.counter}>{`${countGraphemes(current.bio)}/${BIO_MAX}`}</Text>
           </View>
         </Section>
 

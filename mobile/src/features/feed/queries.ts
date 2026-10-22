@@ -11,7 +11,7 @@ import { authErrorMessage } from "@/features/auth";
 import { invalidateOwnProfile } from "@/features/profiles/ownProfile";
 import { showToast } from "@/lib/toast";
 
-import { feedApi } from "./api";
+import { feedApi, type CreatePostInput } from "./api";
 import { anyLikeInFlight, beginLike, runInLane, settleLike } from "./likeLanes";
 import {
   cancelCommentQueries,
@@ -123,11 +123,7 @@ export function useTogglePostLike() {
 export function useCreatePost() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      content: string;
-      gameId?: string;
-      gameEntryId?: string;
-    }) => feedApi.create(input),
+    mutationFn: (input: CreatePostInput) => feedApi.create(input),
     onSuccess: (post) => {
       const invalidations: Promise<unknown>[] = [
         client.invalidateQueries({ queryKey: ["feed"] }),

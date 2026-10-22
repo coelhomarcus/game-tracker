@@ -8,6 +8,7 @@ import { showToast } from '@/lib/toast';
 import { PostDetailScreen } from '../PostDetailScreen';
 import { useAddComment, useComments, usePost, useToggleCommentLike } from '../queries';
 import type { Comment, Post } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('../queries', () => ({
   usePost: jest.fn(),
@@ -67,6 +68,7 @@ function makePost(overrides: Partial<Post> = {}): Post {
     likeCount: 3,
     commentCount: 3,
     likedByMe: false,
+    ...socialDefaults,
     ...overrides,
   };
 }

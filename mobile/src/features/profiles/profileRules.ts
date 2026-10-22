@@ -1,9 +1,11 @@
 import { usernameError } from '@/features/auth/validation';
+import { countGraphemes } from '@/lib/graphemes';
 
 import type { ProfileChanges } from './api';
 
-export const NAME_MAX = 50;
-export const BIO_MAX = 280;
+/** Limits in graphemes (user-perceived characters), as the server counts them. */
+export const NAME_MAX = 64;
+export const BIO_MAX = 256;
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export type ProfileFields = { name: string; username: string; bio: string };
@@ -11,12 +13,12 @@ export type ProfileErrors = Partial<Record<keyof ProfileFields, string>>;
 
 function nameError(name: string): string | undefined {
   if (name.length === 0) return 'Informe seu nome';
-  if (name.length > NAME_MAX) return 'Use no máximo 50 caracteres';
+  if (countGraphemes(name) > NAME_MAX) return `Use no máximo ${NAME_MAX} caracteres`;
   return undefined;
 }
 
 function bioError(bio: string): string | undefined {
-  return bio.length > BIO_MAX ? 'Use no máximo 280 caracteres' : undefined;
+  return countGraphemes(bio) > BIO_MAX ? `Use no máximo ${BIO_MAX} caracteres` : undefined;
 }
 
 export function validateProfile(input: ProfileFields): ProfileErrors {

@@ -26,6 +26,7 @@ import {
 } from "../queries";
 import { findCachedPost } from "../postCache";
 import type { Comment, Post, PostPage } from "../types";
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
 jest.mock("@/features/feed/api", () => ({
@@ -61,6 +62,7 @@ function post(id: string, overrides: Partial<Post> = {}): Post {
     likeCount: 2,
     commentCount: 1,
     likedByMe: false,
+    ...socialDefaults,
     ...overrides,
   };
 }
@@ -311,6 +313,49 @@ describe("useTogglePostLike", () => {
       likedByMe: true,
       likeCount: 3,
     });
+  });
+
+  it("updates every copy of a post that is listed as the original and as reposts", async () => {
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const repostedBy = (id: string): Post["reason"] => ({
+      type: "repost",
+      by: { id, username: id, name: null, avatarUrl: null },
+      at: new Date("2026-01-02T00:00:00Z"),
+    });
+    const original = post("p1");
+    const byBia = post("p1", { reason: repostedBy("u2") });
+    const byCaio = post("p1", { reason: repostedBy("u3") });
+    client.setQueryData(
+      ["feed", "general"],
+      singlePage([byBia, post("other"), original]),
+    );
+    client.setQueryData(["userPosts", "u9", "post"], singlePage([byCaio]));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(original);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(cachedPost(client, ["feed", "general"], 0)).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+      reason: byBia.reason,
+    });
+    expect(cachedPost(client, ["feed", "general"], 2)).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+      reason: null,
+    });
+    expect(cachedPost(client, ["userPosts", "u9", "post"])).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+      reason: byCaio.reason,
+    });
+    expect(cachedPost(client, ["feed", "general"], 1)).toEqual(post("other"));
   });
 
   it("unlikes using the state the user saw", async () => {

@@ -5,6 +5,7 @@ import type { Post } from '@/features/feed/types';
 
 import { GamePosts } from '../GamePosts';
 import type { Game } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/features/feed/queries', () => ({
   useGamePosts: jest.fn(),
@@ -45,6 +46,7 @@ function post(overrides: Partial<Post> = {}): Post {
     likeCount: 0,
     commentCount: 0,
     likedByMe: false,
+    ...socialDefaults,
     ...overrides,
   };
 }

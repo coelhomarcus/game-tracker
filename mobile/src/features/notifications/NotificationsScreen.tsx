@@ -23,10 +23,14 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 const FILTER_TYPES: Record<Filter, readonly NotificationType[] | null> = {
   all: null,
-  interactions: ['like', 'comment'],
+  interactions: ['like', 'comment', 'reply', 'mention', 'repost', 'quote'],
   followers: ['follow'],
 };
 
+/**
+ * Every post notification opens its post: for a quote that is the new quote post (the backend
+ * sends it as `postId`). Highlighting `commentId` for replies and mentions comes later.
+ */
 function targetOf(item: AppNotification): Href | null {
   if (item.type === 'follow') return `/users/${item.actor.id}` as Href;
   return item.postId === null ? null : (`/posts/${item.postId}` as Href);

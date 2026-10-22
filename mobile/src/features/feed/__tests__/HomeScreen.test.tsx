@@ -11,6 +11,7 @@ import { colors } from '@/theme/tokens';
 import { HomeScreen } from '../HomeScreen';
 import { useFeed } from '../queries';
 import type { Post } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
@@ -54,6 +55,7 @@ function post(): Post {
     likeCount: 0,
     commentCount: 0,
     likedByMe: false,
+    ...socialDefaults,
   };
 }
 
@@ -252,6 +254,33 @@ describe('HomeScreen', () => {
 
     expect(screen.queryByText('Zerei de primeira!')).not.toBeOnTheScreen();
     expect(screen.getByText('Acompanhe quem joga com você')).toBeOnTheScreen();
+  });
+
+  it('lists the same post as the original and as a repost without repeating a key', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const original = post();
+    const reposted: Post = {
+      ...original,
+      reason: {
+        type: 'repost',
+        by: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+        at: new Date('2026-10-21T08:00:00.000Z'),
+      },
+    };
+    mockedUseFeed.mockReturnValue(
+      feedResult({
+        data: { pages: [{ items: [reposted, original], nextCursor: null }], pageParams: [] },
+      }),
+    );
+
+    await renderHome();
+
+    const list = screen.getByTestId('post-list');
+    const keys = [reposted, original].map((item) => list.props.keyExtractor(item));
+    expect(keys).toEqual(['repost:p1:u2', 'post:p1']);
+    expect(screen.getAllByText('Zerei de primeira!')).toHaveLength(2);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('invites the first post when the general feed is empty', async () => {

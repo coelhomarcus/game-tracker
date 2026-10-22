@@ -14,6 +14,10 @@ const TEXTS: Record<NotificationType, string> = {
   like: 'curtiu seu post',
   comment: 'comentou no seu post',
   follow: 'começou a seguir você',
+  reply: 'respondeu seu comentário',
+  mention: 'mencionou você',
+  repost: 'repostou seu post',
+  quote: 'citou seu post',
 };
 
 export type NotificationRowProps = {

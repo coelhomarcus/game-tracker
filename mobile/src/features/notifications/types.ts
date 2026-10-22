@@ -1,12 +1,24 @@
 import { parseUserSummary, type UserSummary } from '@/features/games/types';
 
-export type NotificationType = 'like' | 'comment' | 'follow';
+export type NotificationType =
+  | 'like'
+  | 'comment'
+  | 'follow'
+  | 'reply'
+  | 'mention'
+  | 'repost'
+  | 'quote';
 
 export type AppNotification = {
   id: string;
   type: NotificationType;
   actor: UserSummary;
+  /** For a quote, the new quote post; for the others, the post the notification is about. */
   postId: string | null;
+  /** The comment behind a comment, reply or mention. */
+  commentId: string | null;
+  /** The start of the comment or post text; null for a follow. */
+  excerpt: string | null;
   read: boolean;
   createdAt: Date;
 };
@@ -19,7 +31,15 @@ export type NotificationsData = {
 // The API payloads are trusted for required fields; optional ones are read defensively.
 type Json = Record<string, any>;
 
-const TYPES: readonly string[] = ['like', 'comment', 'follow'];
+const TYPES: readonly string[] = [
+  'like',
+  'comment',
+  'follow',
+  'reply',
+  'mention',
+  'repost',
+  'quote',
+];
 
 function parseNotification(json: Json): AppNotification | null {
   if (!TYPES.includes(json.type) || json.actor == null) return null;
@@ -28,6 +48,8 @@ function parseNotification(json: Json): AppNotification | null {
     type: json.type,
     actor: parseUserSummary(json.actor),
     postId: typeof json.postId === 'string' ? json.postId : null,
+    commentId: typeof json.commentId === 'string' ? json.commentId : null,
+    excerpt: typeof json.excerpt === 'string' ? json.excerpt : null,
     read: json.read === true,
     createdAt: new Date(json.createdAt),
   };

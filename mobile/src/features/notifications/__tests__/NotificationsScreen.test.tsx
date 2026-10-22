@@ -67,6 +67,8 @@ function item(overrides: Partial<AppNotification> & { id: string }): AppNotifica
     type: 'like',
     actor: actor('u1', 'ana', 'Ana Souza'),
     postId: 'p1',
+    commentId: null,
+    excerpt: null,
     read: false,
     createdAt: new Date(Date.now() - 5 * 60_000),
     ...overrides,
@@ -249,4 +251,69 @@ test('a failed refresh keeps the loaded notifications', async () => {
   await renderScreen();
   expect(screen.getByText('Ana Souza curtiu seu post')).toBeOnTheScreen();
   expect(screen.queryByText('Não foi possível carregar as notificações')).toBeNull();
+});
+
+describe('reply, mention, repost and quote notifications', () => {
+  const reply = item({
+    id: 'n10',
+    type: 'reply',
+    actor: actor('u4', 'dani', 'Dani'),
+    postId: 'p10',
+    commentId: 'c10',
+    excerpt: 'Concordo totalmente',
+  });
+  const mention = item({
+    id: 'n11',
+    type: 'mention',
+    actor: actor('u5', 'edu', 'Edu'),
+    postId: 'p11',
+    commentId: 'c11',
+  });
+  const mentionInPost = item({
+    id: 'n12',
+    type: 'mention',
+    actor: actor('u8', 'hugo', 'Hugo'),
+    postId: 'p12',
+  });
+  const repost = item({ id: 'n13', type: 'repost', actor: actor('u6', 'fabi', 'Fabi'), postId: 'p13' });
+  const quote = item({ id: 'n14', type: 'quote', actor: actor('u7', 'gui', 'Gui'), postId: 'p14' });
+
+  it('shows a sensible text for each', async () => {
+    setData([reply, mention, repost, quote]);
+    await renderScreen();
+
+    expect(screen.getByText('Dani respondeu seu comentário')).toBeOnTheScreen();
+    expect(screen.getByText('Edu mencionou você')).toBeOnTheScreen();
+    expect(screen.getByText('Fabi repostou seu post')).toBeOnTheScreen();
+    expect(screen.getByText('Gui citou seu post')).toBeOnTheScreen();
+  });
+
+  it('opens the post (the quote post for a quote)', async () => {
+    setData([reply, mention, mentionInPost, repost, quote]);
+    await renderScreen();
+
+    await fireEvent.press(screen.getByText('Dani respondeu seu comentário'));
+    expect(mockPush).toHaveBeenLastCalledWith('/posts/p10');
+    await fireEvent.press(screen.getByText('Edu mencionou você'));
+    expect(mockPush).toHaveBeenLastCalledWith('/posts/p11');
+    await fireEvent.press(screen.getByText('Hugo mencionou você'));
+    expect(mockPush).toHaveBeenLastCalledWith('/posts/p12');
+    await fireEvent.press(screen.getByText('Fabi repostou seu post'));
+    expect(mockPush).toHaveBeenLastCalledWith('/posts/p13');
+    await fireEvent.press(screen.getByText('Gui citou seu post'));
+    expect(mockPush).toHaveBeenLastCalledWith('/posts/p14');
+  });
+
+  it('counts as interactions, not followers', async () => {
+    setData([reply, mention, repost, quote, follow]);
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Interações' }));
+    expect(screen.getByText('Dani respondeu seu comentário')).toBeOnTheScreen();
+    expect(screen.getByText('Gui citou seu post')).toBeOnTheScreen();
+    expect(screen.queryByText('Carla começou a seguir você')).toBeNull();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Seguidores' }));
+    expect(screen.queryByText('Dani respondeu seu comentário')).toBeNull();
+  });
 });
