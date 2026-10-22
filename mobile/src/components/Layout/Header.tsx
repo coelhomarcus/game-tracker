@@ -84,6 +84,16 @@ export function Slot({ children, offset = 0 }: SlotProps) {
   );
 }
 
+/** The left column for 48 dp items around a 32 dp avatar, pulled out so the avatar sits on the gutter. */
+export function LeftItems({ children }: { children?: ReactNode }) {
+  return <View style={[styles.column, styles.side, styles.left]}>{children}</View>;
+}
+
+/** The right column for 48 dp items around 24 dp icons, lined up with the back arrow's gutter. */
+export function RightItems({ children }: { children?: ReactNode }) {
+  return <View style={[styles.column, styles.side, styles.right]}>{children}</View>;
+}
+
 type BackNavigation = { canGoBack(): boolean; goBack(): void };
 
 export type BackButtonProps = {
@@ -174,9 +184,9 @@ export function AppHeader({ options, navigation, backButton = false }: AppHeader
   let left: ReactNode = null;
   if (headerLeft) {
     left = (
-      <View style={[styles.column, styles.side, styles.left]}>
+      <LeftItems>
         <HeaderItem render={headerLeft} props={itemProps} />
-      </View>
+      </LeftItems>
     );
   } else if (backButton && options.headerBackVisible !== false) {
     left = <BackButton navigation={navigation} />;
@@ -193,9 +203,9 @@ export function AppHeader({ options, navigation, backButton = false }: AppHeader
         ) : null}
       </Content>
       {headerRight ? (
-        <View style={[styles.column, styles.side, styles.right]}>
+        <RightItems>
           <HeaderItem render={headerRight} props={itemProps} />
-        </View>
+        </RightItems>
       ) : null}
     </Outer>
   );

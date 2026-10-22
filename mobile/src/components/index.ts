@@ -26,6 +26,7 @@ export { RatingStars, type RatingStarsProps } from './RatingStars';
 export { Screen, type ScreenProps } from './Screen';
 export { Skeleton, type SkeletonProps } from './Skeleton';
 export { StatusIcon, type StatusIconProps } from './StatusIcon';
+export { TabBar, type TabBarProps } from './TabBar';
 export { Tabs, type TabsProps } from './Tabs';
 export { Text, type TextProps, type TextTone } from './Text';
 export { TextField, type TextFieldInput, type TextFieldProps } from './TextField';

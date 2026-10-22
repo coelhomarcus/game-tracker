@@ -5,17 +5,12 @@ import {
   useCallback,
   useMemo,
   useState,
+  type ComponentProps,
   type ComponentType,
   type ReactElement,
 } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type FlatList } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { Button, Text } from '@/components';
 import { showToast } from '@/lib/toast';
@@ -37,9 +32,17 @@ export type PostListProps = {
   onPressPost?: (post: Post) => void;
   /** Bottom padding of the content, e.g. to keep the last card clear of a floating button. */
   bottomInset?: number;
-  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /**
+   * Room above the content for a header floating over the list; the pull-to-refresh spinner
+   * starts below it too.
+   */
+  topInset?: number;
+  /** A plain callback or a Reanimated scroll handler (`useAnimatedScrollHandler`). */
+  onScroll?: AnimatedListProps['onScroll'];
   onContentSizeChange?: (width: number, height: number) => void;
 };
+
+type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
 
 const keyExtractor = (post: Post) => post.id;
 
@@ -51,6 +54,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     onRefresh,
     onPressPost,
     bottomInset,
+    topInset = 0,
     onScroll,
     onContentSizeChange,
   },
@@ -106,8 +110,12 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   }, [onRefresh, refetch]);
 
   const contentStyle = useMemo(
-    () => (bottomInset === undefined ? styles.content : [styles.content, { paddingBottom: bottomInset }]),
-    [bottomInset],
+    () => [
+      styles.content,
+      topInset > 0 && { paddingTop: space.lg + topInset },
+      bottomInset !== undefined && { paddingBottom: bottomInset },
+    ],
+    [bottomInset, topInset],
   );
 
   let footer: ReactElement | undefined;
@@ -137,7 +145,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   }
 
   return (
-    <FlatList
+    <Animated.FlatList
       ref={ref}
       testID="post-list"
       data={posts}
@@ -152,6 +160,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       onEndReachedThreshold={0.5}
       onRefresh={() => void refresh()}
       refreshing={pulling}
+      progressViewOffset={topInset > 0 ? topInset : undefined}
       ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={ListEmptyComponent}
       ListFooterComponent={footer}

@@ -8,7 +8,6 @@ import {
   NewConversationButton,
   useUnreadConversationCount,
 } from '@/features/chat/MessagesTab';
-import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
 import { colors } from '@/theme/tokens';
 
 const EXPLORE_GAMES = '/explore?tab=games' as Href;
@@ -64,7 +63,8 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Início', headerLeft: HomeHeaderLeft }} />
+      {/* Início draws its own header (`HomeHeader`), which hides as the feed scrolls. */}
+      <Tabs.Screen name="index" options={{ title: 'Início', headerShown: false }} />
       <Tabs.Screen name="library" options={{ title: 'Biblioteca', headerRight: LibraryHeaderRight }} />
       <Tabs.Screen name="explore" options={{ title: 'Explorar' }} />
       <Tabs.Screen

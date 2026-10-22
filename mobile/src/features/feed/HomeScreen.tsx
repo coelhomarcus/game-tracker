@@ -1,44 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { useCallback, useRef, useState, type RefObject } from 'react';
+import { Pressable, StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useComposedEventHandler } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
-import { EmptyState, Screen, Skeleton, Tabs } from '@/components';
+import { EmptyState, Screen, Skeleton } from '@/components';
+import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
 import { colors, radii, space } from '@/theme/tokens';
 
+import { HomeHeader } from './HomeHeader';
 import { PostList } from './PostList';
 import { useFeed } from './queries';
 import type { FeedScope, Post } from './types';
 
-const SCOPES: { value: FeedScope; label: string }[] = [
-  { value: 'general', label: 'Para você' },
-  { value: 'following', label: 'Seguindo' },
-];
 const SKELETON_ROWS = ['0', '1', '2'];
 const FAB_SIZE = 56;
 const AVATAR_SIZE = 40;
 
 const COMPOSER = '/posts/new' as Href;
 const EXPLORE_PEOPLE = '/explore?tab=people' as Href;
-
-type HeaderProps = { scope: FeedScope; onSelect: (scope: FeedScope) => void };
-
-/** Module scope: the list receives it as an element, so its identity never changes. */
-function FeedHeader({ scope, onSelect }: HeaderProps) {
-  return (
-    <View style={styles.header}>
-      <Tabs items={SCOPES} selected={scope} onSelect={onSelect} />
-    </View>
-  );
-}
 
 function FeedSkeleton() {
   return (
@@ -56,7 +38,16 @@ function FeedSkeleton() {
   );
 }
 
-type FeedProps = HeaderProps & {
+type HideOnScroll = ReturnType<typeof useHideOnScroll>;
+
+type FeedProps = {
+  scope: FeedScope;
+  /** The screen's handle on the list of the scope showing now (title and tab presses scroll it). */
+  listRef: RefObject<FlatList<Post> | null>;
+  /** Drives the header that floats over the list. */
+  hideOnScroll: HideOnScroll['scrollHandler'];
+  /** Height of that header: the list starts below it. */
+  headerHeight: number;
   /** The screen remembers each scope's scroll offset across the remounts of its list. */
   getOffset: (scope: FeedScope) => number;
   setOffset: (scope: FeedScope, offset: number) => void;
@@ -67,11 +58,9 @@ type FeedProps = HeaderProps & {
  * loaded scope shows its cached posts instantly and refetches in the background, and the list
  * returns to the offset the user left it at.
  */
-function Feed({ scope, onSelect, getOffset, setOffset }: FeedProps) {
+function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset }: FeedProps) {
   const router = useRouter();
   const query = useFeed(scope);
-  const listRef = useRef<FlatList<Post>>(null);
-  useScrollToTopOnTabPress(listRef);
   const restored = useRef(false);
 
   // Cached posts are laid out in one pass: put the list back where this scope was left.
@@ -84,9 +73,19 @@ function Feed({ scope, onSelect, getOffset, setOffset }: FeedProps) {
     if (offset > 0) listRef.current?.scrollToOffset({ offset, animated: false });
   };
   // Scroll events before the restore would overwrite the saved offset with the initial 0.
-  const rememberOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (restored.current) setOffset(scope, event.nativeEvent.contentOffset.y);
-  };
+  const rememberOffset = useCallback(
+    (offset: number) => {
+      if (restored.current) setOffset(scope, offset);
+    },
+    [scope, setOffset],
+  );
+  // Scroll events arrive on the UI thread for the header; the offset is kept on the JS side.
+  const offsetHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scheduleOnRN(rememberOffset, event.contentOffset.y);
+    },
+  });
+  const onScroll = useComposedEventHandler([hideOnScroll, offsetHandler]);
 
   let empty;
   if (query.isPending) {
@@ -120,10 +119,10 @@ function Feed({ scope, onSelect, getOffset, setOffset }: FeedProps) {
     <PostList
       ref={listRef}
       query={query}
-      ListHeaderComponent={<FeedHeader scope={scope} onSelect={onSelect} />}
       ListEmptyComponent={empty}
+      topInset={headerHeight}
       bottomInset={FAB_SIZE + 2 * space.lg}
-      onScroll={rememberOffset}
+      onScroll={onScroll}
       onContentSizeChange={restoreOffset}
     />
   );
@@ -138,10 +137,34 @@ export function HomeScreen() {
     offsets.current[key] = offset;
   }, []);
 
+  const listRef = useRef<FlatList<Post>>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const { scrollHandler, headerStyle, reveal } = useHideOnScroll(headerHeight);
+  const measureHeader = useCallback((event: LayoutChangeEvent) => {
+    setHeaderHeight(Math.round(event.nativeEvent.layout.height));
+  }, []);
+
+  useScrollToTopOnTabPress(listRef, reveal);
+  const scrollToTop = useCallback(() => {
+    reveal();
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [reveal]);
+
   return (
     <Screen>
       <View style={styles.page}>
-        <Feed key={scope} scope={scope} onSelect={setScope} getOffset={getOffset} setOffset={setOffset} />
+        <Feed
+          key={scope}
+          scope={scope}
+          listRef={listRef}
+          hideOnScroll={scrollHandler}
+          headerHeight={headerHeight}
+          getOffset={getOffset}
+          setOffset={setOffset}
+        />
+        <Animated.View testID="home-header-float" onLayout={measureHeader} style={[styles.header, headerStyle]}>
+          <HomeHeader scope={scope} onSelectScope={setScope} onScrollToTop={scrollToTop} />
+        </Animated.View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Publicar"
@@ -157,8 +180,8 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  // Tabs pad their own edges; pull them out to the screen edge so they scroll edge to edge.
-  header: { marginHorizontal: -space.lg, paddingBottom: space.md },
+  // Floats over the list, which pads its content by the header's measured height.
+  header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
   skeleton: { gap: space.lg },
   skeletonRow: { flexDirection: 'row', gap: space.md },
   skeletonText: { flex: 1, gap: space.sm },
