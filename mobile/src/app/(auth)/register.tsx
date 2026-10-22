@@ -3,7 +3,7 @@ import { RegisterForm } from '@/features/auth/RegisterForm';
 
 export default function RegisterScreen() {
   return (
-    <Screen scroll>
+    <Screen scroll topInset>
       <RegisterForm />
     </Screen>
   );
