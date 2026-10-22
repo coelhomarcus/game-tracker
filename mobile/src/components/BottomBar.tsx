@@ -1,13 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import type { ComponentProps } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
+import { displayName } from '@/features/feed/types';
 import { haptic } from '@/lib/haptics';
+import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, hairline } from '@/theme/tokens';
 import { Avatar } from './Avatar';
 import { CountBadge } from './CountBadge';
+import { PressableScale } from './PressableScale';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -19,6 +22,8 @@ const MIN_BOTTOM_PADDING = 15;
 const MAX_BOTTOM_PADDING = 60;
 /** Minimum touch target; the tab is a real box this tall (hitSlop past the parent is lost on Android). */
 const TAB_MIN_HEIGHT = 48;
+/** Press feedback of a tab, as in the design reference. */
+const PRESSED_SCALE = 0.8;
 
 const icons: Record<string, { active: IconName; inactive: IconName }> = {
   index: { active: 'home', inactive: 'home-outline' },
@@ -33,7 +38,11 @@ function ProfileAvatar({ active }: { active: boolean }) {
   const user = useSession((state) => state.user);
   return (
     <View testID="profile-avatar-ring" style={[styles.avatarRing, { borderColor: active ? colors.text : 'transparent' }]}>
-      <Avatar uri={user?.avatarUrl} name={user?.name ?? user?.username ?? 'Perfil'} size={AVATAR_SIZE} />
+      <Avatar
+        uri={resolveImageUrl(user?.avatarUrl)}
+        name={user ? displayName(user) : 'Perfil'}
+        size={AVATAR_SIZE}
+      />
     </View>
   );
 }
@@ -63,8 +72,10 @@ export function BottomBar({ state, descriptors, emitter, navigateToTab, insets }
         }
 
         return (
-          <Pressable
+          // Shrinks while pressed; the 48 dp box at rest is the real touch target.
+          <PressableScale
             key={route.key}
+            targetScale={PRESSED_SCALE}
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={label}
@@ -79,7 +90,7 @@ export function BottomBar({ state, descriptors, emitter, navigateToTab, insets }
               <Ionicons name={focused ? icon.active : icon.inactive} size={ICON_SIZE} color={color} />
             ) : null}
             <CountBadge count={badge} />
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

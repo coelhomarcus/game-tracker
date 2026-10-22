@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 import { useSession } from '@/features/auth';
+import { apiOrigin } from '@/lib/env';
 import { haptic } from '@/lib/haptics';
 import { colors, hairline, primary } from '@/theme/tokens';
 
@@ -150,6 +152,47 @@ describe('BottomBar', () => {
     expect(screen.getByRole('tab', { name: 'Perfil', selected: true })).toBeOnTheScreen();
     expect(screen.getByLabelText('Ana Souza')).toHaveStyle({ width: 25, height: 25 });
     expect(screen.getByTestId('profile-avatar-ring')).toHaveStyle({ borderColor: colors.text, borderWidth: 1 });
+  });
+
+  it('loads a backend avatar from the origin the app uses', async () => {
+    useSession.setState({
+      user: { name: 'Ana Souza', username: 'ana', avatarUrl: 'http://localhost:3000/uploads/ana.png' },
+    } as never);
+    await render(setup({ index: 4 }).element);
+    expect(screen.getByLabelText('Ana Souza').props.source).toEqual({ uri: `${apiOrigin}/uploads/ana.png` });
+  });
+
+  it('names the avatar after the username when the name is blank', async () => {
+    useSession.setState({ user: { name: ' ', username: 'ana', avatarUrl: null } } as never);
+    await render(setup({ index: 4 }).element);
+    expect(screen.getByText('A')).toBeOnTheScreen();
+  });
+
+  it('shrinks a tab to 0.8 while it is pressed', async () => {
+    jest.useFakeTimers();
+    try {
+      await render(setup().element);
+      const tab = screen.getByRole('tab', { name: 'Biblioteca' });
+      expect(tab.props.hitSlop).toBeUndefined();
+      // The types describe the web stub, which takes no argument; jest runs the native helper.
+      const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => {
+        transform?: { scale: number }[];
+      };
+
+      await fireEvent(tab, 'pressIn');
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(readAnimatedStyle(tab).transform?.[0].scale).toBeCloseTo(0.8);
+
+      await fireEvent(tab, 'pressOut');
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(readAnimatedStyle(tab).transform?.[0].scale).toBeCloseTo(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('has a transparent ring when Perfil is not active and falls back to the initial', async () => {

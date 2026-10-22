@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { HeaderBell, Layout, TabBar } from '@/components';
+import { haptic } from '@/lib/haptics';
 import { colors } from '@/theme/tokens';
 
 import { HomeHeaderLeft } from './HomeHeaderLeft';
@@ -34,7 +35,10 @@ export function HomeHeader({ scope, onSelectScope, onScrollToTop }: HomeHeaderPr
             accessibilityRole="button"
             accessibilityLabel="Início"
             accessibilityHint="Volta ao topo do feed"
-            onPress={onScrollToTop}
+            onPress={() => {
+              haptic('tap');
+              onScrollToTop();
+            }}
             style={styles.title}
           >
             <Layout.Header.TitleText>Início</Layout.Header.TitleText>

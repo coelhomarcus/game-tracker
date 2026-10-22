@@ -1,8 +1,9 @@
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
 
 import { useSession } from '@/features/auth';
+import { useConversations } from '@/features/chat/queries';
 import { colors } from '@/theme/tokens';
 
 jest.mock('@/features/auth', () => {
@@ -30,6 +31,18 @@ jest.mock('@/features/notifications/queries', () => ({
   useUnreadCount: () => 0,
   useMarkAllRead: () => ({ mutate: jest.fn() }),
 }));
+
+jest.mock('@/features/chat/queries', () => {
+  const actual = jest.requireActual('@/features/chat/queries');
+  return { ...actual, useConversations: jest.fn(actual.useConversations) };
+});
+
+const actualUseConversations = jest.requireActual('@/features/chat/queries').useConversations;
+
+afterEach(() => {
+  jest.mocked(useConversations).mockReset();
+  jest.mocked(useConversations).mockImplementation(actualUseConversations);
+});
 
 type Status = 'restoring' | 'signedOut' | 'signedIn' | 'unreachable';
 
@@ -69,6 +82,16 @@ test('signed in shows the five tabs in order', async () => {
     'Mensagens',
     'Perfil',
   ]);
+});
+
+test('the Mensagens tab names and shows the unread conversations', async () => {
+  jest.mocked(useConversations).mockReturnValue({
+    data: [{ unread: true }, { unread: true }, { unread: false }],
+  } as unknown as ReturnType<typeof useConversations>);
+  setStatus('signedIn');
+  await renderApp('/');
+  const tab = await screen.findByRole('tab', { name: 'Mensagens, 2 não lidas' });
+  expect(within(tab).getByText('2')).toBeOnTheScreen();
 });
 
 test('signed in cannot open login', async () => {

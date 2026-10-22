@@ -2,12 +2,13 @@ import { useRouter, type Href } from 'expo-router';
 import { useCallback, useRef, useState, type RefObject } from 'react';
 import { StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useComposedEventHandler } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen, Skeleton } from '@/components';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
 
 import { HomeHeader } from './HomeHeader';
 import { PostList } from './PostList';
@@ -16,6 +17,9 @@ import type { FeedScope, Post } from './types';
 
 const SKELETON_ROWS = ['0', '1', '2'];
 const AVATAR_SIZE = 40;
+/** The header's bar below the status bar, and the scope tabs under it (both 48 dp). */
+const HEADER_BAR_HEIGHT = 48;
+const TAB_BAR_HEIGHT = 48;
 
 const COMPOSER = '/posts/new' as Href;
 const EXPLORE_PEOPLE = '/explore?tab=people' as Href;
@@ -135,8 +139,10 @@ export function HomeScreen() {
     offsets.current[key] = offset;
   }, []);
 
+  const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<Post>>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
+  // Until the header is measured, assume its bar and tab row so the first frame does not jump.
+  const [headerHeight, setHeaderHeight] = useState(() => insets.top + HEADER_BAR_HEIGHT + TAB_BAR_HEIGHT);
   const { scrollHandler, headerStyle, reveal } = useHideOnScroll(headerHeight);
   const measureHeader = useCallback((event: LayoutChangeEvent) => {
     setHeaderHeight(Math.round(event.nativeEvent.layout.height));
@@ -151,6 +157,16 @@ export function HomeScreen() {
   return (
     <Screen>
       <View style={styles.page}>
+        {/* First in the tree so the screen reader reaches the header before the feed. */}
+        <Animated.View testID="home-header-float" onLayout={measureHeader} style={[styles.header, headerStyle]}>
+          <HomeHeader scope={scope} onSelectScope={setScope} onScrollToTop={scrollToTop} />
+        </Animated.View>
+        {/* The status bar strip stays solid while the header is hidden, as in the design reference. */}
+        <View
+          testID="status-bar-scrim"
+          pointerEvents="none"
+          style={[styles.statusBarScrim, { height: insets.top }]}
+        />
         <Feed
           key={scope}
           scope={scope}
@@ -160,9 +176,6 @@ export function HomeScreen() {
           getOffset={getOffset}
           setOffset={setOffset}
         />
-        <Animated.View testID="home-header-float" onLayout={measureHeader} style={[styles.header, headerStyle]}>
-          <HomeHeader scope={scope} onSelectScope={setScope} onScrollToTop={scrollToTop} />
-        </Animated.View>
         <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
       </View>
     </Screen>
@@ -173,6 +186,15 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   // Floats over the list, which pads its content by the header's measured height.
   header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
+  // Over the header too, so the header slides out beneath it.
+  statusBarScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
+    backgroundColor: colors.bg,
+  },
   skeleton: { gap: space.lg },
   skeletonRow: { flexDirection: 'row', gap: space.md },
   skeletonText: { flex: 1, gap: space.sm },

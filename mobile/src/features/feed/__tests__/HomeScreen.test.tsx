@@ -4,7 +4,9 @@ import { getAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
+import { haptic } from '@/lib/haptics';
 import { showToast } from '@/lib/toast';
+import { colors } from '@/theme/tokens';
 
 import { HomeScreen } from '../HomeScreen';
 import { useFeed } from '../queries';
@@ -16,6 +18,7 @@ jest.mock('../queries', () => ({
   useTogglePostLike: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('@/features/notifications/queries', () => ({ useUnreadCount: () => 2 }));
+jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
   ...jest.requireActual('react-native-reanimated'),
@@ -74,9 +77,9 @@ function feedResult(overrides: Record<string, unknown> = {}): FeedResult {
 
 const emptyPages = { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] };
 
-async function renderHome() {
+async function renderHome(top = 0) {
   await render(
-    <SafeAreaProvider initialMetrics={metrics}>
+    <SafeAreaProvider initialMetrics={{ ...metrics, insets: { ...metrics.insets, top } }}>
       <HomeScreen />
     </SafeAreaProvider>,
   );
@@ -140,6 +143,36 @@ describe('HomeScreen header', () => {
     expect(list.props.progressViewOffset).toBe(120);
   });
 
+  it('keeps the status bar strip solid over the feed', async () => {
+    await renderHome(24);
+
+    const scrim = screen.getByTestId('status-bar-scrim');
+    expect(scrim).toHaveStyle({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 24,
+      backgroundColor: colors.bg,
+    });
+    expect(scrim.props.pointerEvents).toBe('none');
+  });
+
+  it('reaches the screen reader before the feed', async () => {
+    await renderHome();
+
+    // Matches come back in tree order.
+    const order = screen.getAllByTestId(/^(home-header|post-list)$/).map((node) => node.props.testID);
+    expect(order).toEqual(['home-header', 'post-list']);
+  });
+
+  it('makes room for the bar and the tabs before the header is measured', async () => {
+    await renderHome(24);
+
+    const list = screen.getByTestId('post-list');
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 24 + 48 + 48);
+  });
+
   it('keeps the room for the header after switching scope', async () => {
     await renderHome();
     await layOutHeader(120);
@@ -157,6 +190,7 @@ describe('HomeScreen header', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Início' }));
 
     expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    expect(haptic).toHaveBeenCalledWith('tap');
     scrollToOffset.mockRestore();
   });
 
@@ -408,6 +442,8 @@ describe('HomeScreen header on scroll', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    // Reset here, so a failing reduce-motion test cannot leak into the next one.
+    jest.mocked(useReducedMotion).mockReturnValue(false);
   });
 
   it('follows the finger, then hides after a drag down', async () => {
@@ -502,6 +538,5 @@ describe('HomeScreen header on scroll', () => {
     });
 
     expect(translateY()).toBeCloseTo(0);
-    jest.mocked(useReducedMotion).mockReturnValue(false);
   });
 });
