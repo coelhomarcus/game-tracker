@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   dayText: {
     color: colors.text,
     fontSize: fontSize.xs,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
     borderRadius: 999,

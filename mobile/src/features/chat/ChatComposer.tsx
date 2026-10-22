@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.chrome,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingLeft: space.lg,

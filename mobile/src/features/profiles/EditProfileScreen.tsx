@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 3,
     borderRadius: radii.card,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
   },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   avatarAction: { flex: 1 },

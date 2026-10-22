@@ -97,7 +97,7 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.chrome,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingHorizontal: space.lg,

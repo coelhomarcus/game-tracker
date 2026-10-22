@@ -80,7 +80,7 @@ export function SessionGate() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
+        headerStyle: { backgroundColor: colors.chrome },
         headerTintColor: colors.text,
         headerTitleStyle: { color: colors.textStrong },
         contentStyle: { backgroundColor: colors.bg },

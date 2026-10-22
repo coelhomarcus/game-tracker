@@ -1,9 +1,17 @@
 export type GameStatus = 'playing' | 'completed' | 'backlog' | 'dropped';
 
+/**
+ * Tones go lighter as things come forward: screen (`bg`) < bars (`chrome`) < cards (`surface`)
+ * < controls inside them (`raised`) < selected (`active`). Neighbouring levels never share a
+ * color, so bars, cards and fields stay apart.
+ */
 export const colors = {
   bg: '#16181c',
-  surface: '#272c37',
+  chrome: '#1c1f26',
+  surface: '#22262f',
+  raised: '#2b303b',
   border: '#2a2d3c',
+  borderStrong: '#3a4050',
   active: '#3f4b64',
   text: '#cbd4dc',
   textMuted: '#9aa5b1',

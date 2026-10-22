@@ -214,11 +214,11 @@ describe('ChoiceChip', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the surface style and custom accessibility label when unselected', async () => {
+  it('uses the raised style and custom accessibility label when unselected', async () => {
     await render(<ChoiceChip label="Todos" selected={false} onPress={jest.fn()} accessibilityLabel="Todos os jogos" />);
     const chip = screen.getByRole('button', { name: 'Todos os jogos' });
     expect(chip).not.toBeSelected();
-    expect(StyleSheet.flatten(chip.props.style).backgroundColor).toBe(colors.surface);
+    expect(StyleSheet.flatten(chip.props.style).backgroundColor).toBe(colors.raised);
     expect(StyleSheet.flatten(screen.getByText('Todos').props.style).color).toBe(colors.text);
   });
 });

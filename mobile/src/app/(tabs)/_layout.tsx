@@ -81,11 +81,11 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.surface, height: insets.top + HEADER_BAR_HEIGHT },
+        headerStyle: { backgroundColor: colors.chrome, height: insets.top + HEADER_BAR_HEIGHT },
         headerTintColor: colors.textStrong,
         headerShadowVisible: false,
         headerRight: () => <HeaderBell />,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 },
+        tabBarStyle: { backgroundColor: colors.chrome, borderTopColor: colors.border, borderTopWidth: 1 },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
         sceneStyle: { backgroundColor: colors.bg },

@@ -63,8 +63,8 @@ describe('Button', () => {
       </>,
     );
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveStyle({
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
+      backgroundColor: colors.raised,
+      borderColor: colors.borderStrong,
     });
     expect(screen.getByText('Voltar')).toHaveStyle({ color: colors.accent });
   });

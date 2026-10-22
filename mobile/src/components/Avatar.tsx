@@ -24,7 +24,7 @@ export function Avatar({ uri, name, size = 40 }: AvatarProps) {
 }
 
 const styles = StyleSheet.create({
-  image: { backgroundColor: colors.surface },
+  image: { backgroundColor: colors.raised },
   fallback: { backgroundColor: colors.active, alignItems: 'center', justifyContent: 'center' },
   initial: { color: colors.textStrong, fontWeight: 'bold' },
 });

@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
   },
   bubbleMine: { backgroundColor: colors.active },
-  bubbleOther: { backgroundColor: colors.surface },
+  bubbleOther: { backgroundColor: colors.raised },
   textMine: { color: colors.textStrong, fontSize: fontSize.md },
   textOther: { color: colors.text, fontSize: fontSize.md },
   footer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

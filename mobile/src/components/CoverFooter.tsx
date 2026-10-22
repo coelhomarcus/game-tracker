@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.cover,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
     overflow: 'hidden',
   },
   shrink: { flexShrink: 1 },

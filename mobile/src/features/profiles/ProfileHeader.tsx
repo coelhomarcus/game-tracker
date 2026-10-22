@@ -89,7 +89,7 @@ function Count({ value, word }: { value: number; word: string }) {
 }
 
 const styles = StyleSheet.create({
-  banner: { width: '100%', aspectRatio: 3, backgroundColor: colors.surface },
+  banner: { width: '100%', aspectRatio: 3, backgroundColor: colors.raised },
   content: {
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
