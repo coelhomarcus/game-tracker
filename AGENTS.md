@@ -132,7 +132,7 @@ node dist/db/migrate.js && node dist/server.js
 ```
 
 If migrations fail, the API must not start. Required production configuration
-is documented in `docs/DEPLOY_DOKPLOY.md`. Secrets must be configured in
+is documented in the Deployment section of `README.md`. Secrets must be configured in
 Dokploy and must never be committed to the repository.
 
 ## Android releases
