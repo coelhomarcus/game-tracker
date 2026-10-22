@@ -16,6 +16,8 @@ import {
   users,
 } from '../db/schema';
 import { AppError } from '../lib/errors';
+import { getPublicBaseUrl } from '../lib/publicUrl';
+import { deletePostImageIfLocal, inspectIssuedPostImage, savePostImage } from '../lib/uploads';
 import { decodeCursor, decodeTimelineCursor, encodeCursor, encodeTimelineCursor, type TimelineKind } from '../lib/cursor';
 import * as notificationsService from './notifications.service';
 
@@ -173,6 +175,28 @@ interface CreatePostInput {
   activityStatus?: GameEntryStatus;
   type: PostType;
   imageUrl?: string;
+  /** Imagens já enviadas por `POST /posts/images`, na ordem de exibição (no máximo 4). */
+  images?: { url: string; width: number; height: number; alt?: string }[];
+  quotedPostId?: string;
+}
+
+/** Salva uma imagem de post e devolve a URL pública dela com o tamanho final. */
+export async function uploadImage(buffer: Buffer) {
+  const saved = await savePostImage(buffer);
+  return { url: `${getPublicBaseUrl()}${saved.path}`, width: saved.width, height: saved.height };
+}
+
+/**
+ * Só vale uma imagem que esta API emitiu e que ainda existe. O tamanho gravado é o do arquivo, não
+ * o que o cliente mandou (a proporção desenha o layout de quem vê o post).
+ */
+async function resolveImages(images: NonNullable<CreatePostInput['images']>) {
+  const sizes = await Promise.all(images.map((image) => inspectIssuedPostImage(image.url)));
+  return images.map((image, position) => {
+    const size = sizes[position];
+    if (!size) throw new AppError(400, 'validation_error', 'Imagem não reconhecida: envie por POST /posts/images');
+    return { url: image.url, width: size.width, height: size.height, alt: image.alt || null, position };
+  });
 }
 
 export async function create(userId: string, input: CreatePostInput) {
@@ -193,20 +217,37 @@ export async function create(userId: string, input: CreatePostInput) {
     if (!game) throw new AppError(404, 'not_found', 'Jogo não encontrado');
   }
 
-  const [created] = await db
-    .insert(posts)
-    .values({
-      userId,
-      content: input.content,
-      gameEntryId: input.gameEntryId,
-      gameId: resolvedGameId,
-      activityStatus: input.activityStatus,
-      type: input.type,
-      imageUrl: input.imageUrl,
-    })
-    .returning();
+  const quoted = input.quotedPostId ? await getPostOrThrow(input.quotedPostId) : null;
+  const images = await resolveImages(input.images ?? []);
 
-  return getPostById(created!.id, userId);
+  const values = {
+    userId,
+    content: input.content,
+    gameEntryId: input.gameEntryId,
+    gameId: resolvedGameId,
+    activityStatus: input.activityStatus,
+    type: input.type,
+    // `imageUrl` segue sendo a primeira imagem (compatibilidade com quem lê só ele).
+    imageUrl: images[0]?.url ?? input.imageUrl,
+    quotedPostId: quoted?.id,
+  };
+  // Com imagens são duas escritas (o post e as linhas das imagens): ou entram as duas ou nenhuma.
+  // Sem imagens é uma escrita só, que dispensa a transação.
+  const created =
+    images.length === 0
+      ? (await db.insert(posts).values(values).returning())[0]!
+      : await db.transaction(async (tx) => {
+          const [row] = await tx.insert(posts).values(values).returning();
+          await tx.insert(postImages).values(images.map((image) => ({ ...image, postId: row!.id })));
+          return row!;
+        });
+
+  // A notificação abre a citação (o post novo), não o original que o autor já conhece.
+  if (quoted) {
+    await notificationsService.notify({ userId: quoted.userId, actorId: userId, type: 'quote', postId: created.id });
+  }
+
+  return getPostById(created.id, userId);
 }
 
 /**
@@ -412,6 +453,101 @@ export async function unlike(userId: string, postId: string) {
   await db.delete(likes).where(and(eq(likes.postId, postId), eq(likes.userId, userId)));
 }
 
+/** Repostar de novo é idempotente: só o primeiro repost notifica. Repostar o próprio post vale, sem notificar. */
+export async function repost(userId: string, postId: string) {
+  const post = await getPostOrThrow(postId);
+  const inserted = await db
+    .insert(reposts)
+    .values({ postId, userId })
+    .onConflictDoNothing({ target: [reposts.postId, reposts.userId] })
+    .returning({ id: reposts.id });
+
+  if (inserted.length > 0) {
+    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'repost', postId });
+  }
+}
+
+export async function unrepost(userId: string, postId: string) {
+  await getPostOrThrow(postId);
+  await db.delete(reposts).where(and(eq(reposts.postId, postId), eq(reposts.userId, userId)));
+}
+
+/** Salvos são privados e não geram notificação. */
+export async function bookmark(userId: string, postId: string) {
+  await getPostOrThrow(postId);
+  await db
+    .insert(bookmarks)
+    .values({ postId, userId })
+    .onConflictDoNothing({ target: [bookmarks.postId, bookmarks.userId] });
+}
+
+export async function unbookmark(userId: string, postId: string) {
+  await getPostOrThrow(postId);
+  await db.delete(bookmarks).where(and(eq(bookmarks.postId, postId), eq(bookmarks.userId, userId)));
+}
+
+interface BookmarkRow extends Record<string, unknown> {
+  id: string;
+  post_id: string;
+  at_text: string;
+}
+
+/**
+ * Os posts que o usuário salvou, o salvo mais recente primeiro. Paginação keyset por
+ * (bookmarks.created_at, bookmarks.id), com microssegundos como na linha do tempo, pelo índice
+ * (user_id, created_at). Os itens têm `reason: null`, o mesmo formato dos itens do feed.
+ */
+export async function getBookmarks(userId: string, cursor: string | undefined, limit: number) {
+  const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
+  if (cursor !== undefined && !decoded) throw new AppError(400, 'validation_error', 'Cursor inválido');
+  const cut = decoded
+    ? sql`and (${bookmarks.createdAt}, ${bookmarks.id}) < (${decoded.at}::timestamptz, ${decoded.id}::uuid)`
+    : sql``;
+
+  const result = await db.execute<BookmarkRow>(sql`
+    select ${bookmarks.id} as id, ${bookmarks.postId} as post_id,
+      to_char(${bookmarks.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text
+    from ${bookmarks}
+    where ${bookmarks.userId} = ${userId} ${cut}
+    order by ${bookmarks.createdAt} desc, ${bookmarks.id} desc
+    limit ${limit + 1}
+  `);
+
+  const rows = result.rows;
+  const page = rows.slice(0, limit);
+  const postsById = await hydratePosts(
+    page.map((r) => r.post_id),
+    userId,
+  );
+  const items = page.flatMap((row) => {
+    const post = postsById.get(row.post_id);
+    return post ? [{ ...post, reason: null }] : [];
+  });
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    rows.length > limit && last ? encodeTimelineCursor({ at: last.at_text, id: last.id, kind: 'post' }) : null;
+  return { items, nextCursor };
+}
+
+/**
+ * Só o autor apaga. Likes, comentários (com as respostas), reposts, salvos, imagens e notificações
+ * saem em cascata pelo banco; as citações ficam, com `quotedPost: null`. Os arquivos das imagens
+ * saem do disco, menos os que outro post ainda usa.
+ */
+export async function deletePost(userId: string, postId: string) {
+  const post = await getPostOrThrow(postId);
+  if (post.userId !== userId) throw new AppError(403, 'forbidden', 'Só o autor pode apagar este post');
+
+  const images = await db.select({ url: postImages.url }).from(postImages).where(eq(postImages.postId, postId));
+  await db.delete(posts).where(eq(posts.id, postId));
+
+  for (const { url } of images) {
+    const stillUsed = await db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1);
+    if (stillUsed.length === 0) await deletePostImageIfLocal(url);
+  }
+}
+
 async function getCommentOrThrow(commentId: string) {
   const comment = await db.query.comments.findFirst({ where: eq(comments.id, commentId) });
   if (!comment) throw new AppError(404, 'not_found', 'Comentário não encontrado');
@@ -484,6 +620,13 @@ export async function listComments(postId: string, viewerId: string) {
     with: { user: { columns: userColumns }, likes: { columns: { userId: true } } },
   });
   return buildCommentTree(flat, viewerId);
+}
+
+/** Só o autor do comentário apaga (nem o autor do post). As respostas saem junto, em cascata. */
+export async function deleteComment(userId: string, commentId: string) {
+  const comment = await getCommentOrThrow(commentId);
+  if (comment.userId !== userId) throw new AppError(403, 'forbidden', 'Só o autor pode apagar este comentário');
+  await db.delete(comments).where(eq(comments.id, commentId));
 }
 
 export async function likeComment(userId: string, commentId: string) {

@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+const postImageSchema = z.object({
+  url: z.string().url().max(500),
+  // O servidor guarda o tamanho real do arquivo; aqui só se recusa lixo.
+  width: z.number().int().positive().max(20000),
+  height: z.number().int().positive().max(20000),
+  alt: z.string().max(1000).optional(),
+});
+
 export const createPostSchema = z.object({
   content: z.string().min(1).max(500),
   gameEntryId: z.string().uuid().optional(),
@@ -9,6 +17,17 @@ export const createPostSchema = z.object({
   gameId: z.string().uuid().optional(),
   type: z.enum(['status', 'review', 'activity']).optional().default('status'),
   imageUrl: z.string().url().max(500).optional(),
+  // Imagens enviadas por POST /posts/images, na ordem de exibição (a primeira vira o `imageUrl`).
+  images: z.array(postImageSchema).max(4).optional(),
+  quotedPostId: z.string().uuid().optional(),
+}).refine((post) => !(post.imageUrl && post.images?.length), {
+  message: 'Use imageUrl ou images, não os dois',
+  path: ['images'],
+});
+
+export const bookmarksQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 
 export const feedQuerySchema = z.object({

@@ -87,8 +87,8 @@ export async function getStats(gameId: string) {
 
 /**
  * "Quem está jogando" / "seus amigos estão jogando" — prévia limitada, sem
- * paginação. `scope: 'following'` reusa o mesmo padrão de `posts.service.ts`'s
- * `getFeed`: lista de `followingId` na tabela `follows`, filtrada com `inArray`.
+ * paginação. `scope: 'following'` lê os `followingId` da tabela `follows` e filtra os jogadores
+ * com `inArray` (o feed de `posts.service.ts` usa uma subconsulta SQL no lugar disso).
  */
 export async function getPlayers(
   gameId: string,

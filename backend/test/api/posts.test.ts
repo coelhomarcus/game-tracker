@@ -1,13 +1,14 @@
 // Modelo de leitura dos posts (contadores, estado de quem vê, imagens, post citado) e o feed com
 // reposts ordenado pela hora da atividade. Reposts, salvos, imagens e citações ainda não têm
-// endpoint de escrita, então esses dados entram direto no banco de teste; o resto vem pela API.
+// endpoint de escrita aqui: esses dados entram direto no banco de teste; o resto vem pela API.
 import '../helpers/env';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { eq, inArray } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../src/db';
 import { bookmarks, games, postImages, posts, reposts } from '../../src/db/schema';
-import { encodeCursor } from '../../src/lib/cursor';
+import { encodeCursor, encodeTimelineCursor } from '../../src/lib/cursor';
 import { registerUser, type TestUser } from '../helpers/client';
 import { ensureSyntheticGames } from '../helpers/seed';
 import { startApi, type TestApi } from '../helpers/server';
@@ -422,5 +423,57 @@ describe('feed with reposts', () => {
     const res = await api.http('GET', '/feed?cursor=nao-e-um-cursor', viewer.accessToken);
     assert.equal(res.status, 400);
     assert.equal(res.body.error.code, 'validation_error');
+  });
+});
+
+describe('timeline cursor', () => {
+  let api: TestApi;
+  let user: TestUser;
+
+  before(async () => {
+    api = await startApi();
+    user = await registerUser(api.http, 'cur');
+  });
+  after(() => api.close());
+
+  const withCursor = (cursor: string) => api.http('GET', `/feed?cursor=${cursor}`, user.accessToken);
+  const craft = (at: string) => encodeTimelineCursor({ at, id: randomUUID(), kind: 'post' });
+
+  it('rejects an impossible date instead of failing with a 500', async () => {
+    for (const at of [
+      '2026-02-30T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-04-31T10:00:00.123456Z',
+      '2026-01-01T24:00:00Z',
+      '0000-01-01T00:00:00Z',
+    ]) {
+      const res = await withCursor(craft(at));
+      assert.equal(res.status, 400, `${at}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.error.code, 'validation_error');
+    }
+  });
+
+  it('still accepts the edge dates that are real', async () => {
+    for (const at of ['2024-02-29T23:59:59.999999Z', '0001-01-01T00:00:00Z', '2026-12-31T23:59:59Z']) {
+      assert.equal((await withCursor(craft(at))).status, 200, at);
+    }
+  });
+
+  it('keeps microsecond precision: posts in the same millisecond are paged without skips', async () => {
+    const ids: string[] = [];
+    for (const text of ['a', 'b', 'c', 'd']) ids.push(await createPost(api, user, { content: text }));
+    // Mesmo milissegundo, microssegundos diferentes; a ordem pedida embaralha a ordem de criação.
+    const micros = ['123100', '123400', '123200', '123300'];
+    for (const [i, id] of ids.entries()) {
+      await db.execute(sql`update posts set created_at = ${`2026-03-01 10:00:00.${micros[i]}+00`}::timestamptz where id = ${id}`);
+    }
+    const { items, pageSizes } = await allPages(async (cursor) => {
+      const res = await api.http('GET', `/users/${user.user.id}/posts?limit=1${cursor ? `&cursor=${cursor}` : ''}`, user.accessToken);
+      assert.equal(res.status, 200);
+      return res.body as FeedPage;
+    });
+    assert.deepEqual(pageSizes, [1, 1, 1, 1]);
+    // desc por created_at: 123400 (b), 123300 (d), 123200 (c), 123100 (a)
+    assert.deepEqual(items.map((i) => i.id), [ids[1], ids[3], ids[2], ids[0]]);
   });
 });

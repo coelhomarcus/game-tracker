@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   followHandler,
   getPublicProfileHandler,
+  getMyBookmarksHandler,
   getUserCommentsHandler,
   getUserFavoritesHandler,
   getUserGameEntriesHandler,
@@ -15,6 +16,7 @@ import {
 import { requireAuth } from '../middlewares/auth';
 import { validateBody, validateQuery } from '../middlewares/validate';
 import { avatarUpload, bannerUpload } from '../lib/uploads';
+import { bookmarksQuerySchema } from '../schemas/posts.schema';
 import { listGameEntriesQuerySchema } from '../schemas/gameEntry.schema';
 import {
   searchUsersQuerySchema,
@@ -29,6 +31,7 @@ usersRouter.use(requireAuth);
 usersRouter.patch('/me', validateBody(updateProfileSchema), updateProfileHandler);
 usersRouter.post('/me/avatar', avatarUpload.single('avatar'), uploadAvatarHandler);
 usersRouter.post('/me/banner', bannerUpload.single('banner'), uploadBannerHandler);
+usersRouter.get('/me/bookmarks', validateQuery(bookmarksQuerySchema), getMyBookmarksHandler);
 usersRouter.get('/search', validateQuery(searchUsersQuerySchema), searchHandler);
 usersRouter.get('/:id', getPublicProfileHandler);
 usersRouter.get('/:id/posts', validateQuery(userPostsQuerySchema), getUserPostsHandler);

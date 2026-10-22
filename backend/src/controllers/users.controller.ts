@@ -22,6 +22,11 @@ export async function getUserPostsHandler(req: Request, res: Response) {
   res.json(result);
 }
 
+export async function getMyBookmarksHandler(req: Request, res: Response) {
+  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
+  res.json(await postsService.getBookmarks(req.user!.id, cursor, limit));
+}
+
 export async function getUserCommentsHandler(req: Request, res: Response) {
   const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
   const result = await postsService.getUserComments(req.params.id as string, cursor, limit);
