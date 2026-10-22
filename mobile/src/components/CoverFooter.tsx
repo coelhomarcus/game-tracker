@@ -1,7 +1,8 @@
 import { Children, isValidElement, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type CoverFooterProps = {
   children: ReactNode;
@@ -17,7 +18,14 @@ export function CoverFooter({ children }: CoverFooterProps) {
         if (isValidElement(child)) return <View style={styles.shrink}>{child}</View>;
         if (typeof child !== 'string' && typeof child !== 'number') return null;
         return (
-          <Text style={styles.text} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          <Text
+            size="xs"
+            weight="bold"
+            style={styles.shrink}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
             {child}
           </Text>
         );
@@ -33,12 +41,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: space.sm,
-    borderRadius: radii.cover,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.raised,
+    borderColor: colors.borderLow,
+    backgroundColor: colors.bgContrast50,
     overflow: 'hidden',
   },
   shrink: { flexShrink: 1 },
-  text: { flexShrink: 1, color: colors.text, fontSize: fontSize.xs, fontWeight: 'bold' },
 });

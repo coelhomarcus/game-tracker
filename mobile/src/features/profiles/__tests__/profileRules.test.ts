@@ -11,10 +11,41 @@ describe('validateProfile', () => {
     expect(validateProfile({ ...valid, name: '   ' }).name).toBe('Informe seu nome');
   });
 
-  it('limits the name to 50 characters after trimming', () => {
-    expect(validateProfile({ ...valid, name: ` ${'a'.repeat(50)} ` }).name).toBeUndefined();
-    expect(validateProfile({ ...valid, name: 'a'.repeat(51) }).name).toBe(
-      'Use no máximo 50 caracteres',
+  it('limits the name to 64 characters after trimming', () => {
+    expect(validateProfile({ ...valid, name: ` ${'a'.repeat(64)} ` }).name).toBeUndefined();
+    expect(validateProfile({ ...valid, name: 'a'.repeat(65) }).name).toBe(
+      'Use no máximo 64 caracteres',
+    );
+  });
+
+  it('counts the name in graphemes, not code units', () => {
+    const wave = '👋🏿';
+    expect(validateProfile({ ...valid, name: wave.repeat(64) }).name).toBeUndefined();
+    expect(validateProfile({ ...valid, name: wave.repeat(65) }).name).toBe(
+      'Use no máximo 64 caracteres',
+    );
+  });
+
+  it('also caps the name at 256 code points, as the server does', () => {
+    const family = '👨‍👩‍👧'; // one grapheme, five code points
+    expect(validateProfile({ ...valid, name: family.repeat(51) }).name).toBeUndefined(); // 255
+    expect(validateProfile({ ...valid, name: family.repeat(52) }).name).toBe(
+      'Há símbolos combinados demais; encurte o texto',
+    );
+    expect(validateProfile({ ...valid, name: family.repeat(64) }).name).toBe(
+      'Há símbolos combinados demais; encurte o texto',
+    );
+  });
+
+  it('also caps the bio at 1024 code points, as the server does', () => {
+    const family = '👨‍👩‍👧';
+    expect(validateProfile({ ...valid, bio: family.repeat(204) }).bio).toBeUndefined(); // 1020
+    expect(validateProfile({ ...valid, bio: family.repeat(205) }).bio).toBe(
+      'Há símbolos combinados demais; encurte o texto',
+    );
+    // Many combining marks on one letter: 1 grapheme, 1025 code points.
+    expect(validateProfile({ ...valid, bio: 'e' + '\u0301'.repeat(1024) }).bio).toBe(
+      'Há símbolos combinados demais; encurte o texto',
     );
   });
 
@@ -30,10 +61,18 @@ describe('validateProfile', () => {
     );
   });
 
-  it('limits the bio to 280 characters', () => {
-    expect(validateProfile({ ...valid, bio: 'a'.repeat(280) }).bio).toBeUndefined();
-    expect(validateProfile({ ...valid, bio: 'a'.repeat(281) }).bio).toBe(
-      'Use no máximo 280 caracteres',
+  it('limits the bio to 256 characters', () => {
+    expect(validateProfile({ ...valid, bio: 'a'.repeat(256) }).bio).toBeUndefined();
+    expect(validateProfile({ ...valid, bio: 'a'.repeat(257) }).bio).toBe(
+      'Use no máximo 256 caracteres',
+    );
+  });
+
+  it('counts the bio in graphemes, not code units', () => {
+    const wave = '👋🏿';
+    expect(validateProfile({ ...valid, bio: wave.repeat(256) }).bio).toBeUndefined();
+    expect(validateProfile({ ...valid, bio: wave.repeat(257) }).bio).toBe(
+      'Use no máximo 256 caracteres',
     );
   });
 });

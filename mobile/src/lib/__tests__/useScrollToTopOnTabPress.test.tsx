@@ -46,6 +46,21 @@ describe('useScrollToTopOnTabPress', () => {
     expect(list.scrollToOffset).not.toHaveBeenCalled();
   });
 
+  it('runs the scroll-to-top callback with the scroll, only while focused', async () => {
+    const list = { scrollToOffset: jest.fn() };
+    const onScrollToTop = jest.fn();
+    await renderHook(() => useScrollToTopOnTabPress({ current: list }, onScrollToTop));
+
+    mockNavigation.isFocused.mockReturnValue(false);
+    pressTab();
+    expect(onScrollToTop).not.toHaveBeenCalled();
+
+    mockNavigation.isFocused.mockReturnValue(true);
+    pressTab();
+    expect(onScrollToTop).toHaveBeenCalledTimes(1);
+    expect(list.scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+  });
+
   it('stops listening on unmount', async () => {
     const { view } = await setup();
     await view.unmount();

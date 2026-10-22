@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState } from '@/components';
+import { Button, EmptyState, Layout } from '@/components';
 import { useSession } from '@/features/auth';
 import { realtimeBridge } from '@/features/chat/realtimeBridge';
 import { pushController } from '@/features/push/pushController';
@@ -58,7 +58,7 @@ export function SessionGate() {
   if (status === 'restoring') {
     return (
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     );
   }
@@ -70,8 +70,8 @@ export function SessionGate() {
           title="Não foi possível conectar"
           message="Sua sessão está guardada. Verifique a conexão e tente de novo."
         />
-        <Button label="Tentar novamente" variant="secondary" loading={pending} onPress={() => void retry()} />
-        <Button label="Sair da conta" variant="secondary" onPress={() => void signOut()} />
+        <Button label="Tentar novamente" color="secondary" loading={pending} onPress={() => void retry()} />
+        <Button label="Sair da conta" color="secondary" onPress={() => void signOut()} />
       </View>
     );
   }
@@ -80,9 +80,7 @@ export function SessionGate() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.chrome },
-        headerTintColor: colors.text,
-        headerTitleStyle: { color: colors.textStrong },
+        header: Layout.Header.renderStackHeader,
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
@@ -96,11 +94,8 @@ export function SessionGate() {
         <Stack.Screen name="users" options={{ headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: false }} />
         <Stack.Screen name="me" options={{ headerShown: false }} />
-        <Stack.Screen name="notifications" options={{ title: '', headerBackButtonDisplayMode: 'minimal' }} />
-        <Stack.Screen
-          name="settings"
-          options={{ title: 'Configurações', headerBackButtonDisplayMode: 'minimal' }}
-        />
+        <Stack.Screen name="notifications" options={{ title: '' }} />
+        <Stack.Screen name="settings" options={{ title: 'Configurações' }} />
       </Stack.Protected>
     </Stack>
   );

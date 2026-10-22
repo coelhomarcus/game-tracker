@@ -92,7 +92,7 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
       {entries.map((entry) => (
         <EntryCard key={entry.id} entry={entry} onOpenMenu={() => setMenuEntry(entry)} />
       ))}
-      <Button variant="secondary" label="Novo registro (replay)" onPress={onCreate} />
+      <Button color="secondary" label="Novo registro (replay)" onPress={onCreate} />
 
       <OptionSheet
         visible={menuEntry !== null}

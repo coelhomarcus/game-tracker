@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, usePreventRemove, useRouter } from 'expo-router';
 import { useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, ChoiceChip, ConfirmDialog, GameCover, Screen, TextField } from '@/components';
+import { Button, ChoiceChip, ConfirmDialog, GameCover, Screen, Text, TextField } from '@/components';
 import { authErrorMessage } from '@/features/auth';
 import { gamesApi } from '@/features/games/api';
 import { useGame } from '@/features/games/queries';
@@ -11,7 +11,7 @@ import type { Game } from '@/features/games/types';
 import { useLibrary } from '@/features/library/queries';
 import { statusLabel } from '@/features/library/status';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { GamePickerSheet } from './GamePickerSheet';
 import { useCreatePost } from './queries';
@@ -52,7 +52,7 @@ function PrelinkedComposer({ igdbId }: { igdbId: number }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {title}
       </Text>
       {children}
@@ -75,9 +75,9 @@ function PublishAction({ busy, enabled, onPress }: PublishActionProps) {
       style={styles.publish}
     >
       {busy ? (
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={colors.primary} />
       ) : (
-        <Text style={[styles.publishLabel, { color: enabled ? colors.accent : colors.textMuted }]}>
+        <Text weight="semibold" tone={enabled ? 'primary' : 'medium'}>
           Publicar
         </Text>
       )}
@@ -199,7 +199,7 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
       />
       <View style={styles.form}>
         {apiError ? (
-          <Text accessibilityLiveRegion="polite" style={styles.error}>
+          <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
             {apiError}
           </Text>
         ) : null}
@@ -212,9 +212,7 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
             value={text}
             onChangeText={setText}
           />
-          <Text
-            style={[styles.counter, { color: text.length > MAX_LENGTH ? colors.danger : colors.textMuted }]}
-          >
+          <Text size="xs" tone={text.length > MAX_LENGTH ? 'danger' : 'medium'} style={styles.counter}>
             {`${text.length}/${MAX_LENGTH}`}
           </Text>
         </View>
@@ -224,19 +222,21 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
             <GameRow game={link.game} onRemove={() => setLink(NO_LINK)} />
           ) : link.kind === 'resolving' ? (
             <View style={styles.linking}>
-              <ActivityIndicator accessibilityLabel="Carregando" color={colors.textMuted} />
-              <Text style={styles.linkingLabel}>Vinculando ao jogo…</Text>
+              <ActivityIndicator accessibilityLabel="Carregando" color={colors.textMedium} />
+              <Text size="sm" tone="medium">
+                Vinculando ao jogo…
+              </Text>
             </View>
           ) : link.kind === 'failed' ? (
             <View style={styles.failure}>
-              <Text accessibilityLiveRegion="polite" style={styles.error}>
+              <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
                 Não foi possível vincular ao jogo.
               </Text>
-              <Button label="Tentar de novo" variant="secondary" onPress={link.retry} />
-              <Button label="Publicar sem vínculo" variant="text" onPress={() => setLink(NO_LINK)} />
+              <Button label="Tentar de novo" color="secondary" onPress={link.retry} />
+              <Button label="Publicar sem vínculo" variant="ghost" onPress={() => setLink(NO_LINK)} />
             </View>
           ) : (
-            <Button label="Vincular um jogo" variant="secondary" onPress={() => setPickerOpen(true)} />
+            <Button label="Vincular um jogo" color="secondary" onPress={() => setPickerOpen(true)} />
           )}
         </Section>
 
@@ -280,19 +280,16 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
 }
 
 const styles = StyleSheet.create({
-  form: { padding: space.lg, gap: space.xl },
+  form: { padding: space.lg, gap: space._2xl },
   composer: { gap: space.xs },
-  counter: { alignSelf: 'flex-end', fontSize: fontSize.xs },
+  counter: { alignSelf: 'flex-end' },
   section: { gap: space.md },
-  sectionTitle: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   gameRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: space.md },
-  gameName: { flex: 1, color: colors.text, fontSize: fontSize.md },
+  gameName: { flex: 1 },
   remove: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   linking: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: space.md },
-  linkingLabel: { color: colors.textMuted, fontSize: fontSize.sm },
   failure: { gap: space.sm },
-  error: { color: colors.danger, fontSize: fontSize.sm },
   publish: { minWidth: 48, minHeight: 48, paddingHorizontal: space.md, alignItems: 'center', justifyContent: 'center' },
-  publishLabel: { fontSize: fontSize.md, fontWeight: '600' },
+
 });

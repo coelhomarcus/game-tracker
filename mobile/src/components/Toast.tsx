@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useToast } from '@/lib/toast';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 /** Clears the bottom tab bar. */
 const TAB_BAR_CLEARANCE = 72;
@@ -20,7 +21,9 @@ export function ToastHost() {
       style={[styles.host, { bottom: insets.bottom + TAB_BAR_CLEARANCE }]}
     >
       <View style={styles.toast}>
-        <Text style={styles.text}>{message}</Text>
+        <Text size="sm" tone="high" style={styles.text}>
+          {message}
+        </Text>
       </View>
     </View>
   );
@@ -29,12 +32,12 @@ export function ToastHost() {
 const styles = StyleSheet.create({
   host: { position: 'absolute', left: space.lg, right: space.lg, alignItems: 'center' },
   toast: {
-    backgroundColor: colors.raised,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radii.control,
+    backgroundColor: colors.bgContrast50,
+    borderWidth: hairline,
+    borderColor: colors.borderMedium,
+    borderRadius: radii.md,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
   },
-  text: { color: colors.textStrong, fontSize: fontSize.sm, textAlign: 'center' },
+  text: { textAlign: 'center' },
 });

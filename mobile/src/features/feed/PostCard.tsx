@@ -1,10 +1,10 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import { PostActions } from './PostActions';
 import { PostGameLink } from './PostGameLink';
@@ -46,11 +46,11 @@ export function PostCard({ post, onPress, hideGame = false }: PostCardProps) {
         <View style={styles.column}>
           <View style={styles.meta}>
             <ProfileLink user={post.author} hitSlop={NAME_SLOP} style={styles.nameLink}>
-              <Text numberOfLines={1} style={styles.name}>
+              <Text numberOfLines={1} size="sm" weight="bold" tone="high">
                 {name}
               </Text>
             </ProfileLink>
-            <Text numberOfLines={1} style={styles.handle}>
+            <Text numberOfLines={1} size="sm" tone="medium" style={styles.handle}>
               {` @${post.author.username} · ${time}`}
             </Text>
           </View>
@@ -60,7 +60,7 @@ export function PostCard({ post, onPress, hideGame = false }: PostCardProps) {
             onPress={onPress}
             style={styles.body}
           >
-            <Text style={styles.content}>{post.content}</Text>
+            <Text>{post.content}</Text>
             {image ? (
               <Image
                 testID="post-image"
@@ -83,10 +83,10 @@ export function PostCard({ post, onPress, hideGame = false }: PostCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
+    backgroundColor: colors.bgContrast25,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+    borderRadius: radii.md,
     padding: space.lg,
     gap: space.sm,
   },
@@ -97,11 +97,9 @@ const styles = StyleSheet.create({
   avatarLink: { marginTop: space.xs },
   meta: { flexDirection: 'row', alignItems: 'center' },
   nameLink: { flexShrink: 1, minHeight: 48, justifyContent: 'center' },
-  name: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },
-  handle: { flexShrink: 1, color: colors.textMuted, fontSize: fontSize.sm },
+  handle: { flexShrink: 1 },
   body: { gap: space.sm },
-  content: { color: colors.text, fontSize: fontSize.md },
-  image: { width: '100%', aspectRatio: 16 / 9, borderRadius: radii.card },
+  image: { width: '100%', aspectRatio: 16 / 9, borderRadius: radii.md },
   // Aligned with the text column, past the avatar.
   footer: { paddingLeft: AVATAR_SIZE + space.md },
 });

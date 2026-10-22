@@ -75,8 +75,8 @@ function ConversationsSkeleton() {
         <View key={id} testID="conversation-skeleton-row" style={styles.skeletonRow}>
           <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} radius={AVATAR_SIZE / 2} />
           <View style={styles.skeletonText}>
-            <Skeleton width="40%" height={14} radius={radii.cover} />
-            <Skeleton height={14} radius={radii.cover} />
+            <Skeleton width="40%" height={14} radius={radii.xs} />
+            <Skeleton height={14} radius={radii.xs} />
           </View>
         </View>
       ))}

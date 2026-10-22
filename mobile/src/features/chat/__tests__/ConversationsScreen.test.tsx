@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { useState } from 'react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react-native';
+import { useState, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
@@ -11,7 +11,7 @@ import { showToast } from '@/lib/toast';
 
 import { chatApi } from '../api';
 import ConversationsScreen from '../ConversationsScreen';
-import { MessagesTabIcon, NewConversationButton } from '../MessagesTab';
+import { messagesTabLabel, NewConversationButton, useUnreadConversationCount } from '../MessagesTab';
 import { NewConversationSheet } from '../NewConversationSheet';
 import { openNewConversationSheet, useNewConversationSheet } from '../sheetStore';
 import type { Conversation, Message } from '../types';
@@ -412,32 +412,38 @@ describe('NewConversationSheet', () => {
 });
 
 describe('Messages tab', () => {
-  async function renderIcon() {
-    await render(
-      <QueryClientProvider client={client}>
-        <MessagesTabIcon color="#fff" size={24} />
-      </QueryClientProvider>,
+  async function renderCount() {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
+    return renderHook(() => useUnreadConversationCount(), { wrapper });
   }
 
-  it('shows a dot when any conversation is unread', async () => {
-    mockedApi.list.mockResolvedValue([withJoao, withAna]);
-    await renderIcon();
+  it('counts the unread conversations', async () => {
+    mockedApi.list.mockResolvedValue([withJoao, withAna, { ...withCarla, unread: true }]);
+    const { result } = await renderCount();
 
-    expect(await screen.findByTestId('messages-tab-dot', { includeHiddenElements: true })).toBeOnTheScreen();
+    await waitFor(() => expect(result.current).toBe(2));
   });
 
-  it('shows no dot when everything is read', async () => {
+  it('counts none when everything is read', async () => {
     mockedApi.list.mockResolvedValue([withJoao]);
-    await renderIcon();
+    const { result } = await renderCount();
     await waitFor(() => expect(mockedApi.list).toHaveBeenCalled());
     await act(async () => undefined);
 
-    expect(screen.queryByTestId('messages-tab-dot', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(result.current).toBe(0);
+  });
+
+  it('puts the unread count in the tab label', () => {
+    expect(messagesTabLabel(0)).toBe('Mensagens');
+    expect(messagesTabLabel(1)).toBe('Mensagens, 1 não lida');
+    expect(messagesTabLabel(3)).toBe('Mensagens, 3 não lidas');
   });
 
   it('opens the new conversation sheet from the header button', async () => {
     await render(<NewConversationButton />);
+    expect(screen.getByRole('button', { name: 'Nova conversa' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
     await fireEvent.press(screen.getByRole('button', { name: 'Nova conversa' }));
 
     expect(useNewConversationSheet.getState().open).toBe(true);

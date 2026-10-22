@@ -4,7 +4,6 @@ import { Pressable, StyleSheet } from 'react-native';
 import { Avatar } from '@/components';
 import { useSession } from '@/features/auth';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { space } from '@/theme/tokens';
 
 import { displayName } from './types';
 
@@ -21,7 +20,6 @@ export function HomeHeaderLeft() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Seu perfil"
-      hitSlop={space.xs}
       onPress={() => router.push(PROFILE)}
       style={styles.button}
     >
@@ -35,5 +33,6 @@ export function HomeHeaderLeft() {
 }
 
 const styles = StyleSheet.create({
-  button: { width: 44, height: 44, marginLeft: space.md, alignItems: 'center', justifyContent: 'center' },
+  // A real 48 dp target; the header's left column lines the avatar up with the 16 dp gutter.
+  button: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
 });

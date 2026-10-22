@@ -21,3 +21,9 @@ Object.defineProperty(globalThis, 'localStorage', { value: undefined, configurab
 afterEach(() => {
   hideToast();
 });
+
+// The storage module is native; zustand `persist` stores (preferences, reached through the Button's
+// haptics) import it in every suite, so use its official in-memory mock everywhere.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);

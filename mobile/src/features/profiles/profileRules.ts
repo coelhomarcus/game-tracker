@@ -1,9 +1,15 @@
 import { usernameError } from '@/features/auth/validation';
+import { countCodePoints, countGraphemes } from '@/lib/graphemes';
 
 import type { ProfileChanges } from './api';
 
-export const NAME_MAX = 50;
-export const BIO_MAX = 280;
+/** Limits in graphemes (user-perceived characters), as the server counts them. */
+export const NAME_MAX = 64;
+export const BIO_MAX = 256;
+/** The server also caps code points (4 per grapheme), so a few huge graphemes are refused too. */
+export const NAME_MAX_CODE_POINTS = 256;
+export const BIO_MAX_CODE_POINTS = 1024;
+const TOO_MANY_SYMBOLS = 'Há símbolos combinados demais; encurte o texto';
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export type ProfileFields = { name: string; username: string; bio: string };
@@ -11,12 +17,15 @@ export type ProfileErrors = Partial<Record<keyof ProfileFields, string>>;
 
 function nameError(name: string): string | undefined {
   if (name.length === 0) return 'Informe seu nome';
-  if (name.length > NAME_MAX) return 'Use no máximo 50 caracteres';
+  if (countGraphemes(name) > NAME_MAX) return `Use no máximo ${NAME_MAX} caracteres`;
+  if (countCodePoints(name) > NAME_MAX_CODE_POINTS) return TOO_MANY_SYMBOLS;
   return undefined;
 }
 
 function bioError(bio: string): string | undefined {
-  return bio.length > BIO_MAX ? 'Use no máximo 280 caracteres' : undefined;
+  if (countGraphemes(bio) > BIO_MAX) return `Use no máximo ${BIO_MAX} caracteres`;
+  if (countCodePoints(bio) > BIO_MAX_CODE_POINTS) return TOO_MANY_SYMBOLS;
+  return undefined;
 }
 
 export function validateProfile(input: ProfileFields): ProfileErrors {

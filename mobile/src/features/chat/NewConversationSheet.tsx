@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
 
-import { EmptyState, Screen, TextField } from '@/components';
+import { EmptyState, Screen, Text, TextField } from '@/components';
 import { authErrorMessage, useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import { PersonRow } from '@/features/profiles/PersonRow';
 import { usePeopleSearch } from '@/features/profiles/queries';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { useStartConversation } from './queries';
 
@@ -76,7 +76,7 @@ function SheetContent({ onClose }: ContentProps) {
   return (
     <Screen>
       <View style={styles.top}>
-        <Text accessibilityRole="header" style={styles.title}>
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
           Nova conversa
         </Text>
         <Pressable
@@ -104,13 +104,13 @@ function SheetContent({ onClose }: ContentProps) {
         {busy ? (
           <ActivityIndicator
             accessibilityLabel="Buscando"
-            color={colors.textMuted}
+            color={colors.textMedium}
             style={styles.busy}
           />
         ) : null}
       </View>
       {failure ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.failure}>
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" size="sm" tone="danger" style={styles.failure}>
           {failure}
         </Text>
       ) : null}
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     paddingRight: space.sm,
     minHeight: 56,
   },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
+
   close: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   search: {
     flexDirection: 'row',
@@ -167,8 +167,6 @@ const styles = StyleSheet.create({
   field: { flex: 1 },
   busy: { height: 48 },
   failure: {
-    color: colors.danger,
-    fontSize: fontSize.sm,
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
   },

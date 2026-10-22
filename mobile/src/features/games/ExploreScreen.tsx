@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 
@@ -23,13 +22,14 @@ import {
   GameCover,
   Screen,
   Tabs,
+  Text,
   TextField,
   type TextFieldInput,
 } from "@/components";
 import { useLibrary } from "@/features/library/queries";
 import { PeopleSearch } from "@/features/profiles/PeopleSearch";
 import { useScrollToTopOnTabPress } from "@/lib/useScrollToTopOnTabPress";
-import { colors, fontSize, space } from "@/theme/tokens";
+import { colors, space } from "@/theme/tokens";
 
 import { useGameSearch } from "./queries";
 import type { GameSummary } from "./types";
@@ -82,7 +82,7 @@ function ExploreHeader({
         {busy ? (
           <ActivityIndicator
             accessibilityLabel="Buscando"
-            color={colors.textMuted}
+            color={colors.textMedium}
             style={styles.busy}
           />
         ) : null}
@@ -110,7 +110,7 @@ function ExploreCard({ game, width, inLibrary, onPress }: CardProps) {
       style={[styles.card, { width }]}
     >
       <GameCover decorative name={game.name} url={game.coverUrl} width={width} />
-      <Text style={styles.name} numberOfLines={2}>
+      <Text size="sm" numberOfLines={2}>
         {game.name}
       </Text>
       <CoverFooter>{footer}</CoverFooter>
@@ -248,5 +248,5 @@ const styles = StyleSheet.create({
   field: { flex: 1 },
   busy: { height: 48 },
   card: { gap: space.xs },
-  name: { color: colors.text, fontSize: fontSize.sm },
+
 });

@@ -1,10 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { displayName } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import type { AppNotification, NotificationType } from './types';
 
@@ -14,6 +14,10 @@ const TEXTS: Record<NotificationType, string> = {
   like: 'curtiu seu post',
   comment: 'comentou no seu post',
   follow: 'começou a seguir você',
+  reply: 'respondeu seu comentário',
+  mention: 'mencionou você',
+  repost: 'repostou seu post',
+  quote: 'citou seu post',
 };
 
 export type NotificationRowProps = {
@@ -40,11 +44,15 @@ export function NotificationRow({ notification, canOpen, onPress }: Notification
     >
       <Avatar uri={resolveImageUrl(notification.actor.avatarUrl)} name={name} size={AVATAR_SIZE} />
       <View style={styles.column}>
-        <Text style={styles.text}>
-          <Text style={styles.name}>{name}</Text>
+        <Text>
+          <Text weight="bold" tone="high">
+            {name}
+          </Text>
           {` ${text}`}
         </Text>
-        <Text style={styles.time}>{time}</Text>
+        <Text size="sm" tone="medium">
+          {time}
+        </Text>
       </View>
       {unread ? <View testID="unread-dot" style={styles.dot} /> : null}
     </Pressable>
@@ -60,10 +68,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
   },
-  unread: { backgroundColor: colors.surface },
+  unread: { backgroundColor: colors.bgContrast25 },
   column: { flex: 1, gap: space.xs },
-  text: { color: colors.text, fontSize: fontSize.md },
-  name: { color: colors.textStrong, fontWeight: 'bold' },
-  time: { color: colors.textMuted, fontSize: fontSize.sm },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
 });

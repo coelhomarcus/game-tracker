@@ -11,21 +11,20 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import { Avatar, Button, EmptyState, Screen } from '@/components';
+import { Avatar, Button, EmptyState, Screen, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
 import { ApiError } from '@/lib/http/errors';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
 
 import { ChatComposer, useTypingSignal } from './ChatComposer';
 import { useChatStore, type PendingMessage } from './chatStore';
@@ -171,7 +170,9 @@ const keyExtractor = (item: RoomItem) => item.key;
 function DaySeparator({ label }: { label: string }) {
   return (
     <View style={styles.day}>
-      <Text style={styles.dayText}>{label}</Text>
+      <Text size="xs" style={styles.dayText}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -193,10 +194,14 @@ function ChatHeaderTitle({ conversationId, otherUser }: HeaderTitleProps) {
     <>
       <Avatar uri={resolveImageUrl(otherUser?.avatarUrl)} name={name} size={HEADER_AVATAR_SIZE} />
       <View style={styles.headerText}>
-        <Text numberOfLines={1} style={styles.headerName}>
+        <Text numberOfLines={1} weight="bold" tone="high">
           {name}
         </Text>
-        {status ? <Text style={styles.headerStatus}>{status}</Text> : null}
+        {status ? (
+          <Text size="xs" tone="medium">
+            {status}
+          </Text>
+        ) : null}
       </View>
     </>
   );
@@ -257,7 +262,6 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   // title reads typing and presence from the store itself.
   const headerOptions = useMemo(
     () => ({
-      headerBackButtonDisplayMode: 'minimal' as const,
       headerTitle: () => <ChatHeaderTitle conversationId={conversationId} otherUser={otherUser} />,
     }),
     [conversationId, otherUser],
@@ -337,16 +341,18 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   if (isFetchingNextPage) {
     older = (
       <View style={styles.older}>
-        <ActivityIndicator accessibilityLabel="Carregando mensagens" color={colors.textMuted} />
+        <ActivityIndicator accessibilityLabel="Carregando mensagens" color={colors.textMedium} />
       </View>
     );
   } else if (isFetchNextPageError) {
     older = (
       <View style={styles.older}>
-        <Text style={styles.olderText}>Não foi possível carregar mensagens mais antigas.</Text>
+        <Text size="sm" tone="medium" style={styles.olderText}>
+          Não foi possível carregar mensagens mais antigas.
+        </Text>
         <Button
           label="Tentar de novo"
-          variant="text"
+          variant="ghost"
           onPress={() => void fetchNextPage({ cancelRefetch: false })}
         />
       </View>
@@ -354,7 +360,9 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   } else if (!hasNextPage) {
     older = (
       <View style={styles.older}>
-        <Text style={styles.olderText}>Início da conversa</Text>
+        <Text size="sm" tone="medium" style={styles.olderText}>
+          Início da conversa
+        </Text>
       </View>
     );
   }
@@ -371,7 +379,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
       </View>
     ) : (
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     );
   } else if (items.length === 0 && !hasNextPage) {
@@ -412,7 +420,9 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
               onPress={scrollToNewest}
               style={styles.pill}
             >
-              <Text style={styles.pillText}>Novas mensagens</Text>
+              <Text size="sm" weight="bold" tone="high">
+                Novas mensagens
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -452,27 +462,22 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   headerText: { flexShrink: 1 },
-  headerName: { color: colors.textStrong, fontSize: fontSize.md, fontWeight: 'bold' },
-  headerStatus: { color: colors.textMuted, fontSize: fontSize.xs },
   day: { alignItems: 'center', paddingVertical: space.md },
   dayText: {
-    color: colors.text,
-    fontSize: fontSize.xs,
-    backgroundColor: colors.raised,
+    backgroundColor: colors.bgContrast50,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
-    borderRadius: 999,
+    borderRadius: radii.full,
     overflow: 'hidden',
   },
   older: { alignItems: 'center', gap: space.xs, padding: space.lg },
-  olderText: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'center' },
+  olderText: { textAlign: 'center' },
   pillArea: { position: 'absolute', left: 0, right: 0, bottom: space.sm, alignItems: 'center' },
   pill: {
     minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: space.lg,
-    borderRadius: 999,
-    backgroundColor: colors.active,
+    borderRadius: radii.full,
+    backgroundColor: colors.selected,
   },
-  pillText: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },
 });

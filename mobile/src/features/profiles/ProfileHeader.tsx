@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { displayName } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import type { UserProfile } from './types';
 
@@ -54,14 +54,16 @@ export function ProfileHeader({ profile, actions, actionsRow }: ProfileHeaderPro
         </View>
         <View style={styles.nameRow}>
           <View style={styles.names}>
-            <Text style={styles.name}>{name}</Text>
-            <Text style={styles.username}>{`@${profile.username}`}</Text>
+            <Text size="_3xl" weight="bold" tone="high">
+              {name}
+            </Text>
+            <Text tone="medium">{`@${profile.username}`}</Text>
           </View>
           {actions}
         </View>
         {actionsRow}
         {bio ? (
-          <Text testID="profile-bio" style={styles.bio}>
+          <Text testID="profile-bio">
             {bio}
           </Text>
         ) : null}
@@ -81,15 +83,19 @@ function plural(value: number, singular: string): string {
 
 function Count({ value, word }: { value: number; word: string }) {
   return (
-    <Text style={styles.countWord}>
-      <Text style={styles.countNumber}>{value}</Text>
-      <Text>{word}</Text>
+    <Text size="sm" tone="medium">
+      <Text size="sm" weight="bold" tone="high">
+        {value}
+      </Text>
+      <Text size="sm" tone="medium">
+        {word}
+      </Text>
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  banner: { width: '100%', aspectRatio: 3, backgroundColor: colors.raised },
+  banner: { width: '100%', aspectRatio: 3, backgroundColor: colors.bgContrast50 },
   content: {
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
@@ -104,15 +110,10 @@ const styles = StyleSheet.create({
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   names: { flex: 1 },
-  name: { color: colors.textStrong, fontSize: fontSize.xl, fontWeight: 'bold' },
-  username: { color: colors.textMuted, fontSize: fontSize.md },
-  bio: { color: colors.text, fontSize: fontSize.md },
   counts: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     columnGap: space.lg,
     rowGap: space.xs,
   },
-  countNumber: { color: colors.textStrong, fontWeight: 'bold' },
-  countWord: { color: colors.textMuted, fontSize: fontSize.sm },
 });

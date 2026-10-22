@@ -1,6 +1,7 @@
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type TabsProps<T extends string> = {
   items: { value: T; label: string }[];
@@ -22,7 +23,9 @@ export function Tabs<T extends string>({ items, selected, onSelect }: TabsProps<
             onPress={() => onSelect(item.value)}
             style={[styles.tab, isSelected ? styles.tabSelected : styles.tabIdle]}
           >
-            <Text style={[styles.label, isSelected ? styles.labelSelected : styles.labelIdle]}>{item.label}</Text>
+            <Text size="sm" weight={isSelected ? 'bold' : 'normal'} tone={isSelected ? 'high' : 'medium'}>
+              {item.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -35,13 +38,12 @@ const styles = StyleSheet.create({
   tab: {
     minHeight: 40,
     paddingHorizontal: space.lg,
-    borderRadius: radii.control,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabSelected: { backgroundColor: colors.active },
-  tabIdle: { backgroundColor: colors.raised },
-  label: { fontSize: fontSize.sm },
-  labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
-  labelIdle: { color: colors.textMuted },
+  tabSelected: { backgroundColor: colors.selected },
+  tabIdle: { backgroundColor: colors.bgContrast50 },
 });

@@ -100,13 +100,17 @@ export function updatePostEverywhere(
   }
 }
 
-/** The post as any cached feed, game or profile post list holds it, to show before its own fetch ends. */
+/**
+ * The post as any cached feed, game or profile post list holds it, to show before its own fetch
+ * ends. A list item can be a reposter's copy; the detail is of the post itself, so `reason` is
+ * dropped.
+ */
 export function findCachedPost(client: QueryClient, postId: string): Post | undefined {
   for (const key of LIST_KEYS) {
     for (const [, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
       for (const page of data?.pages ?? []) {
         const found = page.items.find((item) => item.id === postId);
-        if (found) return found;
+        if (found) return found.reason === null ? found : { ...found, reason: null };
       }
     }
   }

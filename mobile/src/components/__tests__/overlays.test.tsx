@@ -207,18 +207,18 @@ describe('ChoiceChip', () => {
     const style = StyleSheet.flatten(chip.props.style);
     expect(style.minHeight).toBe(48);
     expect(style.minWidth).toBe(48);
-    expect(style.backgroundColor).toBe(colors.active);
-    expect(StyleSheet.flatten(screen.getByText('Jogando').props.style).color).toBe(colors.textStrong);
+    expect(style.backgroundColor).toBe(colors.selected);
+    expect(StyleSheet.flatten(screen.getByText('Jogando').props.style).color).toBe(colors.textEmphasis);
     expect(StyleSheet.flatten(screen.getByText('Jogando').props.style).textAlign).toBe('center');
     await fireEvent.press(chip);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the raised style and custom accessibility label when unselected', async () => {
+  it('uses the control fill and custom accessibility label when unselected', async () => {
     await render(<ChoiceChip label="Todos" selected={false} onPress={jest.fn()} accessibilityLabel="Todos os jogos" />);
     const chip = screen.getByRole('button', { name: 'Todos os jogos' });
     expect(chip).not.toBeSelected();
-    expect(StyleSheet.flatten(chip.props.style).backgroundColor).toBe(colors.raised);
+    expect(StyleSheet.flatten(chip.props.style).backgroundColor).toBe(colors.bgContrast50);
     expect(StyleSheet.flatten(screen.getByText('Todos').props.style).color).toBe(colors.text);
   });
 });

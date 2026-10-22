@@ -1,7 +1,8 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button } from './Button';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 export type ConfirmDialogProps = {
   visible: boolean;
@@ -39,12 +40,12 @@ export function ConfirmDialog({
           <View style={styles.backdrop} />
         </Pressable>
         <View accessibilityViewIsModal style={styles.dialog}>
-          <Text accessibilityRole="header" style={styles.title}>
+          <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
             {title}
           </Text>
-          {message ? <Text style={styles.message}>{message}</Text> : null}
+          {message ? <Text>{message}</Text> : null}
           <View style={styles.actions}>
-            <Button variant="secondary" label={cancelLabel} onPress={onCancel} />
+            <Button color="secondary" label={cancelLabel} onPress={onCancel} />
             {destructive ? (
               <Pressable
                 accessibilityRole="button"
@@ -52,10 +53,12 @@ export function ConfirmDialog({
                 onPress={onConfirm}
                 style={styles.destructive}
               >
-                <Text style={styles.destructiveLabel}>{confirmLabel}</Text>
+                <Text weight="semibold" tone="danger">
+                  {confirmLabel}
+                </Text>
               </Pressable>
             ) : (
-              <Button variant="primary" label={confirmLabel} onPress={onConfirm} />
+              <Button label={confirmLabel} onPress={onConfirm} />
             )}
           </View>
         </View>
@@ -65,18 +68,16 @@ export function ConfirmDialog({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'center', padding: space.xl },
+  root: { flex: 1, justifyContent: 'center', padding: space._2xl },
   backdrop: { flex: 1, backgroundColor: `${colors.bg}${ALPHA_60}` },
   dialog: {
-    backgroundColor: colors.raised,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radii.card,
-    padding: space.xl,
+    backgroundColor: colors.bgContrast50,
+    borderWidth: hairline,
+    borderColor: colors.borderMedium,
+    borderRadius: radii.md,
+    padding: space._2xl,
     gap: space.md,
   },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
-  message: { color: colors.text, fontSize: fontSize.md },
   actions: { gap: space.sm, marginTop: space.sm },
   destructive: {
     minHeight: 48,
@@ -84,5 +85,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  destructiveLabel: { color: colors.danger, fontSize: fontSize.md, fontWeight: '600' },
 });

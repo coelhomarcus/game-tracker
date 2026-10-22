@@ -2,11 +2,12 @@
 import '@/test-utils/nodeFetch';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { Platform } from 'react-native';
 
 import { apiBaseUrl } from '@/lib/env';
 
 import { feedApi } from '../api';
-import { displayName, parseComment, parsePost, parsePostPage } from '../types';
+import { displayName, parseComment, parsePost, parsePostPage, postKey } from '../types';
 
 const server = setupServer();
 
@@ -75,9 +76,19 @@ describe('parsePost', () => {
       game: null,
       entry: null,
       imageUrl: null,
+      images: [],
       likeCount: 0,
       commentCount: 0,
+      repostCount: 0,
+      quoteCount: 0,
+      bookmarkCount: 0,
       likedByMe: false,
+      repostedByMe: false,
+      bookmarkedByMe: false,
+      quotedPostId: null,
+      quotedPost: null,
+      quotedPostRemoved: false,
+      reason: null,
     });
   });
 
@@ -90,6 +101,144 @@ describe('parsePost', () => {
 
   it('parses an unknown activity status through parseStatus', () => {
     expect(parsePost({ ...postJson, activityStatus: 'weird' }).activityStatus).toBe('backlog');
+  });
+});
+
+describe('parsePost social fields', () => {
+  const bia = { id: 'u2', username: 'bia', name: null, avatarUrl: null };
+
+  it('parses counters, viewer flags, images and the quote', () => {
+    const post = parsePost({
+      ...postJson,
+      repostCount: 4,
+      quoteCount: 2,
+      bookmarkCount: 7,
+      repostedByMe: true,
+      bookmarkedByMe: true,
+      images: [
+        { url: 'https://img/a.jpg', width: 800, height: 600, alt: 'Uma foto' },
+        { url: 'https://img/b.jpg', width: 100, height: 200, alt: null },
+      ],
+      quotedPostId: 'p0',
+      quotedPost: {
+        id: 'p0',
+        user: bia,
+        content: 'Original',
+        type: 'review',
+        activityStatus: null,
+        images: [{ url: 'https://img/q.jpg', width: 10, height: 20, alt: null }],
+        game: { id: 'g1', igdbId: 1942, name: 'Hades', coverUrl: null },
+        createdAt: '2026-10-19T09:00:00.000Z',
+      },
+    });
+
+    expect(post).toMatchObject({
+      repostCount: 4,
+      quoteCount: 2,
+      bookmarkCount: 7,
+      repostedByMe: true,
+      bookmarkedByMe: true,
+      quotedPostId: 'p0',
+      reason: null,
+    });
+    expect(post.images).toEqual([
+      { url: 'https://img/a.jpg', width: 800, height: 600, alt: 'Uma foto' },
+      { url: 'https://img/b.jpg', width: 100, height: 200, alt: null },
+    ]);
+    expect(post.quotedPost).toEqual({
+      id: 'p0',
+      author: bia,
+      content: 'Original',
+      type: 'review',
+      activityStatus: null,
+      images: [{ url: 'https://img/q.jpg', width: 10, height: 20, alt: null }],
+      game: expect.objectContaining({ id: 'g1', name: 'Hades' }),
+      createdAt: new Date('2026-10-19T09:00:00.000Z'),
+    });
+  });
+
+  it('keeps a null quotedPost when the original was deleted', () => {
+    const post = parsePost({ ...postJson, quotedPostId: null, quotedPost: null });
+
+    expect(post.quotedPostId).toBeNull();
+    expect(post.quotedPost).toBeNull();
+    expect(post.quotedPostRemoved).toBe(false);
+  });
+
+  it('flags a quote whose original was deleted', () => {
+    const post = parsePost({
+      ...postJson,
+      quotedPostId: null,
+      quotedPost: null,
+      quotedPostRemoved: true,
+    });
+
+    expect(post.quotedPostRemoved).toBe(true);
+    expect(post.quotedPost).toBeNull();
+  });
+
+  it('accepts an image without width and height (a legacy single image)', () => {
+    const post = parsePost({
+      ...postJson,
+      images: [{ url: 'https://img/post.jpg', width: null, height: null, alt: null }],
+    });
+
+    expect(post.images).toEqual([
+      { url: 'https://img/post.jpg', width: null, height: null, alt: null },
+    ]);
+  });
+
+  it('drops malformed images and non-numeric sizes', () => {
+    const post = parsePost({
+      ...postJson,
+      images: [{ width: 1 }, { url: 'https://img/a.jpg', width: '800', height: NaN }],
+    });
+
+    expect(post.images).toEqual([{ url: 'https://img/a.jpg', width: null, height: null, alt: null }]);
+  });
+
+  it('falls back to imageUrl as the only image when the list is absent', () => {
+    expect(parsePost(postJson).images).toEqual([
+      { url: 'https://img/post.jpg', width: null, height: null, alt: null },
+    ]);
+    expect(parsePost({ ...postJson, imageUrl: null }).images).toEqual([]);
+  });
+
+  it('parses the repost reason of a feed item', () => {
+    const post = parsePost({
+      ...postJson,
+      reason: { type: 'repost', by: bia, at: '2026-10-21T08:00:00.000Z' },
+    });
+
+    expect(post.reason).toEqual({
+      type: 'repost',
+      by: bia,
+      at: new Date('2026-10-21T08:00:00.000Z'),
+    });
+  });
+
+  it('ignores a reason of a kind it does not know or without a user', () => {
+    expect(parsePost({ ...postJson, reason: { type: 'pin', by: bia, at: 'x' } }).reason).toBeNull();
+    expect(parsePost({ ...postJson, reason: { type: 'repost', at: 'x' } }).reason).toBeNull();
+  });
+});
+
+describe('postKey', () => {
+  const repostBy = (id: string, username: string) =>
+    parsePost({
+      ...postJson,
+      reason: { type: 'repost', by: { id, username }, at: '2026-10-21T08:00:00.000Z' },
+    });
+
+  it('tells an original from each repost of the same post', () => {
+    const original = parsePost(postJson);
+
+    expect(postKey(original)).toBe('post:p1');
+    expect(postKey(repostBy('u2', 'bia'))).toBe('repost:p1:u2');
+    expect(
+      new Set([postKey(original), postKey(repostBy('u2', 'bia')), postKey(repostBy('u3', 'caio'))])
+        .size,
+    ).toBe(3);
   });
 });
 
@@ -239,6 +388,194 @@ describe('feedApi', () => {
     expect(body).toEqual({ content: 'Oi', gameId: 'g1', gameEntryId: 'e1' });
   });
 
+  it('create sends quotedPostId and images, without the legacy imageUrl', async () => {
+    let body: unknown;
+    server.use(
+      http.post(`${apiBaseUrl}/posts`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(postJson, { status: 201 });
+      }),
+    );
+
+    await feedApi.create({
+      content: 'Concordo',
+      quotedPostId: 'p0',
+      images: [
+        { url: 'https://api/uploads/posts/a.jpg', width: 800, height: 600 },
+        { url: 'https://api/uploads/posts/b.jpg', width: 10, height: 20, alt: 'Capa' },
+      ],
+    });
+
+    expect(body).toEqual({
+      content: 'Concordo',
+      quotedPostId: 'p0',
+      images: [
+        { url: 'https://api/uploads/posts/a.jpg', width: 800, height: 600 },
+        { url: 'https://api/uploads/posts/b.jpg', width: 10, height: 20, alt: 'Capa' },
+      ],
+    });
+    expect(body).not.toHaveProperty('imageUrl');
+  });
+
+  it('create omits images when the list is empty', async () => {
+    let body: unknown;
+    server.use(
+      http.post(`${apiBaseUrl}/posts`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(postJson, { status: 201 });
+      }),
+    );
+
+    await feedApi.create({ content: 'Oi', images: [] });
+
+    expect(body).toEqual({ content: 'Oi' });
+  });
+
+  it('uploadPostImage posts the file under the field image and returns url, width and height', async () => {
+    let seenFile: unknown = null;
+    let fieldNames: string[] = [];
+    let contentType: string | null = null;
+    server.use(
+      http.get('http://picker.test/photo.jpg', () =>
+        HttpResponse.arrayBuffer(new Uint8Array([1, 2, 3]).buffer, {
+          headers: { 'Content-Type': 'image/jpeg' },
+        }),
+      ),
+      http.post(`${apiBaseUrl}/posts/images`, async ({ request }) => {
+        contentType = request.headers.get('content-type');
+        const form = (await request.formData()) as unknown as {
+          get(name: string): unknown;
+          keys(): Iterable<string>;
+        };
+        seenFile = form.get('image');
+        fieldNames = [...form.keys()];
+        return HttpResponse.json(
+          { url: 'https://api/uploads/posts/a.jpg', width: 2000, height: 1000 },
+          { status: 201 },
+        );
+      }),
+    );
+    const original = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    try {
+      const uploaded = await feedApi.uploadPostImage({
+        uri: 'http://picker.test/photo.jpg',
+        mimeType: 'image/jpeg',
+        fileName: 'photo.jpg',
+      });
+
+      expect(uploaded).toEqual({
+        url: 'https://api/uploads/posts/a.jpg',
+        width: 2000,
+        height: 1000,
+      });
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: original, configurable: true });
+    }
+    expect(fieldNames).toEqual(['image']);
+    expect((seenFile as File).name).toBe('photo.jpg');
+    expect((seenFile as File).size).toBe(3);
+    expect(contentType).toMatch(/^multipart\/form-data/);
+  });
+
+  it('deletePost and deleteComment send DELETE', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.delete(`${apiBaseUrl}/posts/p1`, () => {
+        calls.push('post');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/comments/c1`, () => {
+        calls.push('comment');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(feedApi.deletePost('p1')).resolves.toBeUndefined();
+    await expect(feedApi.deleteComment('c1')).resolves.toBeUndefined();
+
+    expect(calls).toEqual(['post', 'comment']);
+  });
+
+  it('setRepost sends POST to repost and DELETE to unrepost', async () => {
+    const methods: string[] = [];
+    server.use(
+      http.post(`${apiBaseUrl}/posts/p1/repost`, () => {
+        methods.push('POST');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/posts/p1/repost`, () => {
+        methods.push('DELETE');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await feedApi.setRepost('p1', true);
+    await feedApi.setRepost('p1', false);
+
+    expect(methods).toEqual(['POST', 'DELETE']);
+  });
+
+  it('setBookmark sends POST to bookmark and DELETE to unbookmark', async () => {
+    const methods: string[] = [];
+    server.use(
+      http.post(`${apiBaseUrl}/posts/p1/bookmark`, () => {
+        methods.push('POST');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/posts/p1/bookmark`, () => {
+        methods.push('DELETE');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await feedApi.setBookmark('p1', true);
+    await feedApi.setBookmark('p1', false);
+
+    expect(methods).toEqual(['POST', 'DELETE']);
+  });
+
+  it('bookmarks pages through /users/me/bookmarks with the opaque cursor', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/me/bookmarks`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json({
+          items: [{ ...postJson, bookmarkedByMe: true, reason: null }],
+          nextCursor: 'eyJhIjoxfQ',
+        });
+      }),
+    );
+
+    const page = await feedApi.bookmarks();
+    await feedApi.bookmarks(page.nextCursor ?? undefined);
+
+    expect(seen[0].get('limit')).toBe('20');
+    expect(seen[0].has('cursor')).toBe(false);
+    expect(seen[1].get('cursor')).toBe('eyJhIjoxfQ');
+    expect(page.items[0]).toMatchObject({ id: 'p1', bookmarkedByMe: true, reason: null });
+  });
+
+  it('searchPosts sends the trimmed term and the cursor only when given', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/posts/search`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json({ items: [postJson], nextCursor: null });
+      }),
+    );
+
+    const page = await feedApi.searchPosts('  hades % ');
+    await feedApi.searchPosts('hades', 'c1');
+
+    expect(seen[0].get('q')).toBe('hades %');
+    expect(seen[0].get('limit')).toBe('20');
+    expect(seen[0].has('cursor')).toBe(false);
+    expect(seen[1].get('cursor')).toBe('c1');
+    expect(page.items[0].id).toBe('p1');
+    expect(page.nextCursor).toBeNull();
+  });
+
   it('setLike sends POST to like and DELETE to unlike', async () => {
     const methods: string[] = [];
     server.use(
@@ -287,6 +624,22 @@ describe('feedApi', () => {
 
     expect(tree).toHaveLength(1);
     expect(tree[0].replies[0]).toMatchObject({ id: 'c2', parentCommentId: 'c1' });
+  });
+
+  it('comments sends sort only when given', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/posts/p1/comments`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json([]);
+      }),
+    );
+
+    await feedApi.comments('p1');
+    await feedApi.comments('p1', 'top');
+    await feedApi.comments('p1', 'newest');
+
+    expect(seen.map((params) => params.get('sort'))).toEqual([null, 'top', 'newest']);
   });
 
   it('addComment sends parentCommentId only when given', async () => {

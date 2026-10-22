@@ -1,11 +1,11 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar, StatusIcon } from '@/components';
+import { Avatar, StatusIcon, Text } from '@/components';
 import { statusLabel } from '@/features/library/status';
 import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import { PostActions } from './PostActions';
 import { PostGameLink } from './PostGameLink';
@@ -49,7 +49,7 @@ export function ActivityCard({ post, onPress, hideGame = false }: ActivityCardPr
         </ProfileLink>
         <View style={styles.column}>
           <ProfileLink user={post.author} hitSlop={NAME_SLOP} style={styles.nameLink}>
-            <Text numberOfLines={1} style={styles.name}>
+            <Text numberOfLines={1} size="sm" weight="bold" tone="high">
               {name}
             </Text>
           </ProfileLink>
@@ -59,17 +59,19 @@ export function ActivityCard({ post, onPress, hideGame = false }: ActivityCardPr
             onPress={onPress}
             style={styles.body}
           >
-            <Text style={styles.content}>{post.content}</Text>
+            <Text size="sm">{post.content}</Text>
             <View style={styles.meta}>
               {status ? (
                 <View style={styles.chip}>
                   <StatusIcon status={status} />
-                  <Text style={[styles.chipLabel, { color: colors.status[status] }]}>
+                  <Text size="xs" weight="semibold" style={{ color: colors.status[status] }}>
                     {statusLabel[status]}
                   </Text>
                 </View>
               ) : null}
-              <Text style={styles.time}>{time}</Text>
+              <Text size="xs" tone="medium">
+                {time}
+              </Text>
             </View>
           </Pressable>
         </View>
@@ -84,10 +86,10 @@ export function ActivityCard({ post, onPress, hideGame = false }: ActivityCardPr
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
+    backgroundColor: colors.bgContrast25,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+    borderRadius: radii.md,
     padding: space.md,
     gap: space.xs,
   },
@@ -98,12 +100,9 @@ const styles = StyleSheet.create({
   avatarLink: { marginTop: space.sm },
   nameLink: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center' },
   body: { gap: space.xs },
-  content: { color: colors.text, fontSize: fontSize.sm },
-  name: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },
   meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.md },
   chip: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  chipLabel: { fontSize: fontSize.xs, fontWeight: '600' },
-  time: { color: colors.textMuted, fontSize: fontSize.xs },
+
   // Aligned with the text column, past the avatar.
   footer: { paddingLeft: AVATAR_SIZE + space.md },
 });

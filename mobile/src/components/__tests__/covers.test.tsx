@@ -70,8 +70,8 @@ describe('GameCover', () => {
       width: 120,
       aspectRatio: 3 / 4,
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 6,
+      borderColor: colors.borderLow,
+      borderRadius: 8,
     });
   });
 });

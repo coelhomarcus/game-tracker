@@ -1,23 +1,36 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { FlatList, StyleSheet } from 'react-native';
+import { getAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useSession } from '@/features/auth';
+import { haptic } from '@/lib/haptics';
 import { showToast } from '@/lib/toast';
+import { colors } from '@/theme/tokens';
 
 import { HomeScreen } from '../HomeScreen';
 import { useFeed } from '../queries';
 import type { Post } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useFeed: jest.fn(),
   useTogglePostLike: () => ({ mutate: jest.fn() }),
 }));
+jest.mock('@/features/notifications/queries', () => ({ useUnreadCount: () => 2 }));
+jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
+jest.mock('react-native-reanimated', () => ({
+  __esModule: true,
+  ...jest.requireActual('react-native-reanimated'),
+  useReducedMotion: jest.fn(() => false),
+}));
 
 const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
   useNavigation: () => mockNavigation,
 }));
 
@@ -42,6 +55,7 @@ function post(): Post {
     likeCount: 0,
     commentCount: 0,
     likedByMe: false,
+    ...socialDefaults,
   };
 }
 
@@ -65,9 +79,9 @@ function feedResult(overrides: Record<string, unknown> = {}): FeedResult {
 
 const emptyPages = { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] };
 
-async function renderHome() {
+async function renderHome(top = 0) {
   await render(
-    <SafeAreaProvider initialMetrics={metrics}>
+    <SafeAreaProvider initialMetrics={{ ...metrics, insets: { ...metrics.insets, top } }}>
       <HomeScreen />
     </SafeAreaProvider>,
   );
@@ -76,6 +90,136 @@ async function renderHome() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedUseFeed.mockReturnValue(feedResult({ data: emptyPages }));
+  useSession.setState({
+    status: 'signedIn',
+    user: {
+      id: 'me',
+      username: 'eu',
+      name: 'Eu Mesmo',
+      email: 'eu@x.com',
+      avatarUrl: null,
+      bannerUrl: null,
+      bio: null,
+    },
+  });
+});
+
+afterEach(() => {
+  useSession.setState({ status: 'signedOut', user: null });
+});
+
+/** The header reports its height once laid out; the list makes room for it. */
+async function layOutHeader(height: number) {
+  await fireEvent(screen.getByTestId('home-header-float'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 358, height } },
+  });
+}
+
+describe('HomeScreen header', () => {
+  it('shows the avatar, the title, the bell and both scope tabs', async () => {
+    await renderHome();
+
+    const header = within(screen.getByTestId('home-header'));
+    expect(header.getByRole('button', { name: 'Seu perfil' })).toBeOnTheScreen();
+    expect(header.getByRole('header', { name: 'Início' })).toBeOnTheScreen();
+    expect(header.getByRole('button', { name: 'Notificações, 2 não lidas' })).toBeOnTheScreen();
+    expect(header.getByRole('tab', { name: 'Para você' })).toBeOnTheScreen();
+    expect(header.getByRole('tab', { name: 'Seguindo' })).toBeOnTheScreen();
+  });
+
+  it('opens the notifications from the bell', async () => {
+    await renderHome();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Notificações, 2 não lidas' }));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/notifications');
+  });
+
+  it('floats over the list, which starts below it', async () => {
+    await renderHome();
+    await layOutHeader(120);
+
+    expect(screen.getByTestId('home-header-float')).toHaveStyle({ position: 'absolute', top: 0, zIndex: 1 });
+    const list = screen.getByTestId('post-list');
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 120);
+    expect(list.props.progressViewOffset).toBe(120);
+  });
+
+  it('keeps the status bar strip solid over the feed', async () => {
+    await renderHome(24);
+
+    const scrim = screen.getByTestId('status-bar-scrim');
+    expect(scrim).toHaveStyle({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 24,
+      backgroundColor: colors.bg,
+    });
+    expect(scrim.props.pointerEvents).toBe('none');
+  });
+
+  it('reaches the screen reader before the feed', async () => {
+    await renderHome();
+
+    // Matches come back in tree order.
+    const order = screen.getAllByTestId(/^(home-header|post-list)$/).map((node) => node.props.testID);
+    expect(order).toEqual(['home-header', 'post-list']);
+  });
+
+  it('makes room for the bar and the tabs before the header is measured', async () => {
+    await renderHome(24);
+
+    const list = screen.getByTestId('post-list');
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 24 + 48 + 48);
+  });
+
+  it('keeps the room for the header after switching scope', async () => {
+    await renderHome();
+    await layOutHeader(120);
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Seguindo' }));
+
+    const list = screen.getByTestId('post-list');
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 120);
+  });
+
+  it('scrolls the feed to the top from the title', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    await renderHome();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Início' }));
+
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    expect(haptic).toHaveBeenCalledWith('tap');
+    scrollToOffset.mockRestore();
+  });
+
+  it('scrolls the feed to the top when the selected scope is tapped again', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    await renderHome();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Para você' }));
+
+    expect(mockedUseFeed).not.toHaveBeenCalledWith('following');
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    scrollToOffset.mockRestore();
+  });
+
+  it('scrolls the feed to the top when the focused Início tab is pressed', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    mockNavigation.isFocused.mockReturnValue(true);
+    await renderHome();
+
+    const [, listener] = mockNavigation.addListener.mock.calls[0];
+    await act(async () => {
+      listener();
+    });
+
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    scrollToOffset.mockRestore();
+  });
 });
 
 describe('HomeScreen', () => {
@@ -110,6 +254,33 @@ describe('HomeScreen', () => {
 
     expect(screen.queryByText('Zerei de primeira!')).not.toBeOnTheScreen();
     expect(screen.getByText('Acompanhe quem joga com você')).toBeOnTheScreen();
+  });
+
+  it('lists the same post as the original and as a repost without repeating a key', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const original = post();
+    const reposted: Post = {
+      ...original,
+      reason: {
+        type: 'repost',
+        by: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+        at: new Date('2026-10-21T08:00:00.000Z'),
+      },
+    };
+    mockedUseFeed.mockReturnValue(
+      feedResult({
+        data: { pages: [{ items: [reposted, original], nextCursor: null }], pageParams: [] },
+      }),
+    );
+
+    await renderHome();
+
+    const list = screen.getByTestId('post-list');
+    const keys = [reposted, original].map((item) => list.props.keyExtractor(item));
+    expect(keys).toEqual(['repost:p1:u2', 'post:p1']);
+    expect(screen.getAllByText('Zerei de primeira!')).toHaveLength(2);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('invites the first post when the general feed is empty', async () => {
@@ -246,7 +417,7 @@ describe('HomeScreen', () => {
 
     const style = StyleSheet.flatten(screen.getByTestId('post-list').props.contentContainerStyle);
 
-    expect(style.paddingBottom).toBe(56 + 2 * 16);
+    expect(style.paddingBottom).toBe(56 + 2 * 15);
   });
 
   it('restores the scroll offset of a scope when it is selected again', async () => {
@@ -274,5 +445,127 @@ describe('HomeScreen', () => {
     expect(scrollToOffset).toHaveBeenCalledTimes(1);
     expect(scrollToOffset).toHaveBeenCalledWith({ offset: 640, animated: false });
     scrollToOffset.mockRestore();
+  });
+});
+
+describe('HomeScreen header on scroll', () => {
+  type HeaderStyle = { opacity?: number; transform?: { translateY: number }[] };
+  // The types describe the web stub, which takes no argument; jest runs the native helper.
+  const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => HeaderStyle;
+  const headerStyle = () => readAnimatedStyle(screen.getByTestId('home-header-float'));
+  const translateY = () => headerStyle().transform?.[0].translateY ?? 0;
+
+  function scrollEvent(y: number, velocity = 0) {
+    return { nativeEvent: { contentOffset: { x: 0, y }, velocity: { x: 0, y: velocity } } };
+  }
+
+  async function drag(from: number, to: number) {
+    const list = screen.getByTestId('post-list');
+    await fireEvent(list, 'scrollBeginDrag', scrollEvent(from));
+    await fireEvent.scroll(list, scrollEvent(to));
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    // Reset here, so a failing reduce-motion test cannot leak into the next one.
+    jest.mocked(useReducedMotion).mockReturnValue(false);
+  });
+
+  it('follows the finger, then hides after a drag down', async () => {
+    await renderHome();
+    await layOutHeader(120);
+
+    await drag(500, 560);
+    // Animated styles are applied on the next frame.
+    await act(async () => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(translateY()).toBeCloseTo(-60);
+    expect(headerStyle().opacity).toBeCloseTo(0.25);
+
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(560));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(translateY()).toBeCloseTo(-120);
+    expect(headerStyle().opacity).toBeCloseTo(0);
+  });
+
+  it('comes back after a drag up and when the feed returns to the top', async () => {
+    await renderHome();
+    await layOutHeader(120);
+    await drag(500, 700);
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(700));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(translateY()).toBeCloseTo(-120);
+
+    await drag(700, 690);
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(690));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(translateY()).toBeCloseTo(0);
+  });
+
+  it('shows the header near the top even while the list glides', async () => {
+    await renderHome();
+    await layOutHeader(120);
+    await drag(500, 700);
+    // A fling: the snap waits for the momentum to end.
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(700, 2));
+    await fireEvent(screen.getByTestId('post-list'), 'momentumScrollEnd', scrollEvent(900));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(translateY()).toBeCloseTo(-120);
+
+    await fireEvent.scroll(screen.getByTestId('post-list'), scrollEvent(40));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(translateY()).toBeCloseTo(0);
+    expect(headerStyle().opacity).toBeCloseTo(1);
+  });
+
+  it('brings the header back when the focused Início tab is pressed', async () => {
+    await renderHome();
+    await layOutHeader(120);
+    await drag(500, 700);
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(700));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(translateY()).toBeCloseTo(-120);
+
+    // A hidden header ignores touches; the Início tab press is the way back.
+    const [, listener] = mockNavigation.addListener.mock.calls[0];
+    mockNavigation.isFocused.mockReturnValue(true);
+    await act(async () => {
+      listener();
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(translateY()).toBeCloseTo(0);
+  });
+
+  it('never hides with reduce motion on', async () => {
+    jest.mocked(useReducedMotion).mockReturnValue(true);
+    await renderHome();
+    await layOutHeader(120);
+
+    await drag(500, 700);
+    await fireEvent(screen.getByTestId('post-list'), 'scrollEndDrag', scrollEvent(700));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(translateY()).toBeCloseTo(0);
   });
 });

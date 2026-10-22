@@ -31,7 +31,10 @@ describe('HomeHeaderLeft', () => {
   it('opens the own profile from the avatar', async () => {
     await render(<HomeHeaderLeft />);
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Seu perfil' }));
+    const button = screen.getByRole('button', { name: 'Seu perfil' });
+    expect(button).toHaveStyle({ width: 48, height: 48 });
+    expect(button.props.hitSlop).toBeUndefined();
+    await fireEvent.press(button);
 
     expect(mockPush).toHaveBeenCalledWith('/profile');
   });

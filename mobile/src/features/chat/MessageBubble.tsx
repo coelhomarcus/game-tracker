@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Button } from '@/components';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { Button, Text } from '@/components';
+import { colors, radii, space } from '@/theme/tokens';
 
 import type { PendingStatus } from './chatStore';
 
@@ -47,27 +47,33 @@ export function MessageBubble({ message, onRetry, onDiscard }: MessageBubbleProp
         accessibilityLabel={label}
         style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}
       >
-        <Text style={mine ? styles.textMine : styles.textOther}>{content}</Text>
+        <Text tone={mine ? 'high' : 'default'}>{content}</Text>
       </View>
       <View style={styles.footer}>
-        <Text style={styles.meta}>{time}</Text>
+        <Text size="xs" tone="medium">
+          {time}
+        </Text>
         {statusLine ? (
           <View style={styles.status}>
-            <Ionicons name={statusLine.icon} size={14} color={colors.textMuted} />
-            <Text style={styles.meta}>{statusLine.label}</Text>
+            <Ionicons name={statusLine.icon} size={14} color={colors.textMedium} />
+            <Text size="xs" tone="medium">
+              {statusLine.label}
+            </Text>
           </View>
         ) : null}
         {status === 'failed' ? (
           <View style={styles.status}>
             <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
-            <Text style={styles.failed}>Não enviada</Text>
+            <Text size="xs" weight="bold" tone="danger">
+              Não enviada
+            </Text>
           </View>
         ) : null}
       </View>
       {status === 'failed' ? (
         <View style={styles.actions}>
-          {onRetry ? <Button label="Tentar de novo" variant="text" onPress={onRetry} /> : null}
-          {onDiscard ? <Button label="Descartar" variant="text" onPress={onDiscard} /> : null}
+          {onRetry ? <Button label="Tentar de novo" variant="ghost" onPress={onRetry} /> : null}
+          {onDiscard ? <Button label="Descartar" variant="ghost" onPress={onDiscard} /> : null}
         </View>
       ) : null}
     </View>
@@ -82,15 +88,12 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderRadius: radii.card,
+    borderRadius: radii.md,
   },
-  bubbleMine: { backgroundColor: colors.active },
-  bubbleOther: { backgroundColor: colors.raised },
-  textMine: { color: colors.textStrong, fontSize: fontSize.md },
-  textOther: { color: colors.text, fontSize: fontSize.md },
+  bubbleMine: { backgroundColor: colors.selected },
+  bubbleOther: { backgroundColor: colors.bgContrast50 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   status: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  meta: { color: colors.textMuted, fontSize: fontSize.xs },
-  failed: { color: colors.danger, fontSize: fontSize.xs, fontWeight: 'bold' },
+
   actions: { flexDirection: 'row', gap: space.sm },
 });

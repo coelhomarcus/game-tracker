@@ -111,7 +111,15 @@ describe('EditProfileScreen form', () => {
     expect(screen.getByLabelText('Username').props.value).toBe('ana');
     expect(screen.getByLabelText('Bio').props.value).toBe('Gosto de RPG');
     expect(screen.getByText('Letras, números e _')).toBeOnTheScreen();
-    expect(screen.getByText('12/280')).toBeOnTheScreen();
+    expect(screen.getByText('12/256')).toBeOnTheScreen();
+  });
+
+  it('counts the bio trimmed, like the validation does', async () => {
+    await renderScreen();
+
+    await fireEvent.changeText(screen.getByLabelText('Bio'), '   abc  \n');
+
+    expect(screen.getByText('3/256')).toBeOnTheScreen();
   });
 
   it('falls back to the session user while the profile is not loaded', async () => {

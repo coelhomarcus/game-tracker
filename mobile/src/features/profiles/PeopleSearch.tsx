@@ -42,7 +42,7 @@ function PeopleHeader({ tabs, term, busy, inputRef, onChangeTerm }: HeaderProps)
         {busy ? (
           <ActivityIndicator
             accessibilityLabel="Buscando"
-            color={colors.textMuted}
+            color={colors.textMedium}
             style={styles.busy}
           />
         ) : null}

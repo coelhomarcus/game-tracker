@@ -1,10 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
 import { FollowButton } from './FollowButton';
 import type { PersonResult } from './types';
@@ -35,12 +35,12 @@ export function PersonRow({ person, onPress, showFollow = true, pressLabel }: Pe
       >
         <Avatar uri={resolveImageUrl(person.avatarUrl)} name={name} size={AVATAR_SIZE} />
         <View style={styles.column}>
-          <Text numberOfLines={1} style={styles.name}>
+          <Text numberOfLines={1} weight="bold" tone="high">
             {name}
           </Text>
-          <Text numberOfLines={1} style={styles.username}>{`@${person.username}`}</Text>
+          <Text numberOfLines={1} size="sm" tone="medium">{`@${person.username}`}</Text>
           {bio ? (
-            <Text testID="person-bio" numberOfLines={1} style={styles.bio}>
+            <Text testID="person-bio" numberOfLines={1} size="sm" tone="medium">
               {bio}
             </Text>
           ) : null}
@@ -69,7 +69,5 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   column: { flex: 1 },
-  name: { color: colors.textStrong, fontSize: fontSize.md, fontWeight: 'bold' },
-  username: { color: colors.textMuted, fontSize: fontSize.sm },
-  bio: { color: colors.textMuted, fontSize: fontSize.sm },
+
 });

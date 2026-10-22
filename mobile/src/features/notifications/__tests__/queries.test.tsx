@@ -33,6 +33,8 @@ function notification(id: string, read = false): AppNotification {
     type: 'follow',
     actor: { id: 'u1', username: 'ana', name: null, avatarUrl: null },
     postId: null,
+    commentId: null,
+    excerpt: null,
     read,
     createdAt: new Date('2026-01-01T00:00:00Z'),
   };

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import type { IoniconName } from '@/features/library/status';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type ChoiceChipProps = {
   label: string;
@@ -22,9 +23,16 @@ export function ChoiceChip({ label, selected, onPress, icon, accessibilityLabel 
       style={[styles.chip, selected ? styles.chipSelected : styles.chipIdle]}
     >
       {icon ? (
-        <Ionicons name={icon} size={18} color={selected ? colors.textStrong : colors.text} />
+        <Ionicons name={icon} size={18} color={selected ? colors.textEmphasis : colors.text} />
       ) : null}
-      <Text style={[styles.label, selected ? styles.labelSelected : styles.labelIdle]}>{label}</Text>
+      <Text
+        size="sm"
+        weight={selected ? 'bold' : 'normal'}
+        tone={selected ? 'high' : 'default'}
+        style={styles.label}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -38,11 +46,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: space.sm,
     paddingHorizontal: space.lg,
-    borderRadius: radii.control,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderLow,
   },
-  chipSelected: { backgroundColor: colors.active },
-  chipIdle: { backgroundColor: colors.raised },
-  label: { fontSize: fontSize.sm, textAlign: 'center' },
-  labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
-  labelIdle: { color: colors.text },
+  chipSelected: { backgroundColor: colors.selected },
+  chipIdle: { backgroundColor: colors.bgContrast50 },
+  label: { textAlign: 'center' },
 });

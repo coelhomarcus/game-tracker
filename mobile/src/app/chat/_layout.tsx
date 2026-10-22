@@ -1,14 +1,13 @@
 import { Stack } from 'expo-router';
 
+import { Layout } from '@/components';
 import { colors } from '@/theme/tokens';
 
 export default function ChatLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.chrome },
-        headerTintColor: colors.textStrong,
-        headerShadowVisible: false,
+        header: Layout.Header.renderStackHeader,
         contentStyle: { backgroundColor: colors.bg },
       }}
     />

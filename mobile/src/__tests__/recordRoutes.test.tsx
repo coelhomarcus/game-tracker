@@ -56,11 +56,6 @@ jest.mock('@/features/library/queries', () => ({
   useUpdateEntry: () => ({ mutateAsync: jest.fn() }),
 }));
 
-/** Native stack headers render as a config element carrying the title prop. */
-function headerTitles(): string[] {
-  return [...JSON.stringify(screen.toJSON()).matchAll(/"title":"([^"]*)"/g)].map((match) => match[1]);
-}
-
 beforeEach(() => {
   useSession.setState({ status: 'signedIn' });
 });
@@ -68,14 +63,14 @@ beforeEach(() => {
 test('the new record route titles the header and renders the form', async () => {
   await renderRouter('./src/app', { initialUrl: '/games/11/playthroughs/new' });
   await screen.findByRole('button', { name: 'Salvar registro' });
-  expect(headerTitles()).toContain('Novo registro');
+  expect(screen.getByRole('header', { name: 'Novo registro' })).toBeOnTheScreen();
   expect(screen.getByRole('header', { name: 'Hades' })).toBeOnTheScreen();
 });
 
 test('the edit route titles the header and prefills the record', async () => {
   await renderRouter('./src/app', { initialUrl: '/games/11/playthroughs/e1/edit' });
   await screen.findByRole('button', { name: 'Salvar registro' });
-  expect(headerTitles()).toContain('Editar registro');
+  expect(screen.getByRole('header', { name: 'Editar registro' })).toBeOnTheScreen();
   expect(screen.queryByText('Você já tem 1 registro deste jogo. Este será um novo registro.')).toBeNull();
 });
 
@@ -88,7 +83,7 @@ test('going back with unsaved changes asks before discarding', async () => {
   expect(await screen.findByText('Descartar alterações?')).toBeOnTheScreen();
 
   await fireEvent.press(screen.getByRole('button', { name: 'Descartar' }));
-  expect(await screen.findByRole('button', { name: /^Biblioteca, tab/, selected: true })).toBeOnTheScreen();
+  expect(await screen.findByRole('tab', { name: 'Biblioteca', selected: true })).toBeOnTheScreen();
 });
 
 test('saving a changed record leaves without the discard prompt', async () => {

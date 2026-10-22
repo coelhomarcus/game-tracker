@@ -39,6 +39,8 @@ describe('parseNotificationsData', () => {
         type: 'like',
         actor,
         postId: 'p1',
+        commentId: null,
+        excerpt: null,
         read: false,
         createdAt: new Date('2026-10-20T10:00:00.000Z'),
       },
@@ -47,6 +49,8 @@ describe('parseNotificationsData', () => {
         type: 'follow',
         actor,
         postId: null,
+        commentId: null,
+        excerpt: null,
         read: true,
         createdAt: new Date('2026-10-20T10:00:00.000Z'),
       },
@@ -57,7 +61,7 @@ describe('parseNotificationsData', () => {
     const data = parseNotificationsData({
       items: [
         { ...item, id: 'n1', type: 'comment' },
-        { ...item, id: 'n2', type: 'mention' },
+        { ...item, id: 'n2', type: 'weird' },
         { ...item, id: 'n3', actor: null },
         { ...item, id: 'n4', actor: undefined },
       ],
@@ -65,6 +69,29 @@ describe('parseNotificationsData', () => {
     });
 
     expect(data.items.map((n) => n.id)).toEqual(['n1']);
+  });
+
+  it('parses reply, mention, repost and quote with commentId and excerpt', () => {
+    const data = parseNotificationsData({
+      items: [
+        { ...item, id: 'n1', type: 'reply', commentId: 'c1', excerpt: 'Concordo' },
+        { ...item, id: 'n2', type: 'mention', commentId: null, excerpt: 'oi @ana' },
+        { ...item, id: 'n3', type: 'repost', excerpt: 'Zerei!' },
+        { ...item, id: 'n4', type: 'quote', postId: 'quote-post', excerpt: 'Zerei também' },
+      ],
+      unreadCount: 4,
+    });
+
+    expect(data.items.map((n) => n.type)).toEqual(['reply', 'mention', 'repost', 'quote']);
+    expect(data.items[0]).toMatchObject({ commentId: 'c1', excerpt: 'Concordo', postId: 'p1' });
+    expect(data.items[1]).toMatchObject({ commentId: null, excerpt: 'oi @ana' });
+    expect(data.items[3]).toMatchObject({ postId: 'quote-post' });
+  });
+
+  it('defaults a missing commentId and excerpt to null', () => {
+    const data = parseNotificationsData({ items: [item] });
+
+    expect(data.items[0]).toMatchObject({ commentId: null, excerpt: null });
   });
 
   it('defaults unreadCount to 0 and a missing postId to null', () => {

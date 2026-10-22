@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type GameCoverProps = {
   name: string;
@@ -48,10 +49,10 @@ export function GameCover({ name, url, width, decorative = false }: GameCoverPro
         <Ionicons
           name="game-controller-outline"
           size={Math.max(16, (width ?? 0) * 0.4)}
-          color={colors.textMuted}
+          color={colors.textMedium}
         />
       ) : (
-        <Text style={styles.name} numberOfLines={4}>
+        <Text size="xs" style={styles.name} numberOfLines={4}>
           {name}
         </Text>
       )}
@@ -62,18 +63,16 @@ export function GameCover({ name, url, width, decorative = false }: GameCoverPro
 const styles = StyleSheet.create({
   box: {
     aspectRatio: 3 / 4,
-    borderRadius: radii.cover,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.raised,
+    borderColor: colors.borderLow,
+    backgroundColor: colors.bgContrast50,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
   image: { width: '100%', height: '100%' },
   name: {
-    color: colors.text,
-    fontSize: fontSize.xs,
     textAlign: 'center',
     paddingHorizontal: space.xs,
   },

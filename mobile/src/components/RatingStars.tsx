@@ -23,7 +23,7 @@ export function RatingStars({ rating, size = 12 }: RatingStarsProps) {
       {Array.from({ length: STARS }, (_, index) => {
         const filled = halves - index * 2;
         const name = filled >= 2 ? 'star' : filled === 1 ? 'star-half' : 'star-outline';
-        return <Ionicons key={index} name={name} size={size} color={colors.accent} />;
+        return <Ionicons key={index} name={name} size={size} color={colors.primary} />;
       })}
     </View>
   );

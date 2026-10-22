@@ -5,26 +5,20 @@ import {
   useCallback,
   useMemo,
   useState,
+  type ComponentProps,
   type ComponentType,
   type ReactElement,
 } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type FlatList } from 'react-native';
+import Animated from 'react-native-reanimated';
 
-import { Button } from '@/components';
+import { Button, Text } from '@/components';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
 import { PostCard } from './PostCard';
-import type { Post, PostPage } from './types';
+import { postKey, type Post, type PostPage } from './types';
 
 type Slot = ReactElement | ComponentType;
 
@@ -38,11 +32,20 @@ export type PostListProps = {
   onPressPost?: (post: Post) => void;
   /** Bottom padding of the content, e.g. to keep the last card clear of a floating button. */
   bottomInset?: number;
-  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /**
+   * Room above the content for a header floating over the list; the pull-to-refresh spinner
+   * starts below it too.
+   */
+  topInset?: number;
+  /** A plain callback or a Reanimated scroll handler (`useAnimatedScrollHandler`). */
+  onScroll?: AnimatedListProps['onScroll'];
   onContentSizeChange?: (width: number, height: number) => void;
 };
 
-const keyExtractor = (post: Post) => post.id;
+type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
+
+// The same post can be listed as the original and once per reposter.
+const keyExtractor = postKey;
 
 export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostList(
   {
@@ -52,6 +55,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     onRefresh,
     onPressPost,
     bottomInset,
+    topInset = 0,
     onScroll,
     onContentSizeChange,
   },
@@ -107,34 +111,42 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   }, [onRefresh, refetch]);
 
   const contentStyle = useMemo(
-    () => (bottomInset === undefined ? styles.content : [styles.content, { paddingBottom: bottomInset }]),
-    [bottomInset],
+    () => [
+      styles.content,
+      topInset > 0 && { paddingTop: space.lg + topInset },
+      bottomInset !== undefined && { paddingBottom: bottomInset },
+    ],
+    [bottomInset, topInset],
   );
 
   let footer: ReactElement | undefined;
   if (isFetchingNextPage) {
     footer = (
       <View style={styles.footer}>
-        <ActivityIndicator testID="post-list-loading-more" color={colors.textMuted} />
+        <ActivityIndicator testID="post-list-loading-more" color={colors.textMedium} />
       </View>
     );
   } else if (isFetchNextPageError) {
     footer = (
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Não foi possível carregar mais posts.</Text>
-        <Button label="Tentar de novo" variant="secondary" onPress={() => void fetchNextPage()} />
+        <Text size="sm" tone="medium" style={styles.footerText}>
+          Não foi possível carregar mais posts.
+        </Text>
+        <Button label="Tentar de novo" color="secondary" onPress={() => void fetchNextPage()} />
       </View>
     );
   } else if (posts.length > 0 && !hasNextPage) {
     footer = (
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Você chegou ao fim.</Text>
+        <Text size="sm" tone="medium" style={styles.footerText}>
+          Você chegou ao fim.
+        </Text>
       </View>
     );
   }
 
   return (
-    <FlatList
+    <Animated.FlatList
       ref={ref}
       testID="post-list"
       data={posts}
@@ -149,6 +161,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       onEndReachedThreshold={0.5}
       onRefresh={() => void refresh()}
       refreshing={pulling}
+      progressViewOffset={topInset > 0 ? topInset : undefined}
       ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={ListEmptyComponent}
       ListFooterComponent={footer}
@@ -163,6 +176,6 @@ function Separator() {
 const styles = StyleSheet.create({
   content: { padding: space.lg, flexGrow: 1 },
   separator: { height: space.md },
-  footer: { alignItems: 'center', gap: space.md, paddingVertical: space.xl },
-  footerText: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'center' },
+  footer: { alignItems: 'center', gap: space.md, paddingVertical: space._2xl },
+  footerText: { textAlign: 'center' },
 });

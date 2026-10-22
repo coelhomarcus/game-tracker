@@ -13,6 +13,7 @@ import { showToast } from '@/lib/toast';
 import { ProfileScreen } from '../ProfileScreen';
 import { useProfile, useUserEntries, useUserFavorites, useUserPosts } from '../queries';
 import type { UserProfile } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
@@ -112,6 +113,7 @@ function post(overrides: Partial<Post> = {}): Post {
     likeCount: 0,
     commentCount: 0,
     likedByMe: false,
+    ...socialDefaults,
     ...overrides,
   };
 }

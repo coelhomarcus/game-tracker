@@ -100,6 +100,73 @@ describe('profile and uploads', () => {
     }
   });
 
+  describe('name and bio limits (graphemes)', () => {
+    const patch = (body: Record<string, unknown>) => api.http('PATCH', '/users/me', a.accessToken, body);
+    const wave = '\u{1F44D}\u{1F3FD}'; // um emoji com tom de pele: 1 grafema, 2 pontos de código
+    const accented = 'é'; // "é" decomposto: 1 grafema, 2 pontos de código
+
+    it('accepts a name of 64 and a bio of 256, and rejects one more', async () => {
+      assert.equal((await patch({ name: 'n'.repeat(64), bio: 'b'.repeat(256) })).status, 204);
+      const m = await me();
+      assert.equal(m.name, 'n'.repeat(64));
+      assert.equal(m.bio, 'b'.repeat(256));
+      for (const body of [{ name: 'n'.repeat(65) }, { bio: 'b'.repeat(257) }]) {
+        const res = await patch(body);
+        assert.equal(res.status, 400, JSON.stringify(body).slice(0, 30));
+        assert.equal(res.body.error.code, 'validation_error');
+      }
+      assert.equal((await me()).name, 'n'.repeat(64));
+    });
+
+    it('counts graphemes, not UTF-16 units or code points', async () => {
+      assert.equal((await patch({ name: wave.repeat(64), bio: accented.repeat(256) })).status, 204);
+      const m = await me();
+      assert.equal(m.name, wave.repeat(64));
+      assert.equal(m.bio, accented.repeat(256));
+      assert.equal((await patch({ name: wave.repeat(65) })).status, 400);
+      assert.equal((await patch({ bio: accented.repeat(257) })).status, 400);
+    });
+
+    it('answers 400, never 500, for a few graphemes made of a huge number of code points', async () => {
+      assert.equal((await patch({ name: `a${'́'.repeat(300)}` })).status, 400);
+      assert.equal((await patch({ bio: `a${'́'.repeat(2000)}` })).status, 400);
+    });
+
+    it('trims trailing whitespace of both fields', async () => {
+      assert.equal((await patch({ name: 'Maria Souza \n\t ', bio: 'texto da bio  \n\n' })).status, 204);
+      const m = await me();
+      assert.equal(m.name, 'Maria Souza');
+      assert.equal(m.bio, 'texto da bio');
+    });
+
+    it('measures the limit after trimming', async () => {
+      assert.equal((await patch({ name: `${'n'.repeat(64)}   `, bio: `${'b'.repeat(256)}\n\n` })).status, 204);
+      assert.equal((await patch({ name: `${'n'.repeat(65)}   ` })).status, 400);
+    });
+
+    it('a blank name is refused and a blank bio clears the bio', async () => {
+      assert.equal((await patch({ name: '   ' })).status, 400);
+      assert.equal((await patch({ bio: 'algo' })).status, 204);
+      assert.equal((await patch({ bio: ' \n ' })).status, 204);
+      assert.ok(!(await me()).bio);
+    });
+
+    it('long values that were saved before stay readable and are not touched by other edits', async () => {
+      const long = 'l'.repeat(280);
+      const { db } = await import('../../src/db');
+      const { users } = await import('../../src/db/schema');
+      const { eq } = await import('drizzle-orm');
+      await db.update(users).set({ bio: long }).where(eq(users.id, b.user.id));
+      assert.equal((await me(b)).bio, long);
+      assert.equal((await api.http('GET', `/users/${b.user.id}`, a.accessToken)).body.bio, long);
+      assert.equal((await api.http('PATCH', '/users/me', b.accessToken, { name: 'Outro nome' })).status, 204);
+      assert.equal((await me(b)).bio, long);
+      // reenviar o valor antigo, mais longo que o novo limite, é recusado
+      assert.equal((await api.http('PATCH', '/users/me', b.accessToken, { bio: long })).status, 400);
+      assert.equal((await me(b)).bio, long);
+    });
+  });
+
   it('avatar valid: returns URL, becomes JPEG and appears in /auth/me', async () => {
     const r = await post('/users/me/avatar', a, upload('avatar', png(900, 300), 'image/png'));
     assert.equal(r.status, 200);

@@ -14,7 +14,7 @@ export function FollowButton({ userId, following, name }: FollowButtonProps) {
     <Button
       label={following ? 'Seguindo' : 'Seguir'}
       accessibilityLabel={following ? `Deixar de seguir ${name}` : `Seguir ${name}`}
-      variant={following ? 'secondary' : 'primary'}
+      color={following ? 'secondary' : 'primary'}
       onPress={() => toggle.mutate({ id: userId, follow: !following })}
     />
   );

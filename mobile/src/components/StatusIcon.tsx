@@ -23,7 +23,7 @@ export function StatusIcon({ status }: StatusIconProps) {
       {status ? (
         <Ionicons name={statusIcon[status]} size={16} color={colors.status[status]} />
       ) : (
-        <Ionicons name="layers-outline" size={16} color={colors.textMuted} />
+        <Ionicons name="layers-outline" size={16} color={colors.textMedium} />
       )}
     </View>
   );

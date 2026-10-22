@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { TextField } from '@/components';
 import { chatSocket } from '@/lib/realtime/chatSocket';
-import { colors, space } from '@/theme/tokens';
+import { colors, hairline, space } from '@/theme/tokens';
 
 import { MAX_MESSAGE_LENGTH, useChatStore } from './chatStore';
 
@@ -100,7 +100,7 @@ export function ChatComposer({ conversationId, onChangeText, onSent }: ChatCompo
         onPress={submit}
         style={styles.iconButton}
       >
-        <Ionicons name="send" size={22} color={canSend ? colors.accent : colors.textMuted} />
+        <Ionicons name="send" size={22} color={canSend ? colors.primary : colors.textMedium} />
       </Pressable>
     </View>
   );
@@ -111,9 +111,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
-    backgroundColor: colors.chrome,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+    borderTopWidth: hairline,
+    borderTopColor: colors.borderLow,
     paddingLeft: space.lg,
     paddingRight: space.sm,
     paddingVertical: space.sm,

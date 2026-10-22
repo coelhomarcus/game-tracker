@@ -1,11 +1,11 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import type { Conversation } from './types';
 
@@ -36,15 +36,19 @@ export function ConversationRow({ conversation, onPress }: ConversationRowProps)
     >
       <Avatar uri={resolveImageUrl(otherUser?.avatarUrl)} name={name} size={AVATAR_SIZE} />
       <View style={styles.column}>
-        <Text numberOfLines={1} style={[styles.name, unread ? styles.bold : null]}>
+        <Text numberOfLines={1} weight={unread ? 'bold' : 'normal'} tone="high">
           {name}
         </Text>
-        <Text numberOfLines={1} style={[styles.preview, unread ? styles.previewUnread : null]}>
+        <Text numberOfLines={1} size="sm" weight={unread ? 'bold' : 'normal'} tone={unread ? 'default' : 'medium'}>
           {preview}
         </Text>
       </View>
       <View style={styles.meta}>
-        {time ? <Text style={styles.time}>{time}</Text> : null}
+        {time ? (
+          <Text size="xs" tone="medium">
+            {time}
+          </Text>
+        ) : null}
         {unread ? <View testID="conversation-unread-dot" style={styles.dot} /> : null}
       </View>
     </Pressable>
@@ -61,11 +65,6 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
   },
   column: { flex: 1, gap: space.xs },
-  name: { color: colors.textStrong, fontSize: fontSize.md },
-  bold: { fontWeight: 'bold' },
-  preview: { color: colors.textMuted, fontSize: fontSize.sm },
-  previewUnread: { color: colors.text, fontWeight: 'bold' },
   meta: { alignItems: 'flex-end', gap: space.xs },
-  time: { color: colors.textMuted, fontSize: fontSize.xs },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
 });
