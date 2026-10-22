@@ -77,7 +77,7 @@ export function TextField({
         multiline={multiline}
         accessibilityLabel={label}
         accessibilityHint={error}
-        placeholderTextColor={colors.textLow}
+        placeholderTextColor={colors.textMedium}
         selectionColor={primary[500]}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     paddingVertical: VERTICAL_PADDING,
     borderRadius: 10,
     borderWidth: BORDER_WIDTH,
-    borderColor: 'transparent',
+    borderColor: colors.borderLow,
     backgroundColor: colors.bgContrast50,
     color: colors.text,
     fontFamily: fontFamily.normal,

@@ -20,8 +20,9 @@ describe('Button sizes', () => {
     await render(<Button label="Entrar" onPress={() => {}} />);
     expect(screen.getByRole('button', { name: 'Entrar' })).toHaveStyle({
       minHeight: 48,
-      paddingVertical: 12,
-      paddingHorizontal: 24,
+      paddingVertical: 11,
+      paddingHorizontal: 23,
+      borderWidth: 1,
       borderRadius: 12,
     });
   });
@@ -34,20 +35,36 @@ describe('Button sizes', () => {
       </>,
     );
     const small = screen.getByRole('button', { name: 'Pequeno' });
-    expect(small).toHaveStyle({ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999 });
+    expect(small).toHaveStyle({ paddingVertical: 7, paddingHorizontal: 13, borderWidth: 1, borderRadius: 999 });
     expect(small.props.hitSlop).toBe(8);
     expect(screen.getByText('Pequeno')).toHaveStyle({ fontSize: 15 });
     const tiny = screen.getByRole('button', { name: 'Mínimo' });
-    expect(tiny).toHaveStyle({ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999 });
+    expect(tiny).toHaveStyle({ paddingVertical: 4, paddingHorizontal: 9, borderWidth: 1, borderRadius: 999 });
     expect(tiny.props.hitSlop).toBe(11);
     expect(screen.getByText('Mínimo')).toHaveStyle({ fontSize: 13.1 });
   });
 
   it('renders a round icon-only button that keeps its spoken name', async () => {
-    await render(<Button shape="round" size="small" icon="add" accessibilityLabel="Adicionar" onPress={() => {}} />);
+    await render(
+      <>
+        <Button shape="round" size="large" icon="add" accessibilityLabel="Grande" onPress={() => {}} />
+        <Button shape="round" size="small" icon="add" accessibilityLabel="Adicionar" onPress={() => {}} />
+        <Button shape="round" size="tiny" icon="add" accessibilityLabel="Mínimo" onPress={() => {}} />
+      </>,
+    );
     const button = screen.getByRole('button', { name: 'Adicionar' });
-    expect(button).toHaveStyle({ padding: 8, borderRadius: 999 });
     expect(button.props.hitSlop).toBe(8);
+    // 1 dp border + padding + icon: 48 / 33 / 24 dp squares.
+    const expected = { Grande: 13, Adicionar: 7, Mínimo: 4 };
+    for (const [name, padding] of Object.entries(expected)) {
+      const style = flat(screen.getByRole('button', { name }));
+      expect(style.paddingHorizontal).toBe(padding);
+      expect(style.paddingVertical).toBe(style.paddingHorizontal);
+      expect(style.borderRadius).toBe(999);
+    }
+    const large = flat(screen.getByRole('button', { name: 'Grande' }));
+    expect(large.minWidth).toBe(48);
+    expect(large.minHeight).toBe(48);
   });
 });
 
@@ -64,7 +81,11 @@ describe('Button colors', () => {
     );
     expect(screen.getByRole('button', { name: 'Primário' })).toHaveStyle({ backgroundColor: primary[500] });
     expect(screen.getByText('Primário')).toHaveStyle({ color: colors.onPrimary });
-    expect(screen.getByRole('button', { name: 'Secundário' })).toHaveStyle({ backgroundColor: colors.bgContrast50 });
+    expect(screen.getByRole('button', { name: 'Secundário' })).toHaveStyle({
+      backgroundColor: colors.bgContrast50,
+      borderColor: colors.borderLow,
+    });
+    expect(screen.getByRole('button', { name: 'Primário' })).toHaveStyle({ borderColor: 'transparent' });
     expect(screen.getByText('Secundário')).toHaveStyle({ color: colors.text });
     expect(screen.getByRole('button', { name: 'Excluir' })).toHaveStyle({ backgroundColor: negative500 });
     expect(screen.getByText('Excluir')).toHaveStyle({ color: '#ffffff' });
@@ -133,12 +154,12 @@ describe('Button haptics', () => {
 });
 
 describe('TextField design', () => {
-  it('uses the contrast fill, a transparent border and primary on focus', async () => {
+  it('uses the contrast fill, a low border and primary on focus', async () => {
     await render(<TextField label="Nome" value="" onChangeText={() => {}} />);
     const input = screen.getByLabelText('Nome');
     expect(input).toHaveStyle({
       backgroundColor: colors.bgContrast50,
-      borderColor: 'transparent',
+      borderColor: colors.borderLow,
       borderRadius: 10,
       borderWidth: 1,
       paddingVertical: 13,
@@ -148,13 +169,18 @@ describe('TextField design', () => {
     await fireEvent(input, 'focus');
     expect(input).toHaveStyle({ borderColor: primary[500] });
     await fireEvent(input, 'blur');
-    expect(input).toHaveStyle({ borderColor: 'transparent' });
+    expect(input).toHaveStyle({ borderColor: colors.borderLow });
   });
 
   it('styles the label and error with the new Text tones', async () => {
     await render(<TextField label="Nome" value="" onChangeText={() => {}} error="Obrigatório" />);
     expect(screen.getByText('Nome')).toHaveStyle({ color: colors.textMedium, fontFamily: 'Inter_500Medium' });
     expect(screen.getByText('Obrigatório')).toHaveStyle({ color: colors.danger });
+  });
+
+  it('uses textMedium for the placeholder', async () => {
+    await render(<TextField label="Nome" value="" placeholder="Ex." onChangeText={() => {}} />);
+    expect(screen.getByLabelText('Nome').props.placeholderTextColor).toBe(colors.textMedium);
   });
 
   it('shows no counter unless showCounter is set', async () => {
@@ -203,7 +229,7 @@ describe('EmptyState', () => {
     });
     expect(screen.getByText('Volte depois')).toHaveStyle({ color: colors.textMedium, maxWidth: 360 });
     const action = screen.getByRole('button', { name: 'Atualizar' });
-    expect(action).toHaveStyle({ backgroundColor: colors.bgContrast50, borderRadius: 999 });
+    expect(action).toHaveStyle({ backgroundColor: colors.bgContrast50, borderColor: colors.borderLow, borderRadius: 999 });
     await fireEvent.press(action);
     expect(onPress).toHaveBeenCalledTimes(1);
   });

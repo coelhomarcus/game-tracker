@@ -77,6 +77,7 @@ export function Button({
   const look = resolveLook(color, variant);
   const round = shape === 'round';
   const inactive = disabled || loading;
+  const solidSecondary = !look.ghost && look.color === 'secondary';
   const textColor = look.ghost ? ghostText[look.color] : solid[look.color].text;
 
   function containerStyle({ pressed }: PressableStateCallbackType) {
@@ -93,6 +94,7 @@ export function Button({
       round ? roundStyles[size] : null,
       size === 'large' && !round ? styles.largeRadius : styles.fullRadius,
       { backgroundColor: background },
+      solidSecondary && styles.outlined,
       inactive && styles.inactive,
     ];
   }
@@ -127,22 +129,25 @@ export function Button({
 }
 
 const styles = StyleSheet.create({
-  base: { alignItems: 'center', justifyContent: 'center' },
+  base: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
   content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   largeRadius: { borderRadius: radii.md },
   fullRadius: { borderRadius: radii.full },
+  /** Secondary buttons share the card and sheet fill, so they keep a hairline edge. */
+  outlined: { borderColor: colors.borderLow },
   inactive: { opacity: 0.5 },
 });
 
+/** Paddings are 1 dp short of the nominal values: the 1 dp border (transparent unless outlined) makes up the rest. */
 const sizeStyles = StyleSheet.create({
-  large: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 24 },
-  small: { paddingVertical: 8, paddingHorizontal: 14 },
-  tiny: { paddingVertical: 5, paddingHorizontal: 10 },
+  large: { minHeight: 48, paddingVertical: 11, paddingHorizontal: 23 },
+  small: { paddingVertical: 7, paddingHorizontal: 13 },
+  tiny: { paddingVertical: 4, paddingHorizontal: 9 },
 });
 
-/** Icon-only circles: padding plus the icon gives 48 / 33 / 24 dp. */
+/** Icon-only circles with equal paddings on both axes (they override sizeStyles): 48 / 33 / 24 dp squares. */
 const roundStyles = StyleSheet.create({
-  large: { minWidth: 48, padding: 14 },
-  small: { padding: 8 },
-  tiny: { padding: 5 },
+  large: { minWidth: 48, minHeight: 48, paddingVertical: 13, paddingHorizontal: 13 },
+  small: { paddingVertical: 7, paddingHorizontal: 7 },
+  tiny: { paddingVertical: 4, paddingHorizontal: 4 },
 });

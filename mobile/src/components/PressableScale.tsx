@@ -7,6 +7,10 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export type PressableScaleProps = Omit<ComponentProps<typeof Pressable>, 'style'> & {
   /** Scale reached while pressed. */
   targetScale?: number;
+  /**
+   * Plain style only: unlike Pressable, a function style (pressed state) is not supported. The
+   * animated scale transform replaces any `transform` the caller passes.
+   */
   style?: StyleProp<ViewStyle>;
 };
 
