@@ -3,14 +3,15 @@ import { useMemo, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { EmptyState, Screen } from '@/components';
 import { ApiError } from '@/lib/http/errors';
+import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, fontSize, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
@@ -89,6 +90,7 @@ function Separator() {
 }
 
 function PostBody({ post }: { post: Post }) {
+  const headerHeight = useHeaderHeight();
   const comments = useComments(post.id);
   const addComment = useAddComment(post.id);
   const toggleLike = useToggleCommentLike(post.id);
@@ -144,7 +146,11 @@ function PostBody({ post }: { post: Post }) {
   return (
     <Screen>
       <Stack.Screen options={{ title: post.type === 'activity' ? 'Atividade' : 'Post' }} />
-      <KeyboardAvoidingView behavior="padding" style={styles.fill}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={headerHeight}
+        style={styles.fill}
+      >
         <FlatList
           testID="comment-list"
           data={rows}
