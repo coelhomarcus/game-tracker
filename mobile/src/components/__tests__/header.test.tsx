@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router, Stack, Tabs, type Href } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
-import type { ReactElement } from 'react';
-import { Pressable, Text as RNText, View } from 'react-native';
+import { useMemo, useState, type ReactElement } from 'react';
+import { Pressable, StyleSheet, Text as RNText, View, type ViewStyle } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Layout } from '@/components';
@@ -100,6 +100,67 @@ describe('AppHeader', () => {
     );
     expect(screen.getByText('Custom ignored')).toBeOnTheScreen();
     expect(screen.queryByRole('header')).toBeNull();
+  });
+
+  // Android drops touches outside a parent's bounds, so hitSlop past a column does not count: each
+  // header button needs a real 48 dp box inside a column at least that big.
+  it('gives the back button a real 48 dp target inside a 48 dp column', async () => {
+    await renderInsets(<AppHeader backButton navigation={stubNavigation(true)} options={{ title: 'Post' }} />);
+    const back = screen.getByRole('button', { name: 'Voltar' });
+    expect(back).toHaveStyle({ width: 48, height: 48 });
+    expect(back.props.hitSlop).toBeUndefined();
+
+    const slot = StyleSheet.flatten(back.parent?.props.style) as ViewStyle;
+    expect(slot.width).toBe(48);
+    // It reaches over the 4 dp bottom padding (44 + 4 = 48) and still takes 33 dp in the row,
+    // shifted 3 dp left so the arrow lines up with the gutter.
+    expect(slot.marginBottom).toBe(-4);
+    expect(48 + Number(slot.marginLeft) + Number(slot.marginRight)).toBe(33);
+    expect(Number(slot.marginLeft) - Number(slot.marginRight)).toBe(-6);
+    expect(screen.getByTestId('app-header')).toHaveStyle({ alignItems: 'stretch', paddingBottom: 4 });
+  });
+
+  it('puts headerLeft, the title and headerRight in columns that span the bar', async () => {
+    await renderInsets(
+      <AppHeader
+        navigation={stubNavigation(false)}
+        options={{
+          title: 'Início',
+          headerLeft: () => <Pressable accessibilityRole="button" accessibilityLabel="Esquerda" />,
+          headerRight: () => <Pressable accessibilityRole="button" accessibilityLabel="Direita" />,
+        }}
+      />,
+    );
+    for (const name of ['Esquerda', 'Direita']) {
+      expect(screen.getByRole('button', { name }).parent).toHaveStyle({ marginBottom: -4 });
+    }
+    expect(screen.getByRole('header', { name: 'Início' }).parent).toHaveStyle({ marginBottom: -4, flex: 1 });
+  });
+
+  it('renders each header option as its own component, so their hooks do not mix', async () => {
+    // The chat title, for one, uses hooks; dropping a hook-using headerLeft before it must not
+    // shift the title's hooks, as it would if both were called inline in one render.
+    function Avatar() {
+      const [label] = useState('Seu perfil');
+      return <Pressable accessibilityRole="button" accessibilityLabel={label} />;
+    }
+    function Title({ children }: { children: string }) {
+      const text = useMemo(() => `Conversa com ${children}`, [children]);
+      return <RNText>{text}</RNText>;
+    }
+    const navigation = stubNavigation(true);
+    await renderInsets(
+      <AppHeader backButton navigation={navigation} options={{ title: 'Ana', headerLeft: Avatar, headerTitle: Title }} />,
+    );
+    expect(screen.getByRole('button', { name: 'Seu perfil' })).toBeOnTheScreen();
+
+    await screen.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <AppHeader backButton navigation={navigation} options={{ title: 'Ana', headerTitle: Title }} />
+      </SafeAreaProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Seu perfil' })).toBeNull();
+    expect(screen.getByText('Conversa com Ana')).toBeOnTheScreen();
   });
 
   it('renders no heading for an empty title', async () => {

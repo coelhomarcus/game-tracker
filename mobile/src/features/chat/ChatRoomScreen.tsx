@@ -206,7 +206,6 @@ function ChatHeaderTitle({ conversationId, otherUser }: HeaderTitleProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Perfil de ${name}${status ? `, ${status}` : ''}`}
-      hitSlop={2}
       onPress={() => router.push(`/users/${otherUser.id}` as Href)}
       style={styles.headerTitle}
     >
@@ -448,8 +447,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    // 44 dp fits the header bar; hitSlop pads the target to 48 dp.
-    minHeight: 44,
+    minHeight: 48,
     flexShrink: 1,
   },
   headerText: { flexShrink: 1 },

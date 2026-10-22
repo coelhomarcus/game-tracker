@@ -39,7 +39,6 @@ function MarkAllReadButton({ disabled, onPress }: { disabled: boolean; onPress: 
       accessibilityLabel="Marcar todas como lidas"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={{ top: 2, bottom: 2, left: 2, right: 2 }}
       onPress={onPress}
       style={styles.markAll}
     >
@@ -149,7 +148,7 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  markAll: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  markAll: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   loading: { marginTop: space.xl },
   tabs: { paddingVertical: space.md },
   footer: {

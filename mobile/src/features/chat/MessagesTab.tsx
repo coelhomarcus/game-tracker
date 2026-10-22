@@ -40,7 +40,6 @@ export function NewConversationButton() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Nova conversa"
-      hitSlop={2}
       onPress={openNewConversationSheet}
       style={styles.button}
     >
@@ -50,8 +49,7 @@ export function NewConversationButton() {
 }
 
 const styles = StyleSheet.create({
-  // 44 dp fits the header bar; hitSlop pads the target to 48 dp.
-  button: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  button: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   dot: {
     position: 'absolute',
     top: -1,

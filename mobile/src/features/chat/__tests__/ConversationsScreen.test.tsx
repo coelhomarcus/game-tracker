@@ -438,6 +438,7 @@ describe('Messages tab', () => {
 
   it('opens the new conversation sheet from the header button', async () => {
     await render(<NewConversationButton />);
+    expect(screen.getByRole('button', { name: 'Nova conversa' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
     await fireEvent.press(screen.getByRole('button', { name: 'Nova conversa' }));
 
     expect(useNewConversationSheet.getState().open).toBe(true);

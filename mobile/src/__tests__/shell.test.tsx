@@ -110,7 +110,7 @@ test('bell opens notifications', async () => {
 test('the Perfil header has the settings button next to the bell', async () => {
   setStatus('signedIn');
   await renderApp('/profile');
-  expect(await screen.findByRole('button', { name: 'Configurações' })).toBeOnTheScreen();
+  expect(await screen.findByRole('button', { name: 'Configurações' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
   expect(screen.getByRole('button', { name: 'Notificações' })).toBeOnTheScreen();
   expect(screen.queryByRole('button', { name: 'Sair da conta' })).toBeNull();
 });
@@ -150,7 +150,8 @@ test('double-tapping the bell opens notifications only once', async () => {
 test('the library header adds a game by opening explore', async () => {
   setStatus('signedIn');
   const app = await renderApp('/library');
-  await fireEvent.press(await screen.findByRole('button', { name: 'Adicionar jogo' }));
+  expect(await screen.findByRole('button', { name: 'Adicionar jogo' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
+  await fireEvent.press(screen.getByRole('button', { name: 'Adicionar jogo' }));
   expect(await screen.findByRole('button', { name: /^Explorar, tab/, selected: true })).toBeOnTheScreen();
   expect(app.getPathname()).toBe('/explore');
 });

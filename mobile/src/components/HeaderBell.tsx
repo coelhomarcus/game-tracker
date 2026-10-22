@@ -36,15 +36,15 @@ export function HeaderBell() {
 
 const styles = StyleSheet.create({
   button: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badge: {
     position: 'absolute',
-    top: 4,
-    right: 2,
+    top: 6,
+    right: 4,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 3,

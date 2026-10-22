@@ -193,6 +193,7 @@ test('mark all as read disables the button and clears the badge at once', async 
   );
   expect(screen.getByRole('button', { name: 'Notificações, 2 não lidas' })).toBeOnTheScreen();
   expect(screen.getByRole('button', { name: 'Marcar todas como lidas' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Marcar todas como lidas' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
 
   await fireEvent.press(screen.getByRole('button', { name: 'Marcar todas como lidas' }));
 

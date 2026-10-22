@@ -72,7 +72,6 @@ function PublishAction({ busy, enabled, onPress }: PublishActionProps) {
       accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       onPress={onPress}
-      hitSlop={2}
       style={styles.publish}
     >
       {busy ? (
@@ -294,7 +293,6 @@ const styles = StyleSheet.create({
   linkingLabel: { color: colors.textMuted, fontSize: fontSize.sm },
   failure: { gap: space.sm },
   error: { color: colors.danger, fontSize: fontSize.sm },
-  // 44 dp fits the header bar; hitSlop pads the target to 48 dp.
-  publish: { minWidth: 44, minHeight: 44, paddingHorizontal: space.md, alignItems: 'center', justifyContent: 'center' },
+  publish: { minWidth: 48, minHeight: 48, paddingHorizontal: space.md, alignItems: 'center', justifyContent: 'center' },
   publishLabel: { fontSize: fontSize.md, fontWeight: '600' },
 });

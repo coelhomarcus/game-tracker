@@ -51,6 +51,7 @@ test('the badge is an accent circle', async () => {
 
 test('still opens notifications', async () => {
   await renderBell(4);
+  expect(screen.getByRole('button', { name: 'Notificações, 4 não lidas' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
   await fireEvent.press(screen.getByRole('button', { name: 'Notificações, 4 não lidas' }));
   expect(mockNavigate).toHaveBeenCalledWith('/notifications');
 });

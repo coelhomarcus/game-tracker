@@ -54,7 +54,6 @@ function ProfileHeaderRight() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Configurações"
-        hitSlop={4}
         onPress={() => router.push('/settings' as Href)}
         style={styles.addButton}
       >
@@ -67,7 +66,7 @@ function ProfileHeaderRight() {
 
 const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center' },
-  addButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  addButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
 });
 
 export default function TabsLayout() {

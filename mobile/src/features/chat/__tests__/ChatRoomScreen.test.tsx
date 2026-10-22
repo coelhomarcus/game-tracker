@@ -354,6 +354,9 @@ describe('ChatRoomScreen: header', () => {
 
     const title = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
     expect(title).toHaveTextContent(/Ana Souza/);
+    // A real 48 dp target: hitSlop past the header column would be lost on Android.
+    expect(title).toHaveStyle({ minHeight: 48 });
+    expect(title.props.hitSlop).toBeUndefined();
     await fireEvent.press(title);
     expect(mockRouter.push).toHaveBeenCalledWith('/users/u1');
   });
