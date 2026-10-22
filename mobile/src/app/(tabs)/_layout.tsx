@@ -2,9 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useRouter, type Href } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HeaderBell } from '@/components';
+import { HeaderBell, Layout } from '@/components';
 import {
   MESSAGES_TAB_UNREAD_LABEL,
   MessagesTabIcon,
@@ -15,10 +14,6 @@ import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
 import { colors } from '@/theme/tokens';
 
 const EXPLORE_GAMES = '/explore?tab=games' as Href;
-
-// Same bar height as the native stack headers (Material 56 dp), so every header in the app
-// lines up; the tab navigator's own default is 64 dp.
-const HEADER_BAR_HEIGHT = 56;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type TabIconProps = { color: ColorValue; size: number };
@@ -77,13 +72,11 @@ const styles = StyleSheet.create({
 
 export default function TabsLayout() {
   const unreadMessages = useHasUnreadConversations();
-  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.chrome, height: insets.top + HEADER_BAR_HEIGHT },
-        headerTintColor: colors.textStrong,
-        headerShadowVisible: false,
+        // Same header component and height as the stacks.
+        header: Layout.Header.renderTabHeader,
         headerRight: () => <HeaderBell />,
         tabBarStyle: { backgroundColor: colors.chrome, borderTopColor: colors.border, borderTopWidth: 1 },
         tabBarActiveTintColor: colors.accent,

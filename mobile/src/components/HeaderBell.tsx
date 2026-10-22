@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useUnreadCount } from '@/features/notifications/queries';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, fontSize } from '@/theme/tokens';
 
 const MAX_SHOWN = 9;
 
@@ -38,7 +38,6 @@ const styles = StyleSheet.create({
   button: {
     minWidth: 44,
     minHeight: 44,
-    marginRight: space.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

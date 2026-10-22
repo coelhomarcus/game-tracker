@@ -35,5 +35,12 @@ export function HomeHeaderLeft() {
 }
 
 const styles = StyleSheet.create({
-  button: { width: 44, height: 44, marginLeft: space.md, alignItems: 'center', justifyContent: 'center' },
+  // Pulled out by the box's padding so the avatar lines up with the header's 16 dp gutter.
+  button: {
+    width: 44,
+    height: 44,
+    marginLeft: -(44 - AVATAR_SIZE) / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
