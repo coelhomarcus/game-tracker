@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabSelected: { backgroundColor: colors.active },
-  tabIdle: { backgroundColor: colors.surface },
+  tabIdle: { backgroundColor: colors.raised },
   label: { fontSize: fontSize.sm },
   labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
   labelIdle: { color: colors.textMuted },

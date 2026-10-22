@@ -4,12 +4,21 @@ import { contrastRatio } from '../contrast';
 test('palette values match the spec', () => {
   expect(colors).toMatchObject({
     bg: '#16181c',
-    surface: '#272c37',
+    chrome: '#1c1f26',
+    surface: '#22262f',
+    raised: '#2b303b',
     border: '#2a2d3c',
+    borderStrong: '#3a4050',
     active: '#3f4b64',
     text: '#cbd4dc',
     accent: '#ea377a',
   });
+});
+
+test('tone levels get lighter as they come forward', () => {
+  const levels = [colors.bg, colors.chrome, colors.surface, colors.raised, colors.active];
+  const luminance = levels.map((c) => contrastRatio(c, '#000000'));
+  luminance.slice(1).forEach((value, i) => expect(value).toBeGreaterThan(luminance[i]));
 });
 
 test('contrastRatio follows WCAG', () => {
@@ -18,18 +27,20 @@ test('contrastRatio follows WCAG', () => {
 });
 
 test.each(['text', 'textMuted', 'textStrong', 'danger'] as const)(
-  '%s reads at 4.5:1 on bg and surface',
+  '%s reads at 4.5:1 on every background tone',
   (key) => {
-    expect(contrastRatio(colors[key], colors.bg)).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio(colors[key], colors.surface)).toBeGreaterThanOrEqual(4.5);
+    for (const tone of [colors.bg, colors.chrome, colors.surface, colors.raised]) {
+      expect(contrastRatio(colors[key], tone)).toBeGreaterThanOrEqual(4.5);
+    }
   },
 );
 
 test.each(['playing', 'completed', 'backlog', 'dropped'] as const)(
-  'status %s reads at 4.5:1 on bg and surface',
+  'status %s reads at 4.5:1 on every background tone',
   (s) => {
-    expect(contrastRatio(colors.status[s], colors.bg)).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio(colors.status[s], colors.surface)).toBeGreaterThanOrEqual(4.5);
+    for (const tone of [colors.bg, colors.chrome, colors.surface, colors.raised]) {
+      expect(contrastRatio(colors.status[s], tone)).toBeGreaterThanOrEqual(4.5);
+    }
   },
 );
 

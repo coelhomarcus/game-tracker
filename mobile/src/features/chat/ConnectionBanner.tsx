@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     gap: space.md,
     minHeight: 48,
     paddingHorizontal: space.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.chrome,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.control,
   },
   chipSelected: { backgroundColor: colors.active },
-  chipIdle: { backgroundColor: colors.surface },
+  chipIdle: { backgroundColor: colors.raised },
   label: { fontSize: fontSize.sm, textAlign: 'center' },
   labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
   labelIdle: { color: colors.text },

@@ -1,4 +1,4 @@
-import { type ComponentRef, type Ref } from 'react';
+import { useState, type ComponentRef, type Ref } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
 import { colors, fontSize, radii, space } from '@/theme/tokens';
@@ -42,6 +42,7 @@ export function TextField({
   inputRef,
   ...inputProps
 }: TextFieldProps) {
+  const [focused, setFocused] = useState(false);
   const multilineStyle = multiline
     ? maxLines
       ? [styles.inputGrowing, { maxHeight: LINE_HEIGHT * maxLines + GROWING_PADDING * 2 }]
@@ -57,7 +58,14 @@ export function TextField({
         accessibilityLabel={label}
         accessibilityHint={error}
         placeholderTextColor={colors.textMuted}
-        style={[styles.input, multilineStyle, error ? styles.inputError : null]}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[
+          styles.input,
+          multilineStyle,
+          focused ? styles.inputFocused : null,
+          error ? styles.inputError : null,
+        ]}
       />
       {error ? (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -78,8 +86,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: radii.control,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.raised,
     color: colors.text,
     fontSize: fontSize.md,
   },
@@ -89,6 +97,7 @@ const styles = StyleSheet.create({
     paddingVertical: GROWING_PADDING,
     textAlignVertical: 'center',
   },
+  inputFocused: { borderColor: colors.accent },
   inputError: { borderColor: colors.danger },
   helper: { color: colors.textMuted, fontSize: fontSize.sm },
   error: { color: colors.danger, fontSize: fontSize.sm },

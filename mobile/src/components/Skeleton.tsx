@@ -15,7 +15,7 @@ export function Skeleton({ width = '100%', height, radius = radii.card, testID }
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       testID={testID}
-      style={{ width, height, borderRadius: radius, backgroundColor: colors.surface }}
+      style={{ width, height, borderRadius: radius, backgroundColor: colors.raised }}
     />
   );
 }

@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Pressable,
   StyleSheet,
   Text,
@@ -17,12 +16,14 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { Avatar, Button, EmptyState, Screen } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
 import { ApiError } from '@/lib/http/errors';
+import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, fontSize, space } from '@/theme/tokens';
 
@@ -221,6 +222,7 @@ type ChatRoomProps = {
 };
 
 function ChatRoom({ conversationId, messages }: ChatRoomProps) {
+  const headerHeight = useHeaderHeight();
   const selfId = useSession((state) => state.user?.id);
   const conversation = useConversation(conversationId).data;
   const otherUser = conversation?.otherUser ?? null;
@@ -421,7 +423,11 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   return (
     <Screen>
       <Stack.Screen options={headerOptions} />
-      <KeyboardAvoidingView behavior="padding" style={styles.fill}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={headerHeight}
+        style={styles.fill}
+      >
         {body}
         <ConnectionBanner />
         <ChatComposer
@@ -452,7 +458,7 @@ const styles = StyleSheet.create({
   dayText: {
     color: colors.text,
     fontSize: fontSize.xs,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
     borderRadius: 999,

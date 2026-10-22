@@ -29,9 +29,9 @@ export function ToastHost() {
 const styles = StyleSheet.create({
   host: { position: 'absolute', left: space.lg, right: space.lg, alignItems: 'center' },
   toast: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     borderRadius: radii.control,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,

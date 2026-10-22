@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.xs,
     borderRadius: 999,
   },
-  default: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  default: { backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.borderStrong },
   accent: { backgroundColor: colors.active, borderWidth: 1, borderColor: colors.accent },
   label: { fontSize: fontSize.xs },
   defaultLabel: { color: colors.text },

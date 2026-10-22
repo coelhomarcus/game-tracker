@@ -68,9 +68,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'center', padding: space.xl },
   backdrop: { flex: 1, backgroundColor: `${colors.bg}${ALPHA_60}` },
   dialog: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     borderRadius: radii.card,
     padding: space.xl,
     gap: space.md,

@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
 
 const containerStyles = StyleSheet.create({
   primary: { backgroundColor: colors.accent },
-  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  secondary: { backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.borderStrong },
   text: { backgroundColor: 'transparent' },
 });
 
