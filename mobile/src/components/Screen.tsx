@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { BottomTabBarHeightContext } from 'expo-router/tabs';
+import { useContext, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
@@ -15,12 +16,21 @@ export type ScreenProps = {
   topInset?: boolean;
 };
 
-const WITH_HEADER: Edge[] = ['left', 'right', 'bottom'];
-const WITHOUT_HEADER: Edge[] = ['top', 'left', 'right', 'bottom'];
+/**
+ * The screen's safe-area edges. The top belongs to the header (unless there is none), and the
+ * bottom belongs to the tab bar inside the tabs, which already extends under the gesture bar.
+ */
+function screenEdges(topInset: boolean, insideTabs: boolean): Edge[] {
+  const edges: Edge[] = ['left', 'right'];
+  if (topInset) edges.push('top');
+  if (!insideTabs) edges.push('bottom');
+  return edges;
+}
 
 export function Screen({ children, scroll = false, topInset = false }: ScreenProps) {
+  const insideTabs = useContext(BottomTabBarHeightContext) !== undefined;
   return (
-    <SafeAreaView style={styles.safe} edges={topInset ? WITHOUT_HEADER : WITH_HEADER}>
+    <SafeAreaView style={styles.safe} edges={screenEdges(topInset, insideTabs)}>
       {scroll ? (
         // Scrolls the focused field above the keyboard (Android draws edge-to-edge, so the
         // window no longer shrinks when the keyboard opens).
