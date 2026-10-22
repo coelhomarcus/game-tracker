@@ -312,3 +312,40 @@ describe('comment sorting', () => {
     assert.equal((await send('GET', '/posts/nao-e-uuid/comments?sort=top', owner)).status, 404);
   });
 });
+
+describe('mention cap', () => {
+  let author: TestUser;
+  let people: TestUser[];
+
+  before(async () => {
+    author = await registerUser(api.http, 'mcap');
+    people = [];
+    for (let i = 0; i < 12; i++) people.push(await registerUser(api.http, `mc${i}`));
+  });
+
+  const handle = (p: TestUser) => `@${p.user.username}`;
+
+  it('notifies only the first 10 distinct mentions of a post', async () => {
+    const post = await createPost(author, people.map(handle).join(' '));
+    const got: boolean[] = [];
+    for (const p of people) got.push((await about(p, post.id)).length > 0);
+    assert.deepEqual(got, [...Array(10).fill(true), false, false]);
+  });
+
+  it('notifies only the first 10 distinct mentions of a comment', async () => {
+    const post = await createPost(author, 'sem menções');
+    const created = await comment(author, post.id, people.map(handle).join(' '));
+    for (const [i, p] of people.entries()) {
+      const mine = (await inbox(p)).filter((n) => n.commentId === created.id);
+      assert.equal(mine.length, i < 10 ? 1 : 0, `usuário ${i}`);
+    }
+  });
+
+  it('a repeated mention does not use up the cap', async () => {
+    const repeated = people.slice(0, 9).map((p) => `${handle(p)} ${handle(p).toUpperCase()}`).join(' ');
+    const post = await createPost(author, `${repeated} ${handle(people[9]!)} ${handle(people[10]!)}`);
+    const got: boolean[] = [];
+    for (const p of people) got.push((await about(p, post.id)).length > 0);
+    assert.deepEqual(got, [...Array(10).fill(true), false, false]);
+  });
+});

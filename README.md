@@ -100,7 +100,7 @@ Set these variables on the Dokploy backend service (never commit secrets):
 | `JWT_ACCESS_SECRET` | Strong secret for access tokens. |
 | `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Token lifetimes, such as `15m` and `30d`. |
 | `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | IGDB/Twitch credentials. |
-| `PUBLIC_API_URL` | Public HTTPS URL of the backend. |
+| `PUBLIC_API_URL` | Public HTTPS URL of the backend. Post image URLs are recognised by this value, so changing it later stops older post images from being reused or cleaned up. |
 | `CORS_ORIGINS` | Optional browser origins; native clients do not need it. |
 
 ## APK releases

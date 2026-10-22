@@ -32,6 +32,13 @@ export const bookmarksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 
+export const searchPostsQuerySchema = z.object({
+  // Aparado antes de medir: só espaços não é uma busca.
+  q: z.string().trim().min(2).max(100),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
 export const feedQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),

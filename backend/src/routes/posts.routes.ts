@@ -9,6 +9,7 @@ import {
   likeHandler,
   listCommentsHandler,
   repostHandler,
+  searchHandler,
   unbookmarkHandler,
   unlikeHandler,
   unrepostHandler,
@@ -19,7 +20,7 @@ import { postImageUpload } from '../lib/uploads';
 import { isUuid } from '../lib/uuid';
 import { requireAuth } from '../middlewares/auth';
 import { validateBody, validateQuery } from '../middlewares/validate';
-import { commentsQuerySchema, createCommentSchema, createPostSchema } from '../schemas/posts.schema';
+import { commentsQuerySchema, createCommentSchema, createPostSchema, searchPostsQuerySchema } from '../schemas/posts.schema';
 
 // Cada envio grava um arquivo em disco: 30 por 10 minutos por usuário. `POST_IMAGE_RATE_LIMIT_MAX`
 // existe para os testes e é lida a cada requisição. A chave é o usuário (o limitador roda depois
@@ -45,6 +46,8 @@ postsRouter.param('id', (_req, _res, next, id) => {
 
 postsRouter.post('/', validateBody(createPostSchema), createHandler);
 postsRouter.post('/images', postImageLimiter, postImageUpload.single('image'), uploadImageHandler);
+// Antes das rotas /:id, senão "search" seria lido como um id.
+postsRouter.get('/search', validateQuery(searchPostsQuerySchema), searchHandler);
 postsRouter.get('/:id', getByIdHandler);
 postsRouter.delete('/:id', deleteHandler);
 postsRouter.post('/:id/repost', repostHandler);

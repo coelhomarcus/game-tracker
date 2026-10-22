@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { extractMentions } from './mentions';
+import { extractMentions, MAX_MENTIONS } from './mentions';
 
 describe('extractMentions', () => {
   it('finds a mention anywhere in the text, lowercased', () => {
@@ -45,5 +45,21 @@ describe('extractMentions', () => {
   it('is stateless between calls', () => {
     assert.deepEqual(extractMentions('@abc'), ['abc']);
     assert.deepEqual(extractMentions('@abc'), ['abc']);
+  });
+
+  const handles = (count: number) => Array.from({ length: count }, (_, i) => `name${String(i).padStart(2, '0')}`);
+  const asText = (names: string[]) => names.map((n) => `@${n}`).join(' ');
+
+  it('caps at 10 distinct mentions: the first ten, in order', () => {
+    assert.equal(MAX_MENTIONS, 10);
+    assert.deepEqual(extractMentions(asText(handles(15))), handles(10));
+    assert.deepEqual(extractMentions(asText(handles(11))), handles(10));
+    assert.equal(extractMentions(asText(handles(10))).length, 10);
+    assert.equal(extractMentions(asText(handles(9))).length, 9);
+  });
+
+  it('counts only distinct valid mentions toward the cap', () => {
+    const text = ['@name00 @NAME00 a@zzz1 e@x.com', ...handles(12).map((n) => `@${n} @${n.toUpperCase()}`)].join(' ');
+    assert.deepEqual(extractMentions(text), handles(10));
   });
 });

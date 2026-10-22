@@ -407,6 +407,16 @@ export async function getUserPosts(
   return timeline(viewerId, { posts: postsFilter, reposts: repostsFilter }, cursor, limit);
 }
 
+/**
+ * Busca posts pelo texto (ILIKE '%termo%', sem diferenciar maiúsculas), do mais novo ao mais antigo,
+ * na mesma linha do tempo paginada dos demais (cursor keyset com microssegundos). Só posts
+ * originais; `%`, `_` e `\` do termo valem como caracteres comuns. Ainda sem filtro de moderação.
+ */
+export async function searchPosts(viewerId: string, term: string, cursor: string | undefined, limit: number) {
+  const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+  return timeline(viewerId, { posts: sql`${posts.content} ilike ${pattern}`, reposts: null }, cursor, limit);
+}
+
 /** Posts sobre um jogo: só os originais. */
 export async function getGamePosts(gameId: string, viewerId: string, cursor: string | undefined, limit: number) {
   return timeline(viewerId, { posts: eq(posts.gameId, gameId), reposts: null }, cursor, limit);

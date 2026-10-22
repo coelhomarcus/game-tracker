@@ -22,6 +22,11 @@ export async function feedHandler(req: Request, res: Response) {
   res.json(result);
 }
 
+export async function searchHandler(req: Request, res: Response) {
+  const { q, cursor, limit } = res.locals.query as { q: string; cursor?: string; limit: number };
+  res.json(await postsService.searchPosts(req.user!.id, q, cursor, limit));
+}
+
 export async function likeHandler(req: Request, res: Response) {
   await postsService.like(req.user!.id, req.params.id as string);
   res.status(204).send();

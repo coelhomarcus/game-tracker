@@ -34,12 +34,12 @@ export const notificationTypeEnum = pgEnum('notification_type', [
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: varchar('username', { length: 30 }).notNull().unique(),
-  name: varchar('name', { length: 50 }),
+  name: varchar('name', { length: 256 }),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   avatarUrl: varchar('avatar_url', { length: 500 }),
   bannerUrl: varchar('banner_url', { length: 500 }),
-  bio: varchar('bio', { length: 280 }),
+  bio: varchar('bio', { length: 1024 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
