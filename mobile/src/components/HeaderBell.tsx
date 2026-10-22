@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { useUnreadCount } from '@/features/notifications/queries';
 import { colors } from '@/theme/tokens';
-import { Text } from './Text';
+import { CountBadge } from './CountBadge';
 
-const MAX_SHOWN = 9;
+const MAX_SHOWN = 30;
 
 function bellLabel(unread: number): string {
   if (unread <= 0) return 'Notificações';
@@ -24,13 +24,7 @@ export function HeaderBell() {
       style={styles.button}
     >
       <Ionicons name="notifications-outline" size={24} color={colors.text} />
-      {unread > 0 ? (
-        <View pointerEvents="none" style={styles.badge}>
-          <Text size="xs" weight="bold" tone="onPrimary" style={styles.badgeText}>
-            {unread > MAX_SHOWN ? `${MAX_SHOWN}+` : String(unread)}
-          </Text>
-        </View>
-      ) : null}
+      <CountBadge count={unread} max={MAX_SHOWN} style={styles.badge} />
     </Pressable>
   );
 }
@@ -42,17 +36,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badge: {
-    position: 'absolute',
-    top: 6,
-    right: 4,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 3,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: { lineHeight: 14 },
+  // On the icon's top-right corner (the 24dp icon is centred in the 48dp box).
+  badge: { left: 'auto', right: 2, top: 4 },
 });

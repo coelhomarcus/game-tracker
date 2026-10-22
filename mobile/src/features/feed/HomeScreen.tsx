@@ -1,14 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useRef, useState, type RefObject } from 'react';
-import { Pressable, StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useComposedEventHandler } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { EmptyState, Screen, Skeleton } from '@/components';
+import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen, Skeleton } from '@/components';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { colors, radii, space } from '@/theme/tokens';
+import { radii, space } from '@/theme/tokens';
 
 import { HomeHeader } from './HomeHeader';
 import { PostList } from './PostList';
@@ -16,7 +15,6 @@ import { useFeed } from './queries';
 import type { FeedScope, Post } from './types';
 
 const SKELETON_ROWS = ['0', '1', '2'];
-const FAB_SIZE = 56;
 const AVATAR_SIZE = 40;
 
 const COMPOSER = '/posts/new' as Href;
@@ -121,7 +119,7 @@ function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset
       query={query}
       ListEmptyComponent={empty}
       topInset={headerHeight}
-      bottomInset={FAB_SIZE + 2 * space.lg}
+      bottomInset={FAB_SIZE + 2 * FAB_BOTTOM}
       onScroll={onScroll}
       onContentSizeChange={restoreOffset}
     />
@@ -165,14 +163,7 @@ export function HomeScreen() {
         <Animated.View testID="home-header-float" onLayout={measureHeader} style={[styles.header, headerStyle]}>
           <HomeHeader scope={scope} onSelectScope={setScope} onScrollToTop={scrollToTop} />
         </Animated.View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Publicar"
-          onPress={() => router.push(COMPOSER)}
-          style={styles.fab}
-        >
-          <Ionicons name="create-outline" size={24} color={colors.onPrimary} />
-        </Pressable>
+        <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
       </View>
     </Screen>
   );
@@ -185,15 +176,4 @@ const styles = StyleSheet.create({
   skeleton: { gap: space.lg },
   skeletonRow: { flexDirection: 'row', gap: space.md },
   skeletonText: { flex: 1, gap: space.sm },
-  fab: {
-    position: 'absolute',
-    right: space.lg,
-    bottom: space.lg,
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

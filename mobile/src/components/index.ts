@@ -15,6 +15,7 @@ export { CoverFooter, type CoverFooterProps } from './CoverFooter';
 export { CoverGrid, type CoverGridProps } from './CoverGrid';
 export { Divider, type DividerProps } from './Divider';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
+export { Fab, FAB_BOTTOM, FAB_SIZE, type FabProps } from './Fab';
 export { ErrorState, type ErrorStateProps } from './ErrorState';
 export { GameCover, type GameCoverProps } from './GameCover';
 export { HeaderBell } from './HeaderBell';

@@ -354,7 +354,7 @@ describe('HomeScreen', () => {
 
     const style = StyleSheet.flatten(screen.getByTestId('post-list').props.contentContainerStyle);
 
-    expect(style.paddingBottom).toBe(56 + 2 * 16);
+    expect(style.paddingBottom).toBe(56 + 2 * 15);
   });
 
   it('restores the scroll offset of a scope when it is selected again', async () => {
