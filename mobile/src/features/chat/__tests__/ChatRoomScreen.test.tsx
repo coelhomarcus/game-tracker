@@ -117,14 +117,20 @@ function page(items: Message[], nextCursor: string | null = null): MessagePage {
   return { items, nextCursor };
 }
 
-/** A server payload, as `message:receive` and send acks carry it. */
+let payloadSeconds = 0;
+
+/**
+ * A server payload, as `message:receive` and send acks carry it. Each one is stamped a second after
+ * the previous, late in the fixtures' day, so it is always newer than the fixtures and than the
+ * payloads before it, whatever time the suite runs at.
+ */
 function payload(id: string, senderId: string, content: string, extra: Record<string, unknown> = {}) {
   return {
     id,
     conversationId: CONV,
     senderId,
     content,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(today(23, 0).getTime() + ++payloadSeconds * 1000).toISOString(),
     clientMessageId: null,
     sender: senderId === 'u1' ? ana : { id: senderId, username: 'eu', name: 'Eu', avatarUrl: null },
     ...extra,
