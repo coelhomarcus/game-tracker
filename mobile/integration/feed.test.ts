@@ -72,10 +72,8 @@ describeBackend('feed against the test API', () => {
 
     await b.profiles.setFollow(a.user.id, true);
     expect((await b.feed.feed('following')).items.map((p) => p.id)).toContain(post.id);
-    // Following leaves out one's own posts.
-    expect(
-      (await a.feed.feed('following')).items.some((p) => p.author.id === a.user.id),
-    ).toBe(false);
+    // Following also shows one's own posts.
+    expect((await a.feed.feed('following')).items.map((p) => p.id)).toContain(post.id);
   });
 
   it('posts by game: only that game, through the UUID, paginated without repeats', async () => {
