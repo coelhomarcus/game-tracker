@@ -75,6 +75,10 @@ export async function addCommentHandler(req: Request, res: Response) {
 }
 
 export async function listCommentsHandler(req: Request, res: Response) {
-  const comments = await postsService.listComments(req.params.id as string, req.user!.id);
+  const comments = await postsService.listComments(
+    req.params.id as string,
+    req.user!.id,
+    (res.locals.query as { sort: postsService.CommentSort }).sort,
+  );
   res.json(comments);
 }

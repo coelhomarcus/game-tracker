@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   addCommentHandler,
   bookmarkHandler,
@@ -17,8 +18,20 @@ import { AppError } from '../lib/errors';
 import { postImageUpload } from '../lib/uploads';
 import { isUuid } from '../lib/uuid';
 import { requireAuth } from '../middlewares/auth';
-import { validateBody } from '../middlewares/validate';
-import { createCommentSchema, createPostSchema } from '../schemas/posts.schema';
+import { validateBody, validateQuery } from '../middlewares/validate';
+import { commentsQuerySchema, createCommentSchema, createPostSchema } from '../schemas/posts.schema';
+
+// Cada envio grava um arquivo em disco: 30 por 10 minutos por usuário. `POST_IMAGE_RATE_LIMIT_MAX`
+// existe para os testes e é lida a cada requisição. A chave é o usuário (o limitador roda depois
+// do `requireAuth`), não o IP, que em redes móveis é compartilhado.
+const postImageLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: () => Number(process.env.POST_IMAGE_RATE_LIMIT_MAX) || 30,
+  keyGenerator: (req) => req.user!.id,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, _res, next) => next(new AppError(429, 'rate_limited', 'Muitos envios de imagem, tente novamente em alguns minutos')),
+});
 
 export const postsRouter = Router();
 
@@ -31,7 +44,7 @@ postsRouter.param('id', (_req, _res, next, id) => {
 });
 
 postsRouter.post('/', validateBody(createPostSchema), createHandler);
-postsRouter.post('/images', postImageUpload.single('image'), uploadImageHandler);
+postsRouter.post('/images', postImageLimiter, postImageUpload.single('image'), uploadImageHandler);
 postsRouter.get('/:id', getByIdHandler);
 postsRouter.delete('/:id', deleteHandler);
 postsRouter.post('/:id/repost', repostHandler);
@@ -41,4 +54,4 @@ postsRouter.delete('/:id/bookmark', unbookmarkHandler);
 postsRouter.post('/:id/like', likeHandler);
 postsRouter.delete('/:id/like', unlikeHandler);
 postsRouter.post('/:id/comments', validateBody(createCommentSchema), addCommentHandler);
-postsRouter.get('/:id/comments', listCommentsHandler);
+postsRouter.get('/:id/comments', validateQuery(commentsQuerySchema), listCommentsHandler);

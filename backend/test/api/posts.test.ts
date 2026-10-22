@@ -140,8 +140,9 @@ describe('post read model', () => {
 
   it('legacy imageUrl becomes the only image when the post has no image rows', async () => {
     const url = 'http://example.test/uploads/legado.jpg';
-    const id = await createPost(api, author, { content: 'com foto antiga', imageUrl: url });
-    const post = await getPost(id, b);
+    // Post antigo: a coluna `image_url` preenchida e nenhuma linha em `post_images` (a API não cria mais assim).
+    const [created] = await db.insert(posts).values({ userId: author.user.id, content: 'com foto antiga', imageUrl: url }).returning({ id: posts.id });
+    const post = await getPost(created!.id, b);
     assert.equal(post.imageUrl, url);
     assert.deepEqual(post.images, [{ url, width: null, height: null, alt: null }]);
   });

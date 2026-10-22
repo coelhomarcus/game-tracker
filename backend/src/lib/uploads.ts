@@ -64,7 +64,7 @@ export async function saveBanner(buffer: Buffer): Promise<string> {
 /** Maior lado, em px, de uma imagem de post (nunca é ampliada). */
 const POST_IMAGE_MAX_SIDE = 2000;
 const POST_IMAGES_URL_PATH = '/uploads/posts/';
-const POST_IMAGE_FILENAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}.jpg$/;
+const POST_IMAGE_FILENAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
 
 /**
  * Salva uma imagem de post: respeita a rotação do EXIF, cabe em 2000x2000 mantendo a proporção,

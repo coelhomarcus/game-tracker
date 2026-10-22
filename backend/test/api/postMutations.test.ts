@@ -378,12 +378,51 @@ describe('post images', () => {
     assert.equal((await send('POST', '/posts', user, { content: 'x', imageUrl: img.url, images: [entry] })).status, 400);
   });
 
-  it('an empty list is the same as no images, and imageUrl alone keeps working', async () => {
+  it('an empty list is the same as no images', async () => {
     const none = await createPost(user, { content: 'sem fotos', images: [] });
     assert.deepEqual(none.images, []);
-    const legacy = await createPost(user, { content: 'legado', imageUrl: 'https://images.igdb.com/a.jpg' });
-    assert.equal(legacy.imageUrl, 'https://images.igdb.com/a.jpg');
-    assert.equal(legacy.images.length, 1);
+    assert.equal(none.imageUrl, null);
+  });
+
+  it('legacy imageUrl is accepted when it is an issued image, and becomes images[0] with a row', async () => {
+    const img = await uploadImage(user, 40, 30);
+    const legacy = await createPost(user, { content: 'legado', imageUrl: img.url });
+    assert.equal(legacy.imageUrl, img.url);
+    assert.deepEqual(legacy.images, [{ url: img.url, width: 40, height: 30, alt: null }]);
+    const rows = await db.select().from(postImages).where(eq(postImages.postId, legacy.id));
+    assert.equal(rows.length, 1);
+    assert.deepEqual([rows[0]!.url, rows[0]!.position, rows[0]!.width, rows[0]!.height], [img.url, 0, 40, 30]);
+    assert.deepEqual((await getPost(legacy.id, other)).images, legacy.images);
+  });
+
+  it('legacy imageUrl rejects any url this API did not issue', async () => {
+    const good = await uploadImage(user);
+    const uuid = randomUUID();
+    for (const url of [
+      'https://images.igdb.com/a.jpg',
+      'https://evil.example/uploads/posts/' + uuid + '.jpg',
+      `${api.baseUrl}/uploads/posts/${uuid}.jpg`, // formato certo, nunca emitida
+      `${good.url}?x=1`,
+      'nao-e-url',
+    ]) {
+      const res = await send('POST', '/posts', user, { content: 'legado ruim', imageUrl: url });
+      assert.equal(res.status, 400, `aceitou ${url}`);
+    }
+    assert.equal(await db.$count(posts, eq(posts.content, 'legado ruim')), 0);
+  });
+
+  it('the file name check needs a literal dot before jpg', async () => {
+    const good = await uploadImage(user);
+    // Uma cópia com "X" no lugar do ponto existe de fato no disco: só a regex a recusa.
+    const sibling = fileOf(good.url).replace(/.jpg$/, 'Xjpg');
+    fs.copyFileSync(fileOf(good.url), sibling);
+    try {
+      const url = good.url.replace(/.jpg$/, 'Xjpg');
+      assert.equal((await send('POST', '/posts', user, { content: 'ponto', images: [{ url, width: 10, height: 10 }] })).status, 400);
+      assert.equal((await send('POST', '/posts', user, { content: 'ponto', imageUrl: url })).status, 400);
+    } finally {
+      fs.rmSync(sibling, { force: true });
+    }
   });
 });
 

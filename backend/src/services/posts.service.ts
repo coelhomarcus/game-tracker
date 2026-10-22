@@ -174,6 +174,7 @@ interface CreatePostInput {
    */
   activityStatus?: GameEntryStatus;
   type: PostType;
+  /** Legado: equivale a `images: [{ url }]`. */
   imageUrl?: string;
   /** Imagens já enviadas por `POST /posts/images`, na ordem de exibição (no máximo 4). */
   images?: { url: string; width: number; height: number; alt?: string }[];
@@ -218,7 +219,10 @@ export async function create(userId: string, input: CreatePostInput) {
   }
 
   const quoted = input.quotedPostId ? await getPostOrThrow(input.quotedPostId) : null;
-  const images = await resolveImages(input.images ?? []);
+  // O `imageUrl` legado é a primeira imagem: passa pela mesma validação e ganha sua linha em
+  // `post_images` (o tamanho enviado aqui é só um espaço reservado; vale o do arquivo).
+  const requested = input.images?.length ? input.images : input.imageUrl ? [{ url: input.imageUrl, width: 1, height: 1 }] : [];
+  const images = await resolveImages(requested);
 
   const values = {
     userId,
@@ -228,7 +232,7 @@ export async function create(userId: string, input: CreatePostInput) {
     activityStatus: input.activityStatus,
     type: input.type,
     // `imageUrl` segue sendo a primeira imagem (compatibilidade com quem lê só ele).
-    imageUrl: images[0]?.url ?? input.imageUrl,
+    imageUrl: images[0]?.url,
     quotedPostId: quoted?.id,
   };
   // Com imagens são duas escritas (o post e as linhas das imagens): ou entram as duas ou nenhuma.
@@ -246,6 +250,13 @@ export async function create(userId: string, input: CreatePostInput) {
   if (quoted) {
     await notificationsService.notify({ userId: quoted.userId, actorId: userId, type: 'quote', postId: created.id });
   }
+  // Quem já recebeu a notificação de citação não recebe também a de menção.
+  await notificationsService.notifyMentions({
+    text: input.content,
+    actorId: userId,
+    postId: created.id,
+    skip: quoted ? [quoted.userId] : [],
+  });
 
   return getPostById(created.id, userId);
 }
@@ -557,11 +568,10 @@ async function getCommentOrThrow(commentId: string) {
 export async function addComment(userId: string, postId: string, content: string, parentCommentId?: string) {
   const post = await getPostOrThrow(postId);
 
-  let notifyUserId = post.userId;
+  let parent: Awaited<ReturnType<typeof getCommentOrThrow>> | null = null;
   if (parentCommentId) {
-    const parent = await getCommentOrThrow(parentCommentId);
+    parent = await getCommentOrThrow(parentCommentId);
     if (parent.postId !== postId) throw new AppError(400, 'invalid_operation', 'Comentário pai não pertence a esse post');
-    notifyUserId = parent.userId;
   }
 
   const [created] = await db.insert(comments).values({ postId, userId, content, parentCommentId }).returning();
@@ -570,7 +580,23 @@ export async function addComment(userId: string, postId: string, content: string
     with: { user: { columns: userColumns } },
   });
 
-  await notificationsService.notify({ userId: notifyUserId, actorId: userId, type: 'comment', postId });
+  const commentId = created!.id;
+  // O autor do comentário respondido recebe "reply". O dono do post recebe "comment", exceto quando
+  // ele mesmo é o autor do comentário respondido: aí só o "reply" (nunca os dois pelo mesmo comentário).
+  if (parent) {
+    await notificationsService.notify({ userId: parent.userId, actorId: userId, type: 'reply', postId, commentId });
+  }
+  if (!parent || parent.userId !== post.userId) {
+    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'comment', postId, commentId });
+  }
+  // Quem já recebeu comment ou reply por este comentário não recebe também a menção.
+  await notificationsService.notifyMentions({
+    text: content,
+    actorId: userId,
+    postId,
+    commentId,
+    skip: parent ? [post.userId, parent.userId] : [post.userId],
+  });
 
   return comment;
 }
@@ -583,7 +609,9 @@ interface FlatComment {
   [key: string]: unknown;
 }
 
-function buildCommentTree(flat: FlatComment[], viewerId: string) {
+export type CommentSort = 'top' | 'oldest' | 'newest';
+
+function buildCommentTree(flat: FlatComment[], viewerId: string, sort: CommentSort) {
   const mapped = flat.map((c) => {
     const { likes: commentLikeRows, parentCommentId, ...rest } = c;
     return {
@@ -609,17 +637,27 @@ function buildCommentTree(flat: FlatComment[], viewerId: string) {
     roots.push(c);
   }
 
+  // `flat` já vem do mais antigo ao mais novo, então cada grupo de irmãos também. A ordenação vale
+  // dentro de cada grupo: "newest" inverte, "top" ordena por curtidas e o desempate mantém o mais antigo
+  // primeiro (a ordenação do JS é estável).
+  const arrange = (group: (typeof mapped)[number][]) => {
+    if (sort === 'newest') group.reverse();
+    else if (sort === 'top') group.sort((x, y) => y.likeCount - x.likeCount);
+    for (const node of group) arrange(node.replies as (typeof mapped)[number][]);
+  };
+  arrange(roots);
+
   return roots;
 }
 
-export async function listComments(postId: string, viewerId: string) {
+export async function listComments(postId: string, viewerId: string, sort: CommentSort = 'oldest') {
   await getPostOrThrow(postId);
   const flat = await db.query.comments.findMany({
     where: eq(comments.postId, postId),
-    orderBy: asc(comments.createdAt),
+    orderBy: [asc(comments.createdAt), asc(comments.id)],
     with: { user: { columns: userColumns }, likes: { columns: { userId: true } } },
   });
-  return buildCommentTree(flat, viewerId);
+  return buildCommentTree(flat, viewerId, sort);
 }
 
 /** Só o autor do comentário apaga (nem o autor do post). As respostas saem junto, em cascata. */

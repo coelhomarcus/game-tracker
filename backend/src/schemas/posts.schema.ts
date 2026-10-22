@@ -16,6 +16,8 @@ export const createPostSchema = z.object({
   // e ignora este campo.
   gameId: z.string().uuid().optional(),
   type: z.enum(['status', 'review', 'activity']).optional().default('status'),
+  // Legado: aceito por compatibilidade, mas só vale uma imagem emitida por POST /posts/images
+  // (o service a trata como `images[0]`).
   imageUrl: z.string().url().max(500).optional(),
   // Imagens enviadas por POST /posts/images, na ordem de exibição (a primeira vira o `imageUrl`).
   images: z.array(postImageSchema).max(4).optional(),
@@ -39,4 +41,8 @@ export const feedQuerySchema = z.object({
 export const createCommentSchema = z.object({
   content: z.string().min(1).max(500),
   parentCommentId: z.string().uuid().optional(),
+});
+
+export const commentsQuerySchema = z.object({
+  sort: z.enum(['top', 'oldest', 'newest']).optional().default('oldest'),
 });
