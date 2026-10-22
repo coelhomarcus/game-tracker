@@ -1,11 +1,19 @@
 export { Avatar, type AvatarProps } from './Avatar';
-export { Button, type ButtonProps, type ButtonVariant } from './Button';
+export {
+  Button,
+  type ButtonColor,
+  type ButtonProps,
+  type ButtonShape,
+  type ButtonSize,
+  type ButtonVariant,
+} from './Button';
 export { ChoiceChip, type ChoiceChipProps } from './ChoiceChip';
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { CoverFooter, type CoverFooterProps } from './CoverFooter';
 export { CoverGrid, type CoverGridProps } from './CoverGrid';
 export { Divider, type DividerProps } from './Divider';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
+export { ErrorState, type ErrorStateProps } from './ErrorState';
 export { GameCover, type GameCoverProps } from './GameCover';
 export { HeaderBell } from './HeaderBell';
 export { OptionSheet, type OptionSheetProps } from './OptionSheet';

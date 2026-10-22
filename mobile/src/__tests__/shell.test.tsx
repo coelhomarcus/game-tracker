@@ -95,7 +95,7 @@ test('unreachable offers retry and sign out', async () => {
   expect(bootstrap).toHaveBeenCalledTimes(1);
 
   const signOutButton = screen.getByRole('button', { name: 'Sair da conta' });
-  expect(signOutButton).toHaveStyle({ backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.borderStrong });
+  expect(signOutButton).toHaveStyle({ backgroundColor: colors.bgContrast50 });
   await fireEvent.press(signOutButton);
   expect(signOut).toHaveBeenCalledTimes(1);
 });

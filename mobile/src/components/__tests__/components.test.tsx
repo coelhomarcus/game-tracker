@@ -49,9 +49,9 @@ describe('Button', () => {
       backgroundColor: colors.accent,
     });
     expect(screen.getByText('Entrar')).toHaveStyle({
-      color: colors.onAccent,
-      fontWeight: 'bold',
-      fontSize: 16,
+      color: colors.onPrimary,
+      fontFamily: 'Inter_500Medium',
+      fontSize: 15,
     });
   });
 
@@ -62,10 +62,7 @@ describe('Button', () => {
         <Button label="Voltar" onPress={() => {}} variant="text" />
       </>,
     );
-    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveStyle({
-      backgroundColor: colors.raised,
-      borderColor: colors.borderStrong,
-    });
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveStyle({ backgroundColor: colors.bgContrast50 });
     expect(screen.getByText('Voltar')).toHaveStyle({ color: colors.accent });
   });
 });
