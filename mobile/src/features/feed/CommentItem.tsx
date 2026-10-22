@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Avatar } from '@/components';
+import { Avatar, Text } from '@/components';
 import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import type { FlatComment } from './flattenComments';
 import { displayName, type Comment } from './types';
@@ -42,17 +42,17 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
       </ProfileLink>
       <View style={styles.column}>
         {replyingTo ? (
-          <Text style={styles.replyingTo}>{`Respondendo a @${replyingTo.username}`}</Text>
+          <Text size="xs" tone="medium">{`Respondendo a @${replyingTo.username}`}</Text>
         ) : null}
         <View style={styles.meta}>
           <ProfileLink user={comment.author} hitSlop={NAME_SLOP} style={styles.nameLink}>
-            <Text numberOfLines={1} style={styles.name}>
+            <Text numberOfLines={1} size="sm" weight="bold" tone="high">
               {name}
             </Text>
           </ProfileLink>
-          <Text style={styles.time}>{` · ${formatRelativeTime(comment.createdAt)}`}</Text>
+          <Text size="sm" tone="medium">{` · ${formatRelativeTime(comment.createdAt)}`}</Text>
         </View>
-        <Text style={styles.content}>{comment.content}</Text>
+        <Text>{comment.content}</Text>
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
@@ -64,9 +64,11 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
             <Ionicons
               name={liked ? 'heart' : 'heart-outline'}
               size={ICON_SIZE}
-              color={liked ? colors.accent : colors.textMuted}
+              color={liked ? colors.like : colors.textMedium}
             />
-            <Text style={styles.count}>{comment.likeCount}</Text>
+            <Text size="sm" tone="medium">
+              {comment.likeCount}
+            </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -75,7 +77,9 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
             onPress={() => onReply(comment)}
             style={styles.action}
           >
-            <Text style={styles.replyLabel}>Responder</Text>
+            <Text size="sm" weight="semibold" tone="medium">
+              Responder
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -85,14 +89,10 @@ export function CommentItem({ item, onToggleLike, onReply }: CommentItemProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  reply: { marginLeft: space.xl },
+  reply: { marginLeft: space._2xl },
   column: { flex: 1 },
-  replyingTo: { color: colors.textMuted, fontSize: fontSize.xs },
   meta: { flexDirection: 'row', alignItems: 'center' },
   nameLink: { flexShrink: 1, minHeight: 48, justifyContent: 'center' },
-  name: { color: colors.textStrong, fontSize: fontSize.sm, fontWeight: 'bold' },
-  time: { color: colors.textMuted, fontSize: fontSize.sm },
-  content: { color: colors.text, fontSize: fontSize.md },
   actions: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   action: {
     flexDirection: 'row',
@@ -101,6 +101,5 @@ const styles = StyleSheet.create({
     minHeight: 48,
     minWidth: 48,
   },
-  count: { color: colors.textMuted, fontSize: fontSize.sm },
-  replyLabel: { color: colors.textMuted, fontSize: fontSize.sm, fontWeight: '600' },
+
 });

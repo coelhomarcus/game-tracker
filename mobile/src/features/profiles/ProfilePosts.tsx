@@ -50,7 +50,7 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
   } else {
     empty = (
       <View style={styles.loading}>
-        <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
       </View>
     );
   }
@@ -72,5 +72,5 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
 const styles = StyleSheet.create({
   // The list pads its content on every side; undo the top and add the gap to the first card.
   header: { marginHorizontal: -space.lg, marginTop: -space.lg, marginBottom: space.md },
-  loading: { padding: space.xl, alignItems: 'center' },
+  loading: { padding: space._2xl, alignItems: 'center' },
 });

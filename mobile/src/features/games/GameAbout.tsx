@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Button, Pill } from '@/components';
+import { Button, Pill, Text } from '@/components';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import type { Game } from './types';
 
@@ -15,7 +15,7 @@ const SCREENSHOT_WIDTH = 240;
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {title}
       </Text>
       {children}
@@ -35,17 +35,17 @@ function Pills({ items }: { items: string[] }) {
 
 function Synopsis({ summary }: { summary: string | null }) {
   const [expanded, setExpanded] = useState(false);
-  if (!summary) return <Text style={styles.muted}>Este jogo ainda não tem sinopse.</Text>;
+  if (!summary) return <Text tone="medium">Este jogo ainda não tem sinopse.</Text>;
 
   const collapsible = summary.length > COLLAPSE_ABOVE_CHARS;
   return (
     <View style={styles.synopsis}>
-      <Text numberOfLines={collapsible && !expanded ? SUMMARY_LINES : undefined} style={styles.body}>
+      <Text numberOfLines={collapsible && !expanded ? SUMMARY_LINES : undefined} leading="relaxed">
         {summary}
       </Text>
       {collapsible ? (
         <Button
-          variant="text"
+          variant="ghost"
           label={expanded ? 'Ler menos' : 'Ler mais'}
           onPress={() => setExpanded((current) => !current)}
         />
@@ -90,20 +90,17 @@ export function GameAbout({ game }: { game: Game }) {
 }
 
 const styles = StyleSheet.create({
-  root: { gap: space.xl },
+  root: { gap: space._2xl },
   section: { gap: space.md },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
-  body: { color: colors.text, fontSize: fontSize.md, lineHeight: 22 },
-  muted: { color: colors.textMuted, fontSize: fontSize.md },
   synopsis: { alignItems: 'flex-start' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   shots: { gap: space.sm },
   shot: {
     width: SCREENSHOT_WIDTH,
     aspectRatio: 16 / 9,
-    borderRadius: radii.cover,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+    backgroundColor: colors.bgContrast25,
   },
 });

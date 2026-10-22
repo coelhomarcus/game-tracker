@@ -48,7 +48,7 @@ function ProfileTop({ profile, own, tab, onSelectTab }: TopProps) {
   const actions = own ? (
     <Button
       label="Editar perfil"
-      variant="secondary"
+      color="secondary"
       onPress={() => router.push('/me/edit' as Href)}
     />
   ) : undefined;
@@ -121,7 +121,7 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
   return (
     <Screen>
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     </Screen>
   );

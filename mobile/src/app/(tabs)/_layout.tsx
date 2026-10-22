@@ -11,7 +11,7 @@ import {
   useHasUnreadConversations,
 } from '@/features/chat/MessagesTab';
 import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
-import { colors } from '@/theme/tokens';
+import { colors, hairline } from '@/theme/tokens';
 
 const EXPLORE_GAMES = '/explore?tab=games' as Href;
 
@@ -77,9 +77,9 @@ export default function TabsLayout() {
         // Same header component and height as the stacks.
         header: Layout.Header.renderTabHeader,
         headerRight: () => <HeaderBell />,
-        tabBarStyle: { backgroundColor: colors.chrome, borderTopColor: colors.border, borderTopWidth: 1 },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.borderLow, borderTopWidth: hairline },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMedium,
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >

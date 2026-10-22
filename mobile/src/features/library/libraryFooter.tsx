@@ -40,14 +40,14 @@ export function libraryFooter(
         <View style={styles.row}>
           {rating !== null ? <RatingStars rating={rating} /> : null}
           {favorite ? (
-            <Ionicons testID="library-footer-favorite" name="heart" size={ICON_SIZE} color={colors.accent} />
+            <Ionicons testID="library-footer-favorite" name="heart" size={ICON_SIZE} color={colors.primary} />
           ) : null}
           {notes ? (
             <Ionicons
               testID="library-footer-notes"
               name="document-text-outline"
               size={ICON_SIZE}
-              color={colors.textMuted}
+              color={colors.textMedium}
             />
           ) : null}
         </View>

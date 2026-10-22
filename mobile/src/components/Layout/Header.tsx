@@ -104,7 +104,7 @@ export function BackButton({ navigation }: BackButtonProps) {
       <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={goBack} style={styles.touch}>
         {({ pressed }) => (
           <View style={[styles.circle, pressed && styles.pressed]}>
-            <Ionicons name="arrow-back" size={22} color={colors.textHigh} />
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
           </View>
         )}
       </Pressable>
@@ -169,7 +169,7 @@ export type AppHeaderProps = {
 export function AppHeader({ options, navigation, backButton = false }: AppHeaderProps) {
   const { headerTitle, headerLeft, headerRight } = options;
   const title = typeof headerTitle === 'string' ? headerTitle : (options.title ?? '');
-  const itemProps: HeaderItemProps = { tintColor: colors.textHigh, canGoBack: navigation.canGoBack() };
+  const itemProps: HeaderItemProps = { tintColor: colors.text, canGoBack: navigation.canGoBack() };
 
   let left: ReactNode = null;
   if (headerLeft) {
@@ -187,7 +187,7 @@ export function AppHeader({ options, navigation, backButton = false }: AppHeader
       {left}
       <Content>
         {typeof headerTitle === 'function' ? (
-          <HeaderItem render={headerTitle} props={{ children: title, tintColor: colors.textHigh }} />
+          <HeaderItem render={headerTitle} props={{ children: title, tintColor: colors.text }} />
         ) : title ? (
           <TitleText>{title}</TitleText>
         ) : null}

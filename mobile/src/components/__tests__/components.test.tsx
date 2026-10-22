@@ -43,10 +43,10 @@ describe('Button', () => {
     expect(screen.getByText('Hoje')).toBeOnTheScreen();
   });
 
-  it('uses accent background and onAccent label for primary', async () => {
+  it('uses the primary background and onPrimary label by default', async () => {
     await render(<Button label="Entrar" onPress={() => {}} />);
     expect(screen.getByRole('button', { name: 'Entrar' })).toHaveStyle({
-      backgroundColor: colors.accent,
+      backgroundColor: colors.primary,
     });
     expect(screen.getByText('Entrar')).toHaveStyle({
       color: colors.onPrimary,
@@ -55,15 +55,15 @@ describe('Button', () => {
     });
   });
 
-  it('renders secondary and text variants', async () => {
+  it('renders the secondary color and the ghost variant', async () => {
     await render(
       <>
-        <Button label="Cancelar" onPress={() => {}} variant="secondary" />
-        <Button label="Voltar" onPress={() => {}} variant="text" />
+        <Button label="Cancelar" onPress={() => {}} color="secondary" />
+        <Button label="Voltar" onPress={() => {}} variant="ghost" />
       </>,
     );
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveStyle({ backgroundColor: colors.bgContrast50 });
-    expect(screen.getByText('Voltar')).toHaveStyle({ color: colors.accent });
+    expect(screen.getByText('Voltar')).toHaveStyle({ color: colors.primary });
   });
 });
 
@@ -117,17 +117,17 @@ describe('Pill', () => {
     expect(screen.getByText('Jogando')).toBeOnTheScreen();
   });
 
-  it('keeps accent tone contrast: active fill, accent border, strong label', async () => {
+  it('keeps accent tone contrast: selected fill, primary border, emphasis label', async () => {
     await render(<Pill tone="accent">Jogando</Pill>);
     const label = screen.getByText('Jogando');
-    expect(label).toHaveStyle({ color: colors.textStrong, fontWeight: 'bold' });
+    expect(label).toHaveStyle({ color: colors.textEmphasis, fontFamily: 'Inter_700Bold' });
     const container = label.parent!;
     expect(container).toHaveStyle({
-      backgroundColor: colors.active,
+      backgroundColor: colors.selected,
       borderWidth: 1,
-      borderColor: colors.accent,
+      borderColor: colors.primary,
     });
-    expect(container).not.toHaveStyle({ backgroundColor: colors.accent });
+    expect(container).not.toHaveStyle({ backgroundColor: colors.primary });
   });
 });
 
@@ -172,12 +172,12 @@ describe('Tabs', () => {
     expect(onSelect).toHaveBeenCalledWith('general');
   });
 
-  it('never renders muted text on the active background', async () => {
+  it('never renders muted text on the selected background', async () => {
     await render(<Tabs items={[...items]} selected="following" onSelect={() => {}} />);
     expect(screen.getByRole('tab', { name: 'Seguindo' })).toHaveStyle({
-      backgroundColor: colors.active,
+      backgroundColor: colors.selected,
     });
-    expect(screen.getByText('Seguindo')).toHaveStyle({ color: colors.textStrong });
+    expect(screen.getByText('Seguindo')).toHaveStyle({ color: colors.textEmphasis });
   });
 });
 

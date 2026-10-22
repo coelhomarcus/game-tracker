@@ -2,14 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, ChoiceChip, ConfirmDialog, Screen } from '@/components';
+import { Button, ChoiceChip, ConfirmDialog, Screen, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { useChatStore } from '@/features/chat/chatStore';
 import { SORT_OPTIONS, useLibraryPrefs } from '@/features/library/prefsStore';
 import { usePush, type PushStatus } from '@/features/push/pushController';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 const EDIT_PROFILE = '/me/edit' as Href;
 const NOTIFICATIONS = '/notifications' as Href;
@@ -24,7 +24,7 @@ function unsentWarning(count: number): string | undefined {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {title}
       </Text>
       {children}
@@ -37,8 +37,10 @@ type RowProps = { label: string; onPress: () => void; danger?: boolean };
 function Row({ label, onPress, danger = false }: RowProps) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.row}>
-      <Text style={[styles.rowLabel, danger ? styles.danger : null]}>{label}</Text>
-      {danger ? null : <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />}
+      <Text weight={danger ? 'semibold' : 'normal'} tone={danger ? 'danger' : 'default'}>
+        {label}
+      </Text>
+      {danger ? null : <Ionicons name="chevron-forward" size={20} color={colors.textMedium} />}
     </Pressable>
   );
 }
@@ -64,7 +66,7 @@ function PushSettings() {
   const { message, action } = PUSH_COPY[status];
   return (
     <>
-      <Text style={styles.body}>{message}</Text>
+      <Text>{message}</Text>
       {action ? <Button label={action} onPress={() => void enable()} /> : null}
     </>
   );
@@ -93,13 +95,15 @@ export function SettingsScreen() {
           <PushSettings />
           <Button
             label="Abrir central de notificações"
-            variant="secondary"
+            color="secondary"
             onPress={() => router.push(NOTIFICATIONS)}
           />
         </Section>
 
         <Section title="Biblioteca">
-          <Text style={styles.label}>Ordenar por</Text>
+          <Text size="sm" tone="medium">
+            Ordenar por
+          </Text>
           <View style={styles.chips}>
             {SORT_OPTIONS.map((option) => (
               <ChoiceChip
@@ -113,8 +117,8 @@ export function SettingsScreen() {
         </Section>
 
         <Section title="Sobre">
-          <Text style={styles.about}>GameTracker</Text>
-          <Text style={styles.muted}>{`Versão ${version}`}</Text>
+          <Text>GameTracker</Text>
+          <Text size="sm" tone="medium">{`Versão ${version}`}</Text>
         </Section>
       </View>
 
@@ -136,9 +140,8 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.xl },
+  content: { padding: space.lg, gap: space._2xl },
   section: { gap: space.sm },
-  sectionTitle: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
   row: {
     minHeight: 48,
     flexDirection: 'row',
@@ -146,11 +149,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: space.md,
   },
-  rowLabel: { color: colors.text, fontSize: fontSize.md },
-  danger: { color: colors.danger, fontWeight: '600' },
-  label: { color: colors.textMuted, fontSize: fontSize.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  body: { color: colors.text, fontSize: fontSize.md },
-  about: { color: colors.text, fontSize: fontSize.md },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
 });

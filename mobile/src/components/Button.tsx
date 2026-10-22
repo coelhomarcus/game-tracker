@@ -9,8 +9,7 @@ import { Text } from './Text';
 export type ButtonSize = 'tiny' | 'small' | 'large';
 export type ButtonColor = 'primary' | 'secondary' | 'negative';
 export type ButtonShape = 'default' | 'round';
-/** `primary`, `secondary` and `text` are the pre-design-system variants, kept until the call sites move to `color` + `variant`. */
-export type ButtonVariant = 'solid' | 'ghost' | 'primary' | 'secondary' | 'text';
+export type ButtonVariant = 'solid' | 'ghost';
 
 export type ButtonProps = {
   label?: string;
@@ -29,24 +28,10 @@ export type ButtonProps = {
   haptic?: boolean;
 };
 
-type Look = { color: ButtonColor; ghost: boolean };
-
-function resolveLook(color: ButtonColor | undefined, variant: ButtonVariant | undefined): Look {
-  switch (variant) {
-    case 'secondary':
-      return { color: color ?? 'secondary', ghost: false };
-    case 'text':
-    case 'ghost':
-      return { color: color ?? 'primary', ghost: true };
-    default:
-      return { color: color ?? 'primary', ghost: false };
-  }
-}
-
 const solid = {
   primary: { background: primary[500], pressed: primary[400], text: colors.onPrimary },
   secondary: { background: colors.bgContrast50, pressed: contrast[100], text: colors.text },
-  negative: { background: negative500, pressed: negative400, text: '#ffffff' },
+  negative: { background: negative500, pressed: negative400, text: colors.onPrimary },
 } as const;
 
 const ghostText = {
@@ -66,15 +51,15 @@ export function Button({
   icon,
   onPress,
   size = 'large',
-  color,
-  variant,
+  color = 'primary',
+  variant = 'solid',
   shape = 'default',
   loading = false,
   disabled = false,
   accessibilityLabel,
   haptic: withHaptic = true,
 }: ButtonProps) {
-  const look = resolveLook(color, variant);
+  const look = { color, ghost: variant === 'ghost' };
   const round = shape === 'round';
   const inactive = disabled || loading;
   const solidSecondary = !look.ghost && look.color === 'secondary';

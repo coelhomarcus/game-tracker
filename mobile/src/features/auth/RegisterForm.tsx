@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Button, TextField, type TextFieldInput } from '@/components';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { Button, Text, TextField, type TextFieldInput } from '@/components';
+import { space } from '@/theme/tokens';
 
 import { authErrorMessage } from './messages';
 import { useSession } from './session';
@@ -55,7 +55,7 @@ export function RegisterForm() {
 
   return (
     <View style={styles.container}>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" size="_3xl" weight="bold" tone="high">
         GameTracker
       </Text>
       <TextField
@@ -102,18 +102,16 @@ export function RegisterForm() {
         onSubmitEditing={() => void submit()}
       />
       {serverError ? (
-        <Text accessibilityLiveRegion="polite" style={styles.serverError}>
+        <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
           {serverError}
         </Text>
       ) : null}
       <Button label="Criar conta" onPress={() => void submit()} loading={submitting} />
-      <Button label="Já tenho conta" variant="text" onPress={() => router.replace('/login')} />
+      <Button label="Já tenho conta" variant="ghost" onPress={() => router.replace('/login')} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, justifyContent: 'center', gap: space.lg, padding: space.xl },
-  title: { color: colors.textStrong, fontSize: fontSize.xl, fontWeight: 'bold' },
-  serverError: { color: colors.danger, fontSize: fontSize.sm },
+  container: { flexGrow: 1, justifyContent: 'center', gap: space.lg, padding: space._2xl },
 });

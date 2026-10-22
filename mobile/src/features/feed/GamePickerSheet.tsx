@@ -6,14 +6,13 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 
-import { EmptyState, GameCover, Screen, TextField, type TextFieldInput } from '@/components';
+import { EmptyState, GameCover, Screen, Text, TextField, type TextFieldInput } from '@/components';
 import { useGameSearch } from '@/features/games/queries';
 import type { GameSummary } from '@/features/games/types';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 const MIN_TERM_LENGTH = 2;
 const COVER_WIDTH = 36;
@@ -48,7 +47,11 @@ function PickerBody({ onSelect, onClose }: Omit<GamePickerSheetProps, 'visible'>
 
   let empty;
   if (!searching) {
-    empty = <Text style={styles.hint}>Digite pelo menos 2 letras.</Text>;
+    empty = (
+      <Text size="sm" tone="medium" style={styles.hint}>
+        Digite pelo menos 2 letras.
+      </Text>
+    );
   } else if (search.isError) {
     empty = (
       <EmptyState
@@ -64,7 +67,7 @@ function PickerBody({ onSelect, onClose }: Omit<GamePickerSheetProps, 'visible'>
     <Screen>
       <View style={styles.page}>
         <View style={styles.top}>
-          <Text accessibilityRole="header" style={styles.title}>
+          <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.title}>
             Vincular um jogo
           </Text>
           <Pressable
@@ -89,7 +92,7 @@ function PickerBody({ onSelect, onClose }: Omit<GamePickerSheetProps, 'visible'>
           {searching && search.isFetching ? (
             <ActivityIndicator
               accessibilityLabel="Buscando"
-              color={colors.textMuted}
+              color={colors.textMedium}
               style={styles.busy}
             />
           ) : null}
@@ -123,16 +126,13 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: {
     flex: 1,
-    color: colors.textStrong,
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
     paddingVertical: space.md,
   },
   close: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   search: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, paddingBottom: space.md },
   field: { flex: 1 },
   busy: { height: 48 },
-  hint: { color: colors.textMuted, fontSize: fontSize.sm, paddingVertical: space.md },
+  hint: { paddingVertical: space.md },
   row: {
     minHeight: 48,
     flexDirection: 'row',
@@ -140,5 +140,5 @@ const styles = StyleSheet.create({
     gap: space.md,
     paddingVertical: space.sm,
   },
-  name: { flex: 1, color: colors.text, fontSize: fontSize.md },
+  name: { flex: 1 },
 });

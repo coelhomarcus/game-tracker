@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState, GameCover, Screen, Tabs } from '@/components';
+import { Button, EmptyState, GameCover, Screen, Tabs, Text } from '@/components';
 import { useLibrary } from '@/features/library/queries';
 import { ApiError } from '@/lib/http/errors';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { GameAbout } from './GameAbout';
 import { GameCommunity } from './GameCommunity';
@@ -67,7 +67,7 @@ function GameLoader({ igdbId, initialTab }: { igdbId: number; initialTab: TabVal
   return (
     <Screen>
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     </Screen>
   );
@@ -97,11 +97,13 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
         <View style={styles.headerRow}>
           <GameCover name={game.name} url={game.coverUrl} width={COVER_WIDTH} />
           <View style={styles.headerText}>
-            <Text accessibilityRole="header" style={styles.name}>
+            <Text accessibilityRole="header" size="_3xl" weight="bold" tone="high">
               {game.name}
             </Text>
             {game.platforms.length > 0 ? (
-              <Text style={styles.platforms}>{game.platforms.join(' · ')}</Text>
+              <Text size="sm" tone="medium">
+                {game.platforms.join(' · ')}
+              </Text>
             ) : null}
             <Pressable
               accessibilityRole="button"
@@ -115,7 +117,7 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
               <Ionicons
                 name={game.isFavoritedByMe ? 'heart' : 'heart-outline'}
                 size={28}
-                color={colors.accent}
+                color={colors.primary}
               />
             </Pressable>
           </View>
@@ -142,7 +144,7 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
               action={{ label: 'Tentar novamente', onPress: () => void library.refetch() }}
             />
           ) : (
-            <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
+            <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
           )
         ) : null}
         {tab === 'community' ? <GameCommunity gameId={game.id} igdbId={game.igdbId} /> : null}
@@ -156,8 +158,7 @@ const styles = StyleSheet.create({
   header: { padding: space.lg, gap: space.lg },
   headerRow: { flexDirection: 'row', gap: space.lg },
   headerText: { flex: 1, gap: space.sm, alignItems: 'flex-start' },
-  name: { color: colors.textStrong, fontSize: fontSize.xl, fontWeight: 'bold' },
-  platforms: { color: colors.textMuted, fontSize: fontSize.sm },
+
   favorite: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   content: { padding: space.lg },
 });

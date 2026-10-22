@@ -1,6 +1,7 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
-import { colors } from '@/theme/tokens';
+import { colors, lineHeight } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type AvatarProps = {
   uri?: string | null;
@@ -16,15 +17,17 @@ export function Avatar({ uri, name, size = 40 }: AvatarProps) {
   }
 
   const initial = name.trim().charAt(0).toUpperCase() || '?';
+  const initialSize = size * 0.4;
   return (
     <View style={[styles.fallback, circle]}>
-      <Text style={[styles.initial, { fontSize: size * 0.4 }]}>{initial}</Text>
+      <Text weight="bold" tone="high" style={{ fontSize: initialSize, lineHeight: lineHeight(initialSize, 'snug') }}>
+        {initial}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  image: { backgroundColor: colors.raised },
-  fallback: { backgroundColor: colors.active, alignItems: 'center', justifyContent: 'center' },
-  initial: { color: colors.textStrong, fontWeight: 'bold' },
+  image: { backgroundColor: colors.bgContrast50 },
+  fallback: { backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center' },
 });

@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { EmptyState, Screen, Tabs } from '@/components';
+import { EmptyState, Screen, Tabs, Text } from '@/components';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { NotificationRow } from './NotificationRow';
 import { useMarkAllRead, useNotifications } from './queries';
@@ -42,7 +42,7 @@ function MarkAllReadButton({ disabled, onPress }: { disabled: boolean; onPress: 
       onPress={onPress}
       style={styles.markAll}
     >
-      <Ionicons name="checkmark-done" size={24} color={disabled ? colors.textMuted : colors.text} />
+      <Ionicons name="checkmark-done" size={24} color={disabled ? colors.textMedium : colors.text} />
     </Pressable>
   );
 }
@@ -93,7 +93,7 @@ export default function NotificationsScreen() {
         ) : (
           <ActivityIndicator
             accessibilityLabel="Carregando"
-            color={colors.textMuted}
+            color={colors.textMedium}
             style={styles.loading}
           />
         )}
@@ -103,7 +103,7 @@ export default function NotificationsScreen() {
 
   const footer =
     data.items.length === LIMIT ? (
-      <Text style={styles.footer}>{`Mostrando as ${LIMIT} mais recentes.`}</Text>
+      <Text size="sm" tone="medium" style={styles.footer}>{`Mostrando as ${LIMIT} mais recentes.`}</Text>
     ) : undefined;
   const filterLabel = FILTERS.find((entry) => entry.value === filter)?.label ?? '';
   const empty =
@@ -149,11 +149,9 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   markAll: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  loading: { marginTop: space.xl },
+  loading: { marginTop: space._2xl },
   tabs: { paddingVertical: space.md },
   footer: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
     textAlign: 'center',
     padding: space.lg,
   },

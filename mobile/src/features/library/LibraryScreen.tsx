@@ -1,7 +1,7 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import {
   Button,
@@ -11,12 +11,13 @@ import {
   Screen,
   Skeleton,
   Tabs,
+  Text,
   TextField,
 } from '@/components';
 import { useMyFavorites } from '@/features/games/queries';
 import { showToast } from '@/lib/toast';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { colors, fontSize, radii, space, type GameStatus } from '@/theme/tokens';
+import { radii, space, type GameStatus } from '@/theme/tokens';
 
 import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
 import { useLibraryFilter } from './filterStore';
@@ -66,21 +67,23 @@ type HeaderProps = {
 function LibraryHeader(props: HeaderProps) {
   return (
     <View style={styles.header}>
-      <Text style={styles.summary}>{props.summary}</Text>
+      <Text size="sm" tone="medium">
+        {props.summary}
+      </Text>
       <View style={styles.tabs}>
         <Tabs items={props.tabItems} selected={props.status ?? 'all'} onSelect={props.onSelectTab} />
       </View>
       <TextField label="Buscar na biblioteca" value={props.query} onChangeText={props.onChangeQuery} />
       <View style={styles.controls}>
         <View style={styles.control}>
-          <Button label={props.platformLabel} variant="secondary" onPress={props.onOpenPlatform} />
+          <Button label={props.platformLabel} color="secondary" onPress={props.onOpenPlatform} />
         </View>
         <View style={styles.control}>
-          <Button label="Ordenar" variant="secondary" onPress={props.onOpenSort} />
+          <Button label="Ordenar" color="secondary" onPress={props.onOpenSort} />
         </View>
-        {props.filterActive ? <Button label="Limpar" variant="text" onPress={props.onClear} /> : null}
+        {props.filterActive ? <Button label="Limpar" variant="ghost" onPress={props.onClear} /> : null}
       </View>
-      <Text accessibilityLiveRegion="polite" style={styles.count}>
+      <Text accessibilityLiveRegion="polite" size="sm" tone="medium">
         {plural(props.resultCount, 'jogo encontrado', 'jogos encontrados')}
       </Text>
     </View>
@@ -232,7 +235,7 @@ function LibrarySkeleton() {
           data={SKELETON_ITEMS}
           keyExtractor={(id) => id}
           renderItem={(_, width) => (
-            <Skeleton testID="library-skeleton" width={width} height={width * COVER_RATIO} radius={radii.cover} />
+            <Skeleton testID="library-skeleton" width={width} height={width * COVER_RATIO} radius={radii.sm} />
           )}
         />
       </View>
@@ -243,10 +246,10 @@ function LibrarySkeleton() {
 const styles = StyleSheet.create({
   page: { flex: 1, paddingHorizontal: space.lg },
   header: { gap: space.md, paddingBottom: space.md },
-  summary: { color: colors.textMuted, fontSize: fontSize.sm },
+
   // Tabs pad their own edges; pull them out to the screen edge so they scroll edge to edge.
   tabs: { marginHorizontal: -space.lg },
   controls: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   control: { flex: 1 },
-  count: { color: colors.textMuted, fontSize: fontSize.sm },
+
 });

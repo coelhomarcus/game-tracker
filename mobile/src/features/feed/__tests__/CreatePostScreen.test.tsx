@@ -178,7 +178,7 @@ describe('CreatePostScreen text', () => {
 
     expect(screen.getByLabelText('O que você quer compartilhar?').props.maxLength).toBe(500);
     expect(screen.getByText('500/500')).toBeOnTheScreen();
-    expect(screen.getByText('500/500')).toHaveStyle({ color: colors.textMuted });
+    expect(screen.getByText('500/500')).toHaveStyle({ color: colors.textMedium });
     expect(screen.getByRole('button', { name: 'Publicar' })).toBeEnabled();
   });
 

@@ -1,14 +1,14 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { CoverGrid, EmptyState, GameCover, Tabs } from '@/components';
+import { CoverGrid, EmptyState, GameCover, Tabs, Text } from '@/components';
 import type { Game } from '@/features/games/types';
 import { buildLibraryOverview, type LibraryGroup } from '@/features/library/groups';
 import { LibraryCard } from '@/features/library/LibraryCard';
 import { STATUSES, statusLabel } from '@/features/library/status';
-import { colors, fontSize, space, type GameStatus } from '@/theme/tokens';
+import { colors, space, type GameStatus } from '@/theme/tokens';
 
 import { refreshAll, ScrollToTopOnTabPress, type Refetch } from './profileList';
 import { useUserEntries, useUserFavorites } from './queries';
@@ -33,7 +33,7 @@ function Favorites({ games, onPress }: FavoritesProps) {
   if (games.length === 0) return null;
   return (
     <View style={styles.favorites}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.sectionTitle}>
         Favoritos
       </Text>
       <FlatList
@@ -116,7 +116,7 @@ export function ProfileGames({ userId, own, top, tabRoot, refetchProfile }: Prof
       />
     ) : (
       <View style={styles.loading}>
-        <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
       </View>
     );
   } else if (!hasEntries) {
@@ -160,13 +160,8 @@ const styles = StyleSheet.create({
   // The grid pads its content by `space.lg`; the profile header reaches the screen edges.
   header: { marginHorizontal: -space.lg, gap: space.md, paddingBottom: space.md },
   favorites: { gap: space.sm },
-  sectionTitle: {
-    color: colors.textStrong,
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
-    paddingHorizontal: space.lg,
-  },
+  sectionTitle: { paddingHorizontal: space.lg },
   favoritesRow: { gap: space.sm, paddingHorizontal: space.lg },
   statusTabs: { paddingTop: space.xs },
-  loading: { padding: space.xl, alignItems: 'center' },
+  loading: { padding: space._2xl, alignItems: 'center' },
 });

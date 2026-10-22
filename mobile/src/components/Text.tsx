@@ -1,6 +1,6 @@
 import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
-import { colors, contrast, lineHeight, type } from '@/theme/tokens';
+import { colors, lineHeight, type } from '@/theme/tokens';
 
 export type TextTone = 'default' | 'high' | 'medium' | 'low' | 'primary' | 'danger' | 'onPrimary';
 
@@ -20,8 +20,8 @@ export const fontFamily = {
 } as const satisfies Record<keyof typeof type.weight, string>;
 
 const toneColor = {
-  default: contrast[900],
-  high: contrast[975],
+  default: colors.text,
+  high: colors.textEmphasis,
   medium: colors.textMedium,
   low: colors.textLow,
   primary: colors.primary,

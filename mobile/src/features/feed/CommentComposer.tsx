@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { TextField, type TextFieldInput } from '@/components';
+import { Text, TextField, type TextFieldInput } from '@/components';
 import { authErrorMessage } from '@/features/auth';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, hairline, space } from '@/theme/tokens';
 
 const MAX_LENGTH = 500;
 
@@ -53,7 +53,7 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
     <View style={styles.container}>
       {replyTo ? (
         <View style={styles.replyBar}>
-          <Text numberOfLines={1} style={styles.replyText}>
+          <Text numberOfLines={1} size="sm" tone="medium" style={styles.replyText}>
             {`Respondendo a @${replyTo.username}`}
           </Text>
           <Pressable
@@ -88,7 +88,7 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
           onPress={() => void send()}
           style={styles.iconButton}
         >
-          <Ionicons name="send" size={22} color={canSend ? colors.accent : colors.textMuted} />
+          <Ionicons name="send" size={22} color={canSend ? colors.primary : colors.textMedium} />
         </Pressable>
       </View>
     </View>
@@ -97,15 +97,15 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.chrome,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+    borderTopWidth: hairline,
+    borderTopColor: colors.borderLow,
     paddingHorizontal: space.lg,
     paddingVertical: space.sm,
     gap: space.xs,
   },
   replyBar: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  replyText: { flex: 1, color: colors.textMuted, fontSize: fontSize.sm },
+  replyText: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   field: { flex: 1 },
   iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },

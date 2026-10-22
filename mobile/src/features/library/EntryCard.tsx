@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { RatingStars } from '@/components';
+import { RatingStars, Text } from '@/components';
 import { formatDate } from '@/lib/dateOnly';
 import { formatHours } from '@/lib/hours';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import { statusIcon, statusLabel } from './status';
 import type { GameEntry } from './types';
@@ -33,9 +33,13 @@ export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
               size={20}
               color={colors.status[entry.status]}
             />
-            <Text style={styles.status}>{statusLabel[entry.status]}</Text>
+            <Text weight="bold" tone="high">
+              {statusLabel[entry.status]}
+            </Text>
           </View>
-          <Text style={styles.muted}>{entry.platform}</Text>
+          <Text size="sm" tone="medium">
+            {entry.platform}
+          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -51,12 +55,12 @@ export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
       {details.length > 0 || entry.hoursPlayed !== null ? (
         <View style={styles.facts}>
           {details.map((text) => (
-            <Text key={text} style={styles.fact}>
+            <Text key={text} size="sm">
               {text}
             </Text>
           ))}
           {entry.hoursPlayed !== null ? (
-            <Text style={styles.fact}>{`${formatHours(entry.hoursPlayed)} h`}</Text>
+            <Text size="sm">{`${formatHours(entry.hoursPlayed)} h`}</Text>
           ) : null}
         </View>
       ) : null}
@@ -69,9 +73,9 @@ export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
             accessibilityLabel="Nota privada"
             name="lock-closed-outline"
             size={16}
-            color={colors.textMuted}
+            color={colors.textMedium}
           />
-          <Text numberOfLines={NOTES_LINES} style={styles.notesText}>
+          <Text numberOfLines={NOTES_LINES} size="sm" style={styles.notesText}>
             {entry.notes}
           </Text>
         </View>
@@ -82,21 +86,18 @@ export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
+    backgroundColor: colors.bgContrast25,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+    borderRadius: radii.md,
     padding: space.lg,
     gap: space.md,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   headerText: { flex: 1, gap: space.xs },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  status: { color: colors.textStrong, fontSize: fontSize.md, fontWeight: 'bold' },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
   menu: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   facts: { flexDirection: 'row', flexWrap: 'wrap', columnGap: space.lg, rowGap: space.xs },
-  fact: { color: colors.text, fontSize: fontSize.sm },
   notes: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  notesText: { flex: 1, color: colors.text, fontSize: fontSize.sm },
+  notesText: { flex: 1 },
 });

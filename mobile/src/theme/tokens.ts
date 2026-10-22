@@ -46,40 +46,29 @@ export const positive500 = '#09B35E';
 export const negative500 = '#E91646';
 export const negative400 = '#F65A7F';
 
-/**
- * Semantic colors come first; the "Legacy" block keeps the pre-design-system names rendering
- * the same colors until the call sites are migrated (Task 6 deletes it).
- */
+/** Semantic colors: screens use these names, never the raw scales or hex values. */
 export const colors = {
-  // Semantic
+  /** Screen background; bars (headers, tab bar, composers) use it too, over a hairline. */
   bg: contrast[0],
-  textHigh: contrast[900],
+  /** Body text: the palette's grey (contrast[900]) rather than the design reference's white. */
+  text: contrast[900],
+  /** Headings, names and other text that must stand out from the body. */
+  textEmphasis: contrast[975],
+  /** Secondary text: handles, times, hints. */
   textMedium: contrast[700],
   textLow: contrast[400],
   borderLow: contrast[100],
   borderMedium: contrast[200],
+  /** Cards and sheets, and the pressed state of ghost controls. */
   bgContrast25: contrast[25],
+  /** Controls: secondary buttons, fields, chips. */
   bgContrast50: contrast[50],
+  /** Selected chips and tabs, my chat bubbles, avatar fallbacks. */
+  selected: '#3f4b64',
   primary: primary[500],
   onPrimary: '#ffffff',
   like: primary[500],
   repost: positive500,
-
-  // Legacy (same rendered colors as before the design system)
-  /** Body grey (contrast[900]), deliberately not contrast[1000] to avoid a global color jump. */
-  text: contrast[900],
-  chrome: contrast[25],
-  surface: contrast[50],
-  /** Pre-design-system tone with no scale equivalent, so the old value is kept. */
-  raised: '#2b303b',
-  border: contrast[100],
-  borderStrong: contrast[200],
-  active: '#3f4b64',
-  textMuted: contrast[700],
-  /** Pre-design-system value (contrast[975]); pure-white text is not wired in yet. */
-  textStrong: contrast[975],
-  accent: primary[500],
-  onAccent: '#ffffff',
   /** Light red that reads at 4.5:1 on every tone; negative500/400 do not on dark surfaces. */
   danger: '#ff7a7a',
 
@@ -91,25 +80,18 @@ export const colors = {
   } satisfies Record<GameStatus, string>,
 } as const;
 
-/**
- * The new scale uses `_`-prefixed keys where a bare name would collide with a legacy key of a
- * different value: `_xl` (20) is the new `xl`, while legacy `xl` (24) and `xxl` (32) stay until
- * Task 6 rewrites usages explicitly. `xs`, `sm`, `md` and `lg` are identical in both scales.
- */
+/** Keys that would start with a digit carry a `_` prefix (`_2xl` is the design reference's `2xl`). */
 export const space = {
   _2xs: 2,
   xs: 4,
   sm: 8,
   md: 12,
   lg: 16,
-  _xl: 20,
+  xl: 20,
   _2xl: 24,
   _3xl: 28,
   _4xl: 32,
   _5xl: 40,
-  // Legacy
-  xl: 24,
-  xxl: 32,
 } as const;
 
 export const radii = {
@@ -119,19 +101,6 @@ export const radii = {
   lg: 16,
   xl: 20,
   full: 999,
-  // Legacy
-  cover: 6,
-  card: 12,
-  control: 12,
-} as const;
-
-/** Legacy sizes (xs12 sm14 md16 lg20 xl24); the new scale lives in `type.size`. */
-export const fontSize = {
-  xs: 12,
-  sm: 14,
-  md: 16,
-  lg: 20,
-  xl: 24,
 } as const;
 
 export const type = {

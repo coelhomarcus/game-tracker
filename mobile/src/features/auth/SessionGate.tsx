@@ -58,7 +58,7 @@ export function SessionGate() {
   if (status === 'restoring') {
     return (
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     );
   }
@@ -70,8 +70,8 @@ export function SessionGate() {
           title="Não foi possível conectar"
           message="Sua sessão está guardada. Verifique a conexão e tente de novo."
         />
-        <Button label="Tentar novamente" variant="secondary" loading={pending} onPress={() => void retry()} />
-        <Button label="Sair da conta" variant="secondary" onPress={() => void signOut()} />
+        <Button label="Tentar novamente" color="secondary" loading={pending} onPress={() => void retry()} />
+        <Button label="Sair da conta" color="secondary" onPress={() => void signOut()} />
       </View>
     );
   }

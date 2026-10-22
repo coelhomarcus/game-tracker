@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { IoniconName } from '@/features/library/status';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
+import { Text } from './Text';
 
 export type OptionSheetProps<T> = {
   visible: boolean;
@@ -32,7 +33,7 @@ export function OptionSheet<T>({ visible, title, options, selected, onSelect, on
           accessibilityViewIsModal
           style={[styles.sheet, { paddingBottom: space.sm + insets.bottom }]}
         >
-          <Text accessibilityRole="header" style={styles.title}>
+          <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.title}>
             {title}
           </Text>
           {options.map((option) => {
@@ -50,8 +51,10 @@ export function OptionSheet<T>({ visible, title, options, selected, onSelect, on
                 style={styles.row}
               >
                 {option.icon ? <Ionicons name={option.icon} size={22} color={colors.text} /> : null}
-                <Text style={[styles.label, isSelected && styles.labelSelected]}>{option.label}</Text>
-                {isSelected ? <Ionicons name="checkmark" size={22} color={colors.accent} /> : null}
+                <Text weight={isSelected ? 'bold' : 'normal'} tone={isSelected ? 'high' : 'default'} style={styles.label}>
+                  {option.label}
+                </Text>
+                {isSelected ? <Ionicons name="checkmark" size={22} color={colors.primary} /> : null}
               </Pressable>
             );
           })}
@@ -65,22 +68,21 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: `${colors.bg}${ALPHA_60}` },
   sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.card,
-    borderTopRightRadius: radii.card,
-    borderWidth: 1,
+    backgroundColor: colors.bgContrast25,
+    borderTopLeftRadius: radii.md,
+    borderTopRightRadius: radii.md,
+    borderWidth: hairline,
     borderBottomWidth: 0,
-    borderColor: colors.borderStrong,
+    borderColor: colors.borderLow,
     paddingTop: space.lg,
     paddingHorizontal: space.lg,
   },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold', marginBottom: space.sm },
+  title: { marginBottom: space.sm },
   row: {
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
   },
-  label: { flex: 1, color: colors.text, fontSize: fontSize.md },
-  labelSelected: { color: colors.textStrong, fontWeight: 'bold' },
+  label: { flex: 1 },
 });

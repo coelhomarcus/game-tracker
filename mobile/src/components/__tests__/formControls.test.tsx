@@ -114,12 +114,12 @@ describe('Button colors', () => {
     expect(screen.getByRole('button', { name: 'Salvar' })).toHaveStyle({ opacity: 0.5 });
   });
 
-  it('keeps the legacy variants rendering as before', async () => {
+  it('defaults to solid primary and takes a secondary color or a ghost variant', async () => {
     await render(
       <>
-        <Button label="Um" variant="primary" onPress={() => {}} />
-        <Button label="Dois" variant="secondary" onPress={() => {}} />
-        <Button label="Três" variant="text" onPress={() => {}} />
+        <Button label="Um" onPress={() => {}} />
+        <Button label="Dois" color="secondary" onPress={() => {}} />
+        <Button label="Três" variant="ghost" onPress={() => {}} />
       </>,
     );
     expect(screen.getByRole('button', { name: 'Um' })).toHaveStyle({ backgroundColor: primary[500] });

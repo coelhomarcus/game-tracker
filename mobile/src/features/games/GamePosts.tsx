@@ -1,11 +1,11 @@
 import { useRouter, type Href } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button } from '@/components';
+import { Button, Text } from '@/components';
 import { ActivityCard } from '@/features/feed/ActivityCard';
 import { PostCard } from '@/features/feed/PostCard';
 import { useGamePosts } from '@/features/feed/queries';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 export type GamePostsProps = {
   gameId: string;
@@ -22,7 +22,7 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
 
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         Posts
       </Text>
       <Button
@@ -32,8 +32,12 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
       {posts ? (
         posts.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Ninguém publicou sobre este jogo</Text>
-            <Text style={styles.muted}>Seja a primeira pessoa a contar o que achou.</Text>
+            <Text weight="semibold" tone="high">
+              Ninguém publicou sobre este jogo
+            </Text>
+            <Text size="sm" tone="medium">
+              Seja a primeira pessoa a contar o que achou.
+            </Text>
           </View>
         ) : (
           <>
@@ -57,7 +61,7 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
             {hasNextPage ? (
               <Button
                 label="Carregar mais"
-                variant="secondary"
+                color="secondary"
                 loading={isFetchingNextPage}
                 onPress={() => void fetchNextPage()}
               />
@@ -66,11 +70,13 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
         )
       ) : isError ? (
         <View style={styles.empty}>
-          <Text style={styles.muted}>Não foi possível carregar os posts</Text>
-          <Button label="Tentar de novo" variant="text" onPress={() => void refetch()} />
+          <Text size="sm" tone="medium">
+            Não foi possível carregar os posts
+          </Text>
+          <Button label="Tentar de novo" variant="ghost" onPress={() => void refetch()} />
         </View>
       ) : (
-        <ActivityIndicator accessibilityLabel="Carregando" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
       )}
     </View>
   );
@@ -78,8 +84,5 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
 
 const styles = StyleSheet.create({
   section: { gap: space.md },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
   empty: { gap: space.xs },
-  emptyTitle: { color: colors.textStrong, fontSize: fontSize.md, fontWeight: '600' },
 });

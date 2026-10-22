@@ -11,7 +11,7 @@ export type SkeletonBlockProps = {
   testID?: string;
 };
 
-function Block({ width = '100%', height, radius = radii.card, testID }: SkeletonBlockProps) {
+function Block({ width = '100%', height, radius = radii.md, testID }: SkeletonBlockProps) {
   return (
     <View
       accessibilityElementsHidden

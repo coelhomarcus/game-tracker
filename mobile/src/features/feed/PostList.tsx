@@ -12,15 +12,14 @@ import {
   ActivityIndicator,
   FlatList,
   StyleSheet,
-  Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
 
-import { Button } from '@/components';
+import { Button, Text } from '@/components';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
 import { PostCard } from './PostCard';
@@ -115,20 +114,24 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   if (isFetchingNextPage) {
     footer = (
       <View style={styles.footer}>
-        <ActivityIndicator testID="post-list-loading-more" color={colors.textMuted} />
+        <ActivityIndicator testID="post-list-loading-more" color={colors.textMedium} />
       </View>
     );
   } else if (isFetchNextPageError) {
     footer = (
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Não foi possível carregar mais posts.</Text>
-        <Button label="Tentar de novo" variant="secondary" onPress={() => void fetchNextPage()} />
+        <Text size="sm" tone="medium" style={styles.footerText}>
+          Não foi possível carregar mais posts.
+        </Text>
+        <Button label="Tentar de novo" color="secondary" onPress={() => void fetchNextPage()} />
       </View>
     );
   } else if (posts.length > 0 && !hasNextPage) {
     footer = (
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Você chegou ao fim.</Text>
+        <Text size="sm" tone="medium" style={styles.footerText}>
+          Você chegou ao fim.
+        </Text>
       </View>
     );
   }
@@ -163,6 +166,6 @@ function Separator() {
 const styles = StyleSheet.create({
   content: { padding: space.lg, flexGrow: 1 },
   separator: { height: space.md },
-  footer: { alignItems: 'center', gap: space.md, paddingVertical: space.xl },
-  footerText: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'center' },
+  footer: { alignItems: 'center', gap: space.md, paddingVertical: space._2xl },
+  footerText: { textAlign: 'center' },
 });

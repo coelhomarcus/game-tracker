@@ -57,8 +57,8 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     borderWidth: 1.5,
-    borderColor: colors.chrome,
+    borderColor: colors.bg,
   },
 });

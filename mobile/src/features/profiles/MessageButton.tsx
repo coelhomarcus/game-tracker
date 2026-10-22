@@ -31,7 +31,7 @@ export function MessageButton({ userId, name }: MessageButtonProps) {
     <Button
       label="Mensagem"
       accessibilityLabel={`Enviar mensagem para ${name}`}
-      variant="secondary"
+      color="secondary"
       disabled={start.isPending}
       onPress={() => void open()}
     />

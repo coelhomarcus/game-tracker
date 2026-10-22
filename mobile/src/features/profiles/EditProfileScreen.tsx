@@ -1,13 +1,13 @@
 import { usePreventRemove, useRouter } from 'expo-router';
 import { useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, ConfirmDialog, Screen, TextField } from '@/components';
+import { Avatar, Button, ConfirmDialog, Screen, Text, TextField } from '@/components';
 import { authErrorMessage, useSession } from '@/features/auth';
 import { ApiError } from '@/lib/http/errors';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, radii, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
 
 import { pickImage } from './pickImage';
 import {
@@ -43,10 +43,12 @@ function Section({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
           {title}
         </Text>
-        <Text style={styles.helper}>{helper}</Text>
+        <Text size="sm" tone="medium">
+          {helper}
+        </Text>
       </View>
       {children}
     </View>
@@ -59,8 +61,10 @@ function UploadingOverlay({ round }: { round?: boolean }) {
       accessibilityLiveRegion="polite"
       style={[styles.overlay, round ? styles.overlayRound : null]}
     >
-      <ActivityIndicator color={colors.accent} />
-      <Text style={styles.overlayLabel}>Enviando imagem…</Text>
+      <ActivityIndicator color={colors.primary} />
+      <Text size="xs" tone="high" style={styles.overlayLabel}>
+        Enviando imagem…
+      </Text>
     </View>
   );
 }
@@ -212,7 +216,7 @@ export function EditProfileScreen() {
           </View>
           <Button
             label="Alterar capa"
-            variant="secondary"
+            color="secondary"
             disabled={busy}
             onPress={() => void choose('banner')}
           />
@@ -224,7 +228,7 @@ export function EditProfileScreen() {
             <View style={styles.avatarAction}>
               <Button
                 label="Alterar foto"
-                variant="secondary"
+                color="secondary"
                 disabled={busy}
                 onPress={() => void choose('avatar')}
               />
@@ -232,11 +236,11 @@ export function EditProfileScreen() {
           </View>
           {problem ? (
             <View style={styles.problem}>
-              <Text accessibilityLiveRegion="polite" style={styles.error}>
+              <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
                 {problem.message}
               </Text>
               {problem.retry ? (
-                <Button label="Tentar de novo" variant="secondary" onPress={problem.retry} />
+                <Button label="Tentar de novo" color="secondary" onPress={problem.retry} />
               ) : null}
             </View>
           ) : null}
@@ -269,12 +273,12 @@ export function EditProfileScreen() {
               onChangeText={(text) => edit('bio', text)}
               error={fieldErrors.bio}
             />
-            <Text style={styles.counter}>{`${current.bio.length}/${BIO_MAX}`}</Text>
+            <Text size="xs" tone="medium" style={styles.counter}>{`${current.bio.length}/${BIO_MAX}`}</Text>
           </View>
         </Section>
 
         {formError ? (
-          <Text accessibilityLiveRegion="polite" style={styles.error}>
+          <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
             {formError}
           </Text>
         ) : null}
@@ -296,17 +300,15 @@ export function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  form: { padding: space.lg, gap: space.xl },
+  form: { padding: space.lg, gap: space._2xl },
   section: { gap: space.md },
   sectionHead: { gap: space.xs },
-  sectionTitle: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
-  helper: { color: colors.textMuted, fontSize: fontSize.sm },
   preview: { position: 'relative' },
   banner: {
     width: '100%',
     aspectRatio: 3,
-    borderRadius: radii.card,
-    backgroundColor: colors.raised,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgContrast50,
   },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   avatarAction: { flex: 1 },
@@ -319,18 +321,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.xs,
-    borderRadius: radii.card,
+    borderRadius: radii.md,
     backgroundColor: `${colors.bg}CC`,
   },
   overlayRound: { borderRadius: AVATAR_SIZE / 2 },
   overlayLabel: {
-    color: colors.textStrong,
-    fontSize: fontSize.xs,
     textAlign: 'center',
     paddingHorizontal: space.xs,
   },
   problem: { gap: space.sm },
-  error: { color: colors.danger, fontSize: fontSize.sm },
   bio: { gap: space.xs },
-  counter: { alignSelf: 'flex-end', color: colors.textMuted, fontSize: fontSize.xs },
+  counter: { alignSelf: 'flex-end' },
 });

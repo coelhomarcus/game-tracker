@@ -41,7 +41,7 @@ export function EmptyState({ title, message, icon, action, fill }: EmptyStatePro
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', gap: space.md, padding: space.xl },
+  container: { alignItems: 'center', gap: space.md, padding: space._2xl },
   fill: { paddingTop: '20%' },
   centered: { textAlign: 'center' },
   message: { maxWidth: 360 },

@@ -1,9 +1,9 @@
 import { useRouter, type Href } from 'expo-router';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
-import { GameCover } from '@/components';
+import { GameCover, Text } from '@/components';
 import type { Game } from '@/features/games/types';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
 const COVER_WIDTH = 36;
 
@@ -22,7 +22,7 @@ export function PostGameLink({ game }: PostGameLinkProps) {
       style={styles.row}
     >
       <GameCover name={game.name} url={game.coverUrl} width={COVER_WIDTH} decorative />
-      <Text numberOfLines={2} style={styles.name}>
+      <Text numberOfLines={2} size="sm" weight="semibold" style={styles.name}>
         {game.name}
       </Text>
     </Pressable>
@@ -31,5 +31,5 @@ export function PostGameLink({ game }: PostGameLinkProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48 },
-  name: { flex: 1, color: colors.text, fontSize: fontSize.sm, fontWeight: '600' },
+  name: { flex: 1 },
 });

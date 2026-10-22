@@ -4,15 +4,14 @@ import {
   ActivityIndicator,
   FlatList,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import { EmptyState, Screen } from '@/components';
+import { EmptyState, Screen, Text } from '@/components';
 import { ApiError } from '@/lib/http/errors';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { ActivityCard } from './ActivityCard';
 import { CommentComposer, type ReplyTarget } from './CommentComposer';
@@ -77,7 +76,7 @@ function PostLoader({ postId }: { postId: string }) {
     <Screen>
       <Stack.Screen options={{ title: 'Post' }} />
       <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
     </Screen>
   );
@@ -116,7 +115,11 @@ function PostBody({ post }: { post: Post }) {
 
   let empty: ReactElement;
   if (comments.data) {
-    empty = <Text style={styles.empty}>Ainda não há comentários. Seja o primeiro.</Text>;
+    empty = (
+      <Text tone="medium" style={styles.empty}>
+        Ainda não há comentários. Seja o primeiro.
+      </Text>
+    );
   } else if (comments.isError) {
     empty = (
       <EmptyState
@@ -129,7 +132,7 @@ function PostBody({ post }: { post: Post }) {
       <ActivityIndicator
         testID="comments-loading"
         accessibilityLabel="Carregando comentários"
-        color={colors.textMuted}
+        color={colors.textMedium}
       />
     );
   }
@@ -137,7 +140,7 @@ function PostBody({ post }: { post: Post }) {
   const header = (
     <View style={styles.header}>
       {post.type === 'activity' ? <ActivityCard post={post} /> : <PostCard post={post} />}
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {`Comentários (${post.commentCount})`}
       </Text>
     </View>
@@ -178,7 +181,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   content: { padding: space.lg, flexGrow: 1 },
   header: { gap: space.lg, paddingBottom: space.lg },
-  title: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
   separator: { height: space.md },
-  empty: { color: colors.textMuted, fontSize: fontSize.md, textAlign: 'center', padding: space.xl },
+  empty: { textAlign: 'center', padding: space._2xl },
 });

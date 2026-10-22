@@ -42,11 +42,11 @@ test('caps the badge at 9+', async () => {
   expect(screen.getByRole('button', { name: 'Notificações, 10 não lidas' })).toBeOnTheScreen();
 });
 
-test('the badge is an accent circle', async () => {
+test('the badge is a primary circle', async () => {
   await renderBell(2);
   const badge = screen.getByText('2').parent;
-  expect(badge).toHaveStyle({ backgroundColor: colors.accent, minWidth: 16, height: 16 });
-  expect(screen.getByText('2')).toHaveStyle({ color: colors.onAccent, fontWeight: 'bold' });
+  expect(badge).toHaveStyle({ backgroundColor: colors.primary, minWidth: 16, height: 16 });
+  expect(screen.getByText('2')).toHaveStyle({ color: colors.onPrimary, fontFamily: 'Inter_700Bold' });
 });
 
 test('still opens notifications', async () => {

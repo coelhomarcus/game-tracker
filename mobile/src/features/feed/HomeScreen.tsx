@@ -47,8 +47,8 @@ function FeedSkeleton() {
         <View key={id} testID="feed-skeleton-row" style={styles.skeletonRow}>
           <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} radius={AVATAR_SIZE / 2} />
           <View style={styles.skeletonText}>
-            <Skeleton width="40%" height={14} radius={radii.cover} />
-            <Skeleton height={14} radius={radii.cover} />
+            <Skeleton width="40%" height={14} radius={radii.xs} />
+            <Skeleton height={14} radius={radii.xs} />
           </View>
         </View>
       ))}
@@ -148,7 +148,7 @@ export function HomeScreen() {
           onPress={() => router.push(COMPOSER)}
           style={styles.fab}
         >
-          <Ionicons name="create-outline" size={24} color={colors.onAccent} />
+          <Ionicons name="create-outline" size={24} color={colors.onPrimary} />
         </Pressable>
       </View>
     </Screen>
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },

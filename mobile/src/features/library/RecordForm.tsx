@@ -1,8 +1,8 @@
 import { useLocalSearchParams, usePreventRemove, useRouter, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button, ChoiceChip, ConfirmDialog, EmptyState, Screen, TextField } from '@/components';
+import { Button, ChoiceChip, ConfirmDialog, EmptyState, Screen, Text, TextField } from '@/components';
 import { authErrorMessage } from '@/features/auth';
 import { GameNotFound } from '@/features/games/GameNotFound';
 import { useGame } from '@/features/games/queries';
@@ -10,7 +10,7 @@ import type { Game } from '@/features/games/types';
 import { todayDate, formatDate } from '@/lib/dateOnly';
 import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
-import { colors, fontSize, space } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
 import { useCreateEntry, useLibrary, useUpdateEntry } from './queries';
 import {
@@ -60,7 +60,7 @@ function replayNote(count: number): string {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>
+      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {title}
       </Text>
       {children}
@@ -71,7 +71,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Loading() {
   return (
     <View style={styles.center}>
-      <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.accent} />
+      <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
     </View>
   );
 }
@@ -236,10 +236,14 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
     <Screen scroll>
       <View style={styles.form}>
         <View style={styles.heading}>
-          <Text accessibilityRole="header" style={styles.gameName}>
+          <Text accessibilityRole="header" size="_3xl" weight="bold" tone="high">
             {game.name}
           </Text>
-          {replayCount > 0 ? <Text style={styles.note}>{replayNote(replayCount)}</Text> : null}
+          {replayCount > 0 ? (
+            <Text size="sm" tone="medium">
+              {replayNote(replayCount)}
+            </Text>
+          ) : null}
         </View>
 
         <Section title="Status">
@@ -283,7 +287,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
               error={errors.platform}
             />
           ) : errors.platform ? (
-            <Text accessibilityLiveRegion="polite" style={styles.error}>
+            <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
               {errors.platform}
             </Text>
           ) : null}
@@ -303,7 +307,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
               <Button
                 label="Hoje"
                 accessibilityLabel="Preencher início com hoje"
-                variant="text"
+                variant="ghost"
                 onPress={() => change('startedAt', formatDate(todayDate()))}
               />
             </View>
@@ -319,7 +323,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
               <Button
                 label="Hoje"
                 accessibilityLabel="Preencher fim com hoje"
-                variant="text"
+                variant="ghost"
                 onPress={() => change('finishedAt', formatDate(todayDate()))}
               />
             </View>
@@ -336,8 +340,8 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
 
         <Section title="Sua avaliação">
           <View style={styles.ratingHeader}>
-            <Text style={styles.ratingLabel}>Nota</Text>
-            <Text style={styles.ratingValue}>
+            <Text size="sm">Nota</Text>
+            <Text weight="bold" tone="high">
               {values.rating === null ? 'Sem nota' : `${values.rating}/10`}
             </Text>
           </View>
@@ -353,7 +357,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
             ))}
           </View>
           {values.rating !== null ? (
-            <Button label="Sem nota" variant="text" onPress={() => change('rating', null)} />
+            <Button label="Sem nota" variant="ghost" onPress={() => change('rating', null)} />
           ) : null}
         </Section>
 
@@ -368,7 +372,7 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
         />
 
         {apiError ? (
-          <Text accessibilityLiveRegion="polite" style={styles.error}>
+          <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
             {apiError}
           </Text>
         ) : null}
@@ -391,17 +395,12 @@ function RecordFormBody({ game, entry, replayCount }: BodyProps) {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  form: { padding: space.lg, gap: space.xl },
+  form: { padding: space.lg, gap: space._2xl },
   heading: { gap: space.xs },
-  gameName: { color: colors.textStrong, fontSize: fontSize.xl, fontWeight: 'bold' },
-  note: { color: colors.textMuted, fontSize: fontSize.sm },
   section: { gap: space.md },
-  sectionTitle: { color: colors.textStrong, fontSize: fontSize.lg, fontWeight: 'bold' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   dates: { flexDirection: 'row', gap: space.md },
   date: { flex: 1, gap: space.xs },
   ratingHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  ratingLabel: { color: colors.text, fontSize: fontSize.sm },
-  ratingValue: { color: colors.textStrong, fontSize: fontSize.md, fontWeight: 'bold' },
-  error: { color: colors.danger, fontSize: fontSize.sm },
+
 });

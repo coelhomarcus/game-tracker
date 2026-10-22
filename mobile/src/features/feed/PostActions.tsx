@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { colors, fontSize, space } from '@/theme/tokens';
+import { Text } from '@/components';
+import { colors, space } from '@/theme/tokens';
 
 import { useTogglePostLike } from './queries';
 import type { Post } from './types';
@@ -27,8 +28,10 @@ export function PostActions({ post, onComment }: PostActionsProps) {
   const comments = plural(post.commentCount, 'comentário', 'comentários');
   const commentContent = (
     <>
-      <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMuted} />
-      <Text style={styles.count}>{post.commentCount}</Text>
+      <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
+      <Text size="sm" tone="medium">
+        {post.commentCount}
+      </Text>
     </>
   );
 
@@ -44,9 +47,11 @@ export function PostActions({ post, onComment }: PostActionsProps) {
         <Ionicons
           name={liked ? 'heart' : 'heart-outline'}
           size={ICON_SIZE}
-          color={liked ? colors.accent : colors.textMuted}
+          color={liked ? colors.like : colors.textMedium}
         />
-        <Text style={styles.count}>{post.likeCount}</Text>
+        <Text size="sm" tone="medium">
+          {post.likeCount}
+        </Text>
       </Pressable>
       {onComment ? (
         <Pressable
@@ -70,5 +75,4 @@ export function PostActions({ post, onComment }: PostActionsProps) {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   action: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 48 },
-  count: { color: colors.textMuted, fontSize: fontSize.sm },
 });

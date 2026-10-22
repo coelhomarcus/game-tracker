@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useUnreadCount } from '@/features/notifications/queries';
-import { colors, fontSize } from '@/theme/tokens';
+import { colors } from '@/theme/tokens';
+import { Text } from './Text';
 
 const MAX_SHOWN = 9;
 
@@ -25,7 +26,7 @@ export function HeaderBell() {
       <Ionicons name="notifications-outline" size={24} color={colors.text} />
       {unread > 0 ? (
         <View pointerEvents="none" style={styles.badge}>
-          <Text style={styles.badgeText}>
+          <Text size="xs" weight="bold" tone="onPrimary" style={styles.badgeText}>
             {unread > MAX_SHOWN ? `${MAX_SHOWN}+` : String(unread)}
           </Text>
         </View>
@@ -49,9 +50,9 @@ const styles = StyleSheet.create({
     height: 16,
     paddingHorizontal: 3,
     borderRadius: 8,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: colors.onAccent, fontSize: fontSize.xs, fontWeight: 'bold', lineHeight: 14 },
+  badgeText: { lineHeight: 14 },
 });
