@@ -55,14 +55,14 @@ test('signed out lands on login', async () => {
   expect(await screen.findByText('E-mail ou username')).toBeOnTheScreen();
 });
 
-// The tab bar renders buttons labelled "<name>, tab, <n> of <total>".
-const tabButtons = () => screen.findAllByRole('button', { name: /, tab, [0-9] of 5$/ });
+// The icon-only bottom bar renders one `tab` per route, labelled with its title.
+const tabButtons = () => screen.findAllByRole('tab', { name: /^(Início|Biblioteca|Explorar|Mensagens|Perfil)(,|$)/ });
 
 test('signed in shows the five tabs in order', async () => {
   setStatus('signedIn');
   await renderApp('/');
   const buttons = await tabButtons();
-  expect(buttons.map((button) => String(button.props.accessibilityLabel).split(',')[0])).toEqual([
+  expect(buttons.map((button) => String(button.props.accessibilityLabel))).toEqual([
     'Início',
     'Biblioteca',
     'Explorar',
@@ -74,7 +74,7 @@ test('signed in shows the five tabs in order', async () => {
 test('signed in cannot open login', async () => {
   setStatus('signedIn');
   await renderApp('/login');
-  expect(await screen.findByRole('button', { name: /^Início, tab/, selected: true })).toBeOnTheScreen();
+  expect(await screen.findByRole('tab', { name: 'Início', selected: true })).toBeOnTheScreen();
 });
 
 test('restoring shows a spinner and runs bootstrap once', async () => {
@@ -152,6 +152,14 @@ test('the library header adds a game by opening explore', async () => {
   const app = await renderApp('/library');
   expect(await screen.findByRole('button', { name: 'Adicionar jogo' })).toHaveStyle({ minWidth: 48, minHeight: 48 });
   await fireEvent.press(screen.getByRole('button', { name: 'Adicionar jogo' }));
-  expect(await screen.findByRole('button', { name: /^Explorar, tab/, selected: true })).toBeOnTheScreen();
+  expect(await screen.findByRole('tab', { name: 'Explorar', selected: true })).toBeOnTheScreen();
   expect(app.getPathname()).toBe('/explore');
+});
+
+test('the bottom bar switches tabs', async () => {
+  setStatus('signedIn');
+  const app = await renderApp('/');
+  await fireEvent.press(await screen.findByRole('tab', { name: 'Biblioteca' }));
+  expect(await screen.findByRole('tab', { name: 'Biblioteca', selected: true })).toBeOnTheScreen();
+  expect(app.getPathname()).toBe('/library');
 });

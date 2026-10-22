@@ -83,7 +83,7 @@ test('going back with unsaved changes asks before discarding', async () => {
   expect(await screen.findByText('Descartar alterações?')).toBeOnTheScreen();
 
   await fireEvent.press(screen.getByRole('button', { name: 'Descartar' }));
-  expect(await screen.findByRole('button', { name: /^Biblioteca, tab/, selected: true })).toBeOnTheScreen();
+  expect(await screen.findByRole('tab', { name: 'Biblioteca', selected: true })).toBeOnTheScreen();
 });
 
 test('saving a changed record leaves without the discard prompt', async () => {

@@ -7,8 +7,10 @@ export {
   type ButtonSize,
   type ButtonVariant,
 } from './Button';
+export { BottomBar } from './BottomBar';
 export { ChoiceChip, type ChoiceChipProps } from './ChoiceChip';
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
+export { CountBadge, NewDot, type CountBadgeProps } from './CountBadge';
 export { CoverFooter, type CoverFooterProps } from './CoverFooter';
 export { CoverGrid, type CoverGridProps } from './CoverGrid';
 export { Divider, type DividerProps } from './Divider';

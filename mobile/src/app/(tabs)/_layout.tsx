@@ -1,35 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useRouter, type Href } from 'expo-router';
-import type { ComponentProps } from 'react';
-import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { HeaderBell, Layout } from '@/components';
-import { fontFamily } from '@/components/Text';
+import { BottomBar, HeaderBell, Layout } from '@/components';
 import {
-  MESSAGES_TAB_UNREAD_LABEL,
-  MessagesTabIcon,
+  messagesTabLabel,
   NewConversationButton,
-  useHasUnreadConversations,
+  useUnreadConversationCount,
 } from '@/features/chat/MessagesTab';
 import { HomeHeaderLeft } from '@/features/feed/HomeHeaderLeft';
-import { colors, hairline } from '@/theme/tokens';
+import { colors } from '@/theme/tokens';
 
 const EXPLORE_GAMES = '/explore?tab=games' as Href;
-
-type IconName = ComponentProps<typeof Ionicons>['name'];
-type TabIconProps = { color: ColorValue; size: number };
-
-function makeIcon(name: IconName) {
-  function TabIcon({ color, size }: TabIconProps) {
-    return <Ionicons name={name} size={size} color={typeof color === 'string' ? color : undefined} />;
-  }
-  return TabIcon;
-}
-
-const HomeIcon = makeIcon('home');
-const LibraryIcon = makeIcon('library');
-const SearchIcon = makeIcon('search');
-const PersonIcon = makeIcon('person');
 
 function LibraryHeaderRight() {
   const router = useRouter();
@@ -71,43 +53,30 @@ const styles = StyleSheet.create({
 });
 
 export default function TabsLayout() {
-  const unreadMessages = useHasUnreadConversations();
+  const unreadMessages = useUnreadConversationCount();
   return (
     <Tabs
+      tabBar={(props) => <BottomBar {...props} />}
       screenOptions={{
         // Same header component and height as the stacks.
         header: Layout.Header.renderTabHeader,
         headerRight: () => <HeaderBell />,
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.borderLow, borderTopWidth: hairline },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMedium,
-        tabBarLabelStyle: { fontFamily: fontFamily.medium },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Início', tabBarIcon: HomeIcon, headerLeft: HomeHeaderLeft }}
-      />
-      <Tabs.Screen
-        name="library"
-        options={{ title: 'Biblioteca', tabBarIcon: LibraryIcon, headerRight: LibraryHeaderRight }}
-      />
-      <Tabs.Screen name="explore" options={{ title: 'Explorar', tabBarIcon: SearchIcon }} />
+      <Tabs.Screen name="index" options={{ title: 'Início', headerLeft: HomeHeaderLeft }} />
+      <Tabs.Screen name="library" options={{ title: 'Biblioteca', headerRight: LibraryHeaderRight }} />
+      <Tabs.Screen name="explore" options={{ title: 'Explorar' }} />
       <Tabs.Screen
         name="messages"
         options={{
           title: 'Mensagens',
-          tabBarIcon: MessagesTabIcon,
-          // Left to the tab bar's own label unless something is unread.
-          tabBarAccessibilityLabel: unreadMessages ? MESSAGES_TAB_UNREAD_LABEL : undefined,
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
+          tabBarAccessibilityLabel: messagesTabLabel(unreadMessages),
           headerRight: NewConversationButton,
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{ title: 'Perfil', tabBarIcon: PersonIcon, headerRight: ProfileHeaderRight }}
-      />
+      <Tabs.Screen name="profile" options={{ title: 'Perfil', headerRight: ProfileHeaderRight }} />
     </Tabs>
   );
 }
