@@ -3,15 +3,17 @@
 ## Project overview
 
 GameTracker is an academic social game-tracking application. It consists of an
-Android Flutter client and a Node.js API. The project is not commercial and no
-licensing work is required as part of normal changes.
+Android client built with Expo (React Native) and a Node.js API. The project is
+not commercial and no licensing work is required as part of normal changes.
 
 ## Repository structure
 
-- `frontend/`: Flutter Android application using Riverpod, go_router, Dio, and Socket.IO.
+- `mobile/`: Expo Android application in TypeScript, using Expo Router, TanStack Query, Zustand, and Socket.IO.
+- `mobile/integration/`: Integration suites that run the app's API layer against the disposable test API.
 - `backend/`: Express 5 API written in TypeScript, using Drizzle ORM with PostgreSQL and Redis for realtime features.
 - `backend/drizzle/`: Database migrations committed to the repository.
-- `.github/workflows/`: CI and automatic Android release workflows.
+- `.github/workflows/`: CI workflows for the backend and the mobile app.
+- `.github/scripts/next-version.mjs`: SemVer calculator kept for the future Expo release workflow.
 - `docker-compose.dev.yml`: Local PostgreSQL and Redis services.
 - `docker-compose.test.yml`: Disposable PostgreSQL and Redis services for tests.
 
@@ -43,17 +45,17 @@ npm run db:migrate
 npm run dev
 ```
 
-Run the Flutter app:
+Run the Expo app:
 
 ```bash
-cd frontend
-flutter pub get
-flutter run --dart-define=API_URL=http://localhost:3000
+cd mobile
+npm ci
+EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo start
 ```
 
 The Android emulator normally reaches the host API through
-`http://10.0.2.2:3000`. The API URL must not include the `/api` suffix because
-the client adds it.
+`http://10.0.2.2:3000`. `EXPO_PUBLIC_API_URL` must not include the `/api`
+suffix because the client adds it. Add `--web` for a browser preview.
 
 ## Testing and quality checks
 
@@ -66,19 +68,27 @@ npm run build
 npm test
 ```
 
-Flutter checks:
+Mobile checks:
 
 ```bash
-cd frontend
-flutter pub get
-dart format --output=none --set-exit-if-changed lib test
-flutter analyze
-flutter test
+cd mobile
+npm run typecheck
+npm run lint
+npm test
 ```
 
-Integration tests use the disposable test services and must never use a
-development or production database. See `README.md` for the complete test
-environment setup.
+Mobile integration tests run against the local test API. After the backend test
+setup described in `README.md` (`.env.test` and the disposable services), start
+it with `npm run test:seed` and `npm run dev:test` in `backend/`, then run:
+
+```bash
+cd mobile
+GT_BACKEND=http://localhost:3100 npm run test:integration
+```
+
+Without `GT_BACKEND` the integration suites are skipped. Integration tests use
+the disposable test services and must never use a development or production
+database or API. See `README.md` for the complete test environment setup.
 
 ## Commits and versions
 
@@ -92,22 +102,21 @@ Common types are `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`,
 `ci`, and `chore`. Examples:
 
 ```text
-feat(frontend): add game replay tracking
+feat(mobile): add game replay tracking
 fix(backend): reject expired refresh tokens
 ci: publish signed Android releases
 ```
 
 Mark incompatible changes with `!` or a `BREAKING CHANGE:` footer. Releases
-use Semantic Versioning and are generated automatically after pushes to
-`main`:
+use Semantic Versioning, calculated from the commit history:
 
 - breaking changes increment the major version;
 - `feat` increments the minor version;
 - other changes increment the patch version.
 
 Release tags use the `vX.Y.Z` format. The first release uses the current
-`1.0.0` baseline. The Android build name is taken from the release version and
-the Android build number is taken from the GitHub Actions run number.
+`1.0.0` baseline. Automatic releases are currently deferred (see Android
+releases below); no release is generated after pushes to `main` for now.
 
 ## Dokploy deployment
 
@@ -123,19 +132,29 @@ node dist/db/migrate.js && node dist/server.js
 ```
 
 If migrations fail, the API must not start. Required production configuration
-is documented in `docs/DEPLOY_DOKPLOY.md`. Secrets must be configured in
+is documented in the Deployment section of `README.md`. Secrets must be configured in
 Dokploy and must never be committed to the repository.
 
 ## Android releases
 
-The automatic release workflow requires the repository variable `API_URL` and
-these GitHub Actions secrets:
+The automatic APK release is deferred: pushes to `main` publish no APK until an
+Expo release workflow is added. That workflow will build the APK with
+`expo prebuild` and Gradle, compute the version with
+`.github/scripts/next-version.mjs`, and keep the same Android `applicationId`
+(`com.marcuscoelho.gametracker`) so new APKs update the installed app in place.
+
+For the future release workflow, the repository variable `API_URL` and these
+GitHub Actions secrets remain reserved:
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-The workflow refuses to publish an APK signed with the Android debug key. The
-release workflow runs only for pushes to `main`; Pull Requests run validation
-workflows but do not publish releases.
+The release workflow must refuse to publish an APK signed with the Android
+debug key, and must run only for pushes to `main`; Pull Requests run
+validation workflows but do not publish releases.
+
+Android push notifications need a Firebase `google-services.json` configured
+through `android.googleServicesFile` in `mobile/app.json`; without it the app
+shows in-app notifications only.

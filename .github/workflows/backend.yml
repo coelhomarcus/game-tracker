@@ -1,14 +1,14 @@
 name: Backend
 
-# Testes do backend e testes de integração do app Flutter contra um backend real, sempre em um
-# Postgres e um Redis descartáveis do próprio runner (banco `gametracker_test`; os testes recusam
-# qualquer outro). Nada aqui toca em produção.
+# Testes do backend e testes de integração do app Expo (mobile/) contra um backend real, sempre
+# em um Postgres e um Redis descartáveis do próprio runner (banco `gametracker_test`; os testes
+# recusam qualquer outro). Nada aqui toca em produção.
 on:
   push:
     branches: [main]
-    paths: ['backend/**', 'frontend/**', 'docker-compose.test.yml', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'mobile/**', 'docker-compose.test.yml', '.github/workflows/backend.yml']
   pull_request:
-    paths: ['backend/**', 'frontend/**', 'docker-compose.test.yml', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'mobile/**', 'docker-compose.test.yml', '.github/workflows/backend.yml']
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -56,7 +56,7 @@ jobs:
       - run: npm run test:migrate
       - run: npm test
 
-  flutter-integration:
+  mobile-integration:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -81,16 +81,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: backend/package-lock.json
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.47.6
-          cache: true
+          cache-dependency-path: |
+            backend/package-lock.json
+            mobile/package-lock.json
       - run: npm ci
       - run: cp .env.test.example .env.test
       - run: npm run test:migrate
@@ -104,11 +97,13 @@ jobs:
           done
           cat "$RUNNER_TEMP/api.log"
           exit 1
-      - name: Integração Flutter contra o backend real
-        working-directory: frontend
+      - name: Integração do app (mobile/) contra o backend real
+        working-directory: mobile
+        env:
+          GT_BACKEND: http://localhost:3100
         run: |
-          flutter pub get
-          flutter test test/integration --dart-define=GT_BACKEND=http://localhost:3100
+          npm ci
+          npm run test:integration -- --ci
       - name: Log da API (se falhou)
         if: failure()
         run: cat "$RUNNER_TEMP/api.log"
