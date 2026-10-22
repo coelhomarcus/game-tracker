@@ -1,13 +1,12 @@
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import type { Game } from '@/features/games/types';
 
-import { ActivityCard } from '../ActivityCard';
+import { GameEmbed } from '../embeds/GameEmbed';
 import { PostActions } from '../PostActions';
-import { PostCard } from '../PostCard';
-import { PostGameLink } from '../PostGameLink';
+import { PostFeedItem } from '../PostFeedItem';
 import { PostList } from '../PostList';
 import type { Post, PostPage } from '../types';
 import { socialDefaults } from '@/test-utils/postDefaults';
@@ -65,79 +64,84 @@ function post(overrides: Partial<Post> = {}): Post {
   };
 }
 
-describe('PostCard', () => {
+describe('PostFeedItem', () => {
   it('shows the author, handle, relative time, content and the game', async () => {
-    await render(<PostCard post={post()} />);
+    await render(<PostFeedItem post={post()} />);
 
     expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
-    expect(screen.getByText(/@ana · há 5 min/)).toBeOnTheScreen();
+    expect(screen.getByText(/@ana$/)).toBeOnTheScreen();
+    expect(screen.getByText('· há 5 min')).toBeOnTheScreen();
     expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
     expect(screen.getByLabelText('Abrir jogo Hades')).toBeOnTheScreen();
   });
 
   it('exposes the post text and time in the accessibility label', async () => {
-    await render(<PostCard post={post()} />);
+    await render(<PostFeedItem post={post()} />);
 
     expect(screen.getByLabelText(POST_LABEL)).toBeOnTheScreen();
   });
 
   it('falls back to the username when the name is blank', async () => {
     const author = { id: 'u2', username: 'bia', name: '  ', avatarUrl: null };
-    await render(<PostCard post={post({ author })} />);
+    await render(<PostFeedItem post={post({ author })} />);
 
     expect(screen.getByLabelText(/^Post de bia, /)).toBeOnTheScreen();
   });
 
-  it('hides the game link when asked to', async () => {
-    await render(<PostCard post={post()} hideGame />);
+  it('hides the game card when asked to', async () => {
+    await render(<PostFeedItem post={post()} hideGame />);
 
     expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
     expect(screen.queryByLabelText(/Abrir jogo/)).toBeNull();
   });
 
-  it('omits the game link when the post has no game', async () => {
-    await render(<PostCard post={post({ game: null })} />);
+  it('omits the game card when the post has no game', async () => {
+    await render(<PostFeedItem post={post({ game: null })} />);
 
     expect(screen.queryByLabelText(/Abrir jogo/)).toBeNull();
   });
 
-  it('shows the image only when the post has one', async () => {
-    await render(<PostCard post={post({ imageUrl: 'https://cdn.test/a.png' })} />);
+  it('shows images only when the post has some', async () => {
+    const image = { url: 'https://cdn.test/a.png', width: null, height: null, alt: null };
+    await render(<PostFeedItem post={post({ images: [image] })} />);
     expect(screen.getByTestId('post-image')).toBeOnTheScreen();
 
-    await screen.rerender(<PostCard post={post({ imageUrl: null })} />);
+    await screen.rerender(<PostFeedItem post={post({ images: [] })} />);
     expect(screen.queryByTestId('post-image')).toBeNull();
   });
 
-  it('calls onPress when the card is pressed', async () => {
+  it('calls onPress when the body is pressed', async () => {
     const onPress = jest.fn();
-    await render(<PostCard post={post()} onPress={onPress} />);
+    await render(<PostFeedItem post={post()} onPress={onPress} />);
 
     await fireEvent.press(screen.getByLabelText(POST_LABEL));
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the post from the comment counter only when the card is pressable', async () => {
+  it('opens the post from the comment counter only when the row is pressable', async () => {
     const onPress = jest.fn();
-    await render(<PostCard post={post()} onPress={onPress} />);
+    await render(<PostFeedItem post={post()} onPress={onPress} />);
     await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
     expect(onPress).toHaveBeenCalledTimes(1);
 
-    await screen.rerender(<PostCard post={post()} />);
+    await screen.rerender(<PostFeedItem post={post()} />);
     expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
   });
 
   it('opens the author profile from the avatar and from the name without opening the post', async () => {
     const onPress = jest.fn();
-    await render(<PostCard post={post()} onPress={onPress} />);
+    await render(<PostFeedItem post={post()} onPress={onPress} />);
 
     // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
     const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
     expect(nameLink).toHaveStyle({ minHeight: 48 });
     await fireEvent.press(nameLink);
-    await fireEvent.press(screen.getByTestId('author-avatar-link', HIDDEN));
+    const avatarLink = screen.getByTestId('author-avatar-link', HIDDEN);
+    // A real 48 dp box around the 42 dp avatar.
+    expect(avatarLink).toHaveStyle({ width: 48, height: 48 });
+    await fireEvent.press(avatarLink);
 
     expect(mockPush).toHaveBeenCalledTimes(2);
     expect(mockPush).toHaveBeenCalledWith('/users/u1');
@@ -149,13 +153,23 @@ describe('PostCard', () => {
   });
 });
 
-describe('PostGameLink', () => {
+describe('GameEmbed', () => {
   it('opens the game page', async () => {
-    await render(<PostGameLink game={hades} />);
+    await render(<GameEmbed game={hades} />);
 
-    await fireEvent.press(screen.getByLabelText('Abrir jogo Hades'));
+    await fireEvent.press(screen.getByRole('link', { name: 'Abrir jogo Hades' }));
 
     expect(mockPush).toHaveBeenCalledWith('/games/11');
+  });
+
+  it('shows the playthrough platform, or else the first platform of the game', async () => {
+    const game = { ...hades, platforms: ['PC', 'Switch'] };
+    await render(<GameEmbed game={game} platform="PS5" />);
+    expect(screen.getByText('PS5')).toBeOnTheScreen();
+
+    await screen.rerender(<GameEmbed game={game} />);
+    expect(screen.getByText('PC')).toBeOnTheScreen();
+    expect(screen.queryByText('Switch')).toBeNull();
   });
 });
 
@@ -211,66 +225,67 @@ describe('PostActions', () => {
   });
 });
 
-describe('ActivityCard', () => {
+describe('PostFeedItem for an activity', () => {
   it('shows the author, content, status label and relative time', async () => {
     const activity = post({
       type: 'activity',
       activityStatus: 'completed',
       content: 'zerou Hades',
     });
-    await render(<ActivityCard post={activity} />);
+    await render(<PostFeedItem post={activity} />);
 
-    expect(screen.getByText(/Ana Souza/)).toBeOnTheScreen();
-    expect(screen.getByText(/zerou Hades/)).toBeOnTheScreen();
+    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
+    expect(screen.getByText('zerou Hades')).toBeOnTheScreen();
     expect(screen.getByText('Concluído')).toBeOnTheScreen();
-    expect(screen.getByText('há 5 min')).toBeOnTheScreen();
+    expect(screen.getByText('· há 5 min')).toBeOnTheScreen();
     expect(screen.getByLabelText('Abrir jogo Hades')).toBeOnTheScreen();
   });
 
-  it('hides the game link when asked to', async () => {
-    await render(<ActivityCard post={post({ type: 'activity' })} hideGame />);
+  it('hides the game card when asked to', async () => {
+    await render(<PostFeedItem post={post({ type: 'activity' })} hideGame />);
 
     expect(screen.queryByLabelText(/Abrir jogo/)).toBeNull();
   });
 
   it('exposes the sentence, status and time in the accessibility label', async () => {
     const activity = post({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
-    await render(<ActivityCard post={activity} />);
+    await render(<PostFeedItem post={activity} />);
 
     expect(screen.getByLabelText('Ana Souza zerou Hades, Concluído, há 5 min')).toBeOnTheScreen();
   });
 
   it('leaves the status out of the label without an activity status', async () => {
     const activity = post({ type: 'activity', activityStatus: null, content: 'zerou Hades' });
-    await render(<ActivityCard post={activity} />);
+    await render(<PostFeedItem post={activity} />);
 
     expect(screen.getByLabelText('Ana Souza zerou Hades, há 5 min')).toBeOnTheScreen();
   });
 
-  it('shows no status chip without an activity status', async () => {
-    await render(<ActivityCard post={post({ type: 'activity', activityStatus: null })} />);
+  it('shows no status line without an activity status', async () => {
+    await render(<PostFeedItem post={post({ type: 'activity', activityStatus: null })} />);
 
+    expect(screen.queryByTestId('activity-status')).toBeNull();
     expect(screen.queryByText('Concluído')).toBeNull();
     expect(screen.queryByText('Jogando')).toBeNull();
   });
 
-  it('calls onPress when the card is pressed', async () => {
+  it('calls onPress when the body is pressed', async () => {
     const onPress = jest.fn();
-    await render(<ActivityCard post={post({ type: 'activity' })} onPress={onPress} />);
+    await render(<PostFeedItem post={post({ type: 'activity' })} onPress={onPress} />);
 
     await fireEvent.press(screen.getByLabelText(/^Ana Souza /));
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the post from the comment counter only when the card is pressable', async () => {
+  it('opens the post from the comment counter only when the row is pressable', async () => {
     const onPress = jest.fn();
     const activity = post({ type: 'activity' });
-    await render(<ActivityCard post={activity} onPress={onPress} />);
+    await render(<PostFeedItem post={activity} onPress={onPress} />);
     await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
     expect(onPress).toHaveBeenCalledTimes(1);
 
-    await screen.rerender(<ActivityCard post={activity} />);
+    await screen.rerender(<PostFeedItem post={activity} />);
     expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
   });
@@ -278,7 +293,7 @@ describe('ActivityCard', () => {
   it('opens the author profile from the avatar and from the name without opening the post', async () => {
     const onPress = jest.fn();
     const activity = post({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
-    await render(<ActivityCard post={activity} onPress={onPress} />);
+    await render(<PostFeedItem post={activity} onPress={onPress} />);
 
     // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
     const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
@@ -333,7 +348,21 @@ describe('PostList', () => {
     expect(screen.getByText('Jogando')).toBeOnTheScreen();
   });
 
-  it('opens the post when a card is pressed', async () => {
+  it('lists full-width rows that draw their own lines, none above the first', async () => {
+    const items = [post({ id: 'a' }), post({ id: 'b' })];
+    await render(<PostList query={feedQuery({}, items)} />);
+
+    const list = screen.getByTestId('post-list');
+    expect(list.props.ItemSeparatorComponent).toBeUndefined();
+    expect(list.props.contentContainerStyle).not.toContainEqual(
+      expect.objectContaining({ padding: expect.any(Number) }),
+    );
+    const [first, second] = screen.getAllByTestId('post-feed-item');
+    expect(first).not.toHaveStyle({ borderTopWidth: StyleSheet.hairlineWidth });
+    expect(second).toHaveStyle({ borderTopWidth: StyleSheet.hairlineWidth });
+  });
+
+  it('opens the post when a row is pressed', async () => {
     await render(<PostList query={feedQuery()} />);
 
     await fireEvent.press(screen.getByLabelText(POST_LABEL));

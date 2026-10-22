@@ -5,18 +5,18 @@ import Animated, { useAnimatedScrollHandler, useComposedEventHandler } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen, Skeleton } from '@/components';
+import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen } from '@/components';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { colors, radii, space } from '@/theme/tokens';
+import { colors } from '@/theme/tokens';
 
 import { HomeHeader } from './HomeHeader';
+import { PostFeedItemSkeleton } from './PostFeedItem';
 import { PostList } from './PostList';
 import { useFeed } from './queries';
 import type { FeedScope, Post } from './types';
 
 const SKELETON_ROWS = ['0', '1', '2'];
-const AVATAR_SIZE = 40;
 /** The header's bar below the status bar, and the scope tabs under it (both 48 dp). */
 const HEADER_BAR_HEIGHT = 48;
 const TAB_BAR_HEIGHT = 48;
@@ -26,15 +26,9 @@ const EXPLORE_PEOPLE = '/explore?tab=people' as Href;
 
 function FeedSkeleton() {
   return (
-    <View style={styles.skeleton}>
-      {SKELETON_ROWS.map((id) => (
-        <View key={id} testID="feed-skeleton-row" style={styles.skeletonRow}>
-          <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} radius={AVATAR_SIZE / 2} />
-          <View style={styles.skeletonText}>
-            <Skeleton width="40%" height={14} radius={radii.xs} />
-            <Skeleton height={14} radius={radii.xs} />
-          </View>
-        </View>
+    <View>
+      {SKELETON_ROWS.map((id, index) => (
+        <PostFeedItemSkeleton key={id} testID="feed-skeleton-row" hideTopBorder={index === 0} />
       ))}
     </View>
   );
@@ -195,7 +189,4 @@ const styles = StyleSheet.create({
     zIndex: 2,
     backgroundColor: colors.bg,
   },
-  skeleton: { gap: space.lg },
-  skeletonRow: { flexDirection: 'row', gap: space.md },
-  skeletonText: { flex: 1, gap: space.sm },
 });

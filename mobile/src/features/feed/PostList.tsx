@@ -16,8 +16,7 @@ import { Button, Text } from '@/components';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
 
-import { ActivityCard } from './ActivityCard';
-import { PostCard } from './PostCard';
+import { PostFeedItem } from './PostFeedItem';
 import { postKey, type Post, type PostPage } from './types';
 
 type Slot = ReactElement | ComponentType;
@@ -30,7 +29,7 @@ export type PostListProps = {
   onRefresh?: () => void | Promise<unknown>;
   /** Defaults to opening the post's page. */
   onPressPost?: (post: Post) => void;
-  /** Bottom padding of the content, e.g. to keep the last card clear of a floating button. */
+  /** Bottom padding of the content, e.g. to keep the last row clear of a floating button. */
   bottomInset?: number;
   /**
    * Room above the content for a header floating over the list; the pull-to-refresh spinner
@@ -76,12 +75,10 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Post }) =>
-      item.type === 'activity' ? (
-        <ActivityCard post={item} onPress={() => open(item)} />
-      ) : (
-        <PostCard post={item} onPress={() => open(item)} />
-      ),
+    // Rows draw their own top line; the first one sits under the list's header.
+    ({ item, index }: { item: Post; index: number }) => (
+      <PostFeedItem post={item} hideTopBorder={index === 0} onPress={() => open(item)} />
+    ),
     [open],
   );
 
@@ -113,7 +110,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   const contentStyle = useMemo(
     () => [
       styles.content,
-      topInset > 0 && { paddingTop: space.lg + topInset },
+      topInset > 0 && { paddingTop: topInset },
       bottomInset !== undefined && { paddingBottom: bottomInset },
     ],
     [bottomInset, topInset],
@@ -152,7 +149,6 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       data={posts}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
-      ItemSeparatorComponent={Separator}
       contentContainerStyle={contentStyle}
       onScroll={onScroll}
       scrollEventThrottle={onScroll ? 16 : undefined}
@@ -169,13 +165,9 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   );
 });
 
-function Separator() {
-  return <View style={styles.separator} />;
-}
-
 const styles = StyleSheet.create({
-  content: { padding: space.lg, flexGrow: 1 },
-  separator: { height: space.md },
-  footer: { alignItems: 'center', gap: space.md, paddingVertical: space._2xl },
+  // Rows are full width; they pad themselves.
+  content: { flexGrow: 1 },
+  footer: { alignItems: 'center', gap: space.md, paddingVertical: space._2xl, paddingHorizontal: space.lg },
   footerText: { textAlign: 'center' },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type ReactElement } from 'react';
+import { useCallback, useRef, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components';
@@ -31,7 +31,6 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
   const listRef = useRef<FlatList<Post>>(null);
   const { refetch } = query;
 
-  const header = useMemo(() => <View style={styles.header}>{top}</View>, [top]);
   const refresh = useCallback(
     () => refreshAll([refetchProfile, () => refetch()]),
     [refetchProfile, refetch],
@@ -60,7 +59,7 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
       <PostList
         ref={listRef}
         query={query}
-        ListHeaderComponent={header}
+        ListHeaderComponent={top}
         ListEmptyComponent={empty}
         onRefresh={refresh}
       />
@@ -70,7 +69,5 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
 }
 
 const styles = StyleSheet.create({
-  // The list pads its content on every side; undo the top and add the gap to the first card.
-  header: { marginHorizontal: -space.lg, marginTop: -space.lg, marginBottom: space.md },
   loading: { padding: space._2xl, alignItems: 'center' },
 });

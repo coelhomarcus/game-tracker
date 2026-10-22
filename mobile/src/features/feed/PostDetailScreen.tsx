@@ -13,11 +13,10 @@ import { ApiError } from '@/lib/http/errors';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, space } from '@/theme/tokens';
 
-import { ActivityCard } from './ActivityCard';
 import { CommentComposer, type ReplyTarget } from './CommentComposer';
 import { CommentItem } from './CommentItem';
 import { flattenComments, type FlatComment } from './flattenComments';
-import { PostCard } from './PostCard';
+import { PostFeedItem } from './PostFeedItem';
 import { useAddComment, useComments, usePost, useToggleCommentLike } from './queries';
 import type { Post } from './types';
 
@@ -139,7 +138,10 @@ function PostBody({ post }: { post: Post }) {
 
   const header = (
     <View style={styles.header}>
-      {post.type === 'activity' ? <ActivityCard post={post} /> : <PostCard post={post} />}
+      {/* Full width, past the list's padding, until the thread gets its own anchor post. */}
+      <View style={styles.post}>
+        <PostFeedItem post={post} hideTopBorder />
+      </View>
       <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {`Comentários (${post.commentCount})`}
       </Text>
@@ -181,6 +183,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   content: { padding: space.lg, flexGrow: 1 },
   header: { gap: space.lg, paddingBottom: space.lg },
+  post: { marginHorizontal: -space.lg, marginTop: -space.lg },
   separator: { height: space.md },
   empty: { textAlign: 'center', padding: space._2xl },
 });
