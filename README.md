@@ -105,15 +105,24 @@ Set these variables on the Dokploy backend service (never commit secrets):
 
 ## APK releases
 
-Automatic APK releases are deferred: pushes to `main` publish nothing until an
-Expo release workflow is added. It will build with `expo prebuild` and Gradle,
-take the version from `.github/scripts/next-version.mjs`, keep the
-`applicationId` `com.marcuscoelho.gametracker`, and refuse debug-signed APKs.
-It will need the repository variable `API_URL` (HTTPS API URL without `/api`)
-and the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+Every push to `main` runs `.github/workflows/android-release.yml`: it runs the
+mobile quality gate, calculates the next SemVer version from the Conventional
+Commits since the last tag (`.github/scripts/next-version.mjs`), builds the
+app with `expo prebuild` and Gradle, signs it, creates the `vX.Y.Z` tag, and
+publishes a GitHub Release with `gametracker-X.Y.Z.apk`. The workflow refuses
+debug-signed APKs. Pull Requests that touch `mobile/` build and sign the APK to
+catch problems early, but publish nothing.
+
+The `applicationId` stays `com.marcuscoelho.gametracker` and the same keystore
+is used, so each APK updates the installed app in place. The Android
+`versionCode` is the Actions run number plus 100, which keeps it above the
+first Flutter release.
+
+It needs the repository variable `API_URL` (HTTPS API URL without `/api`) and
+the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
 `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
 
-Create the release keystore once and keep it backed up, since future APKs must
+Create the release keystore once and keep it backed up, since every APK must
 use the same one:
 
 ```bash

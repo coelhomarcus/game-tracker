@@ -13,7 +13,7 @@ not commercial and no licensing work is required as part of normal changes.
 - `backend/`: Express 5 API written in TypeScript, using Drizzle ORM with PostgreSQL and Redis for realtime features.
 - `backend/drizzle/`: Database migrations committed to the repository.
 - `.github/workflows/`: CI workflows for the backend and the mobile app.
-- `.github/scripts/next-version.mjs`: SemVer calculator kept for the future Expo release workflow.
+- `.github/scripts/next-version.mjs`: SemVer calculator used by the Android release workflow.
 - `docker-compose.dev.yml`: Local PostgreSQL and Redis services.
 - `docker-compose.test.yml`: Disposable PostgreSQL and Redis services for tests.
 
@@ -115,8 +115,8 @@ use Semantic Versioning, calculated from the commit history:
 - other changes increment the patch version.
 
 Release tags use the `vX.Y.Z` format. The first release uses the current
-`1.0.0` baseline. Automatic releases are currently deferred (see Android
-releases below); no release is generated after pushes to `main` for now.
+`1.0.0` baseline. A release is generated automatically after every push to
+`main` (see Android releases below).
 
 ## Dokploy deployment
 
@@ -137,23 +137,26 @@ Dokploy and must never be committed to the repository.
 
 ## Android releases
 
-The automatic APK release is deferred: pushes to `main` publish no APK until an
-Expo release workflow is added. That workflow will build the APK with
-`expo prebuild` and Gradle, compute the version with
-`.github/scripts/next-version.mjs`, and keep the same Android `applicationId`
-(`com.marcuscoelho.gametracker`) so new APKs update the installed app in place.
+`.github/workflows/android-release.yml` runs on every push to `main`: quality
+gate (typecheck, lint, tests), version from `.github/scripts/next-version.mjs`,
+`expo prebuild` and Gradle `assembleRelease`, signature check, `vX.Y.Z` tag, and
+a GitHub Release with `gametracker-X.Y.Z.apk`. The Android build name is the
+release version and the build number (`versionCode`) is the GitHub Actions run
+number plus 100. The `applicationId` stays `com.marcuscoelho.gametracker` so new
+APKs update the installed app in place.
 
-For the future release workflow, the repository variable `API_URL` and these
-GitHub Actions secrets remain reserved:
+The workflow needs the repository variable `API_URL` and these GitHub Actions
+secrets:
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-The release workflow must refuse to publish an APK signed with the Android
-debug key, and must run only for pushes to `main`; Pull Requests run
-validation workflows but do not publish releases.
+It refuses to publish an APK signed with the Android debug key (signing is
+configured by `mobile/plugins/withReleaseSigning.js`; the version and build number
+come from `mobile/app.config.js`). It publishes only for pushes to `main`; Pull
+Requests that touch `mobile/` only build and sign the APK.
 
 Android push notifications need a Firebase `google-services.json` configured
 through `android.googleServicesFile` in `mobile/app.json`; without it the app
