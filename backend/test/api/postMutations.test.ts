@@ -401,6 +401,47 @@ describe('post images', () => {
     assert.equal((await send('POST', '/posts', user, { content: 'x', imageUrl: img.url, images: [entry] })).status, 400);
   });
 
+  it('accepts a post with images and no text, and every reader copes with the empty content', async () => {
+    const img = await uploadImage(user);
+    const entry = { url: img.url, width: img.width, height: img.height };
+    for (const body of [{ content: '', images: [entry] }, { content: '   ', images: [entry] }, { images: [entry] }]) {
+      const created = await createPost(user, body);
+      assert.equal(created.content, '');
+      assert.equal(created.images.length, 1);
+    }
+    const legacy = await createPost(user, { content: '', imageUrl: img.url });
+    assert.equal(legacy.images.length, 1);
+
+    // O texto é aparado: o que sobra de espaços não vai para o banco.
+    assert.equal((await createPost(user, { content: '  oi  ' })).content, 'oi');
+
+    const imageOnly = await createPost(user, { images: [entry] });
+    const read = await getPost(imageOnly.id, other);
+    assert.equal(read.content, '');
+    const quote = await createPost(other, { content: 'citando só a foto', quotedPostId: imageOnly.id });
+    assert.equal(quote.quotedPost.content, '');
+    assert.equal(quote.quotedPost.images.length, 1);
+
+    // A notificação sai sem trecho (nem "null" nem texto vazio).
+    assert.equal((await send('POST', `/posts/${imageOnly.id}/like`, other)).status, 204);
+    const likes = await notificationsOf(user, 'like');
+    assert.equal(likes.find((n) => n.postId === imageOnly.id)!.excerpt, null);
+  });
+
+  it('rejects an empty post without images, and a quote alone does not count', async () => {
+    for (const body of [{}, { content: '' }, { content: '   \n ' }, { content: 'x'.repeat(501) }, { content: 'x'.repeat(501), images: [] }]) {
+      const res = await send('POST', '/posts', user, body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal(res.body.error.code, 'validation_error');
+    }
+    const target = await createPost(user, { content: 'alvo da citação' });
+    const quoteOnly = await send('POST', '/posts', other, { quotedPostId: target.id });
+    assert.equal(quoteOnly.status, 400);
+    const quoteEmpty = await send('POST', '/posts', other, { content: '  ', quotedPostId: target.id, images: [] });
+    assert.equal(quoteEmpty.status, 400);
+    assert.equal(await db.$count(posts, eq(posts.quotedPostId, target.id)), 0);
+  });
+
   it('an empty list is the same as no images', async () => {
     const none = await createPost(user, { content: 'sem fotos', images: [] });
     assert.deepEqual(none.images, []);
