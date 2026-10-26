@@ -331,6 +331,14 @@ describe('PagerWithHeader', () => {
     expect(screen.getByTestId('pager')).not.toHaveStyle({ opacity: 0 });
   });
 
+  it('shows the pages once the header reports a layout, even at height 0', async () => {
+    await renderPager({ measure: false });
+    expect(screen.getByTestId('pager')).toHaveStyle({ opacity: 0 });
+
+    await layout('pager-header-content', 0);
+    expect(screen.getByTestId('pager')).not.toHaveStyle({ opacity: 0 });
+  });
+
   it('switches pages with a swipe: the neighbour mounts in place and takes the header', async () => {
     await renderPager();
     await scroll('a', 600);

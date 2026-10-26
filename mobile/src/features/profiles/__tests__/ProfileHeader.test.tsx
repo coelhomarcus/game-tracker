@@ -10,7 +10,7 @@ import { ProfileHeader, ProfileHeaderSkeleton } from '../ProfileHeader';
 import type { UserProfile } from '../types';
 
 const mockMutate = jest.fn();
-const mockRouter = { push: jest.fn(), back: jest.fn() };
+const mockRouter = { push: jest.fn(), back: jest.fn(), navigate: jest.fn(), canGoBack: jest.fn() };
 
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
@@ -55,6 +55,7 @@ async function renderHeader(overrides: Partial<UserProfile> = {}, own = false) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRouter.canGoBack.mockReturnValue(true);
   jest.mocked(Clipboard.setStringAsync).mockResolvedValue(true);
   useSession.setState({
     status: 'signedIn',
@@ -148,7 +149,7 @@ describe('identity', () => {
 
     expect(screen.getByTestId('profile-header').props.pointerEvents).toBe('box-none');
     expect(screen.getByTestId('profile-actions').props.pointerEvents).toBe('box-none');
-    expect(screen.getByLabelText('Sem capa').props.pointerEvents).toBe('box-none');
+    expect(screen.getByTestId('profile-banner-empty', { includeHiddenElements: true }).props.pointerEvents).toBe('box-none');
     expect(screen.getByText('Segue você').parent?.parent?.props.pointerEvents).toBe('box-none');
   });
 });
@@ -229,6 +230,23 @@ describe('actions', () => {
     expect(back).toHaveStyle({ width: 48, height: 48 });
     await fireEvent.press(back);
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
+  it('goes home from the overlay button when nothing is below the profile', async () => {
+    mockRouter.canGoBack.mockReturnValue(false);
+    await renderHeader();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('gives the display name a header role', async () => {
+    await renderHeader();
+
+    expect(screen.getByRole('header', { name: 'Ana Souza' })).toBeOnTheScreen();
   });
 });
 
@@ -300,13 +318,19 @@ describe('menu', () => {
 });
 
 describe('images', () => {
-  it('labels the missing banner and avatar and does not open them', async () => {
+  it('hides the missing banner and avatar from screen readers and does not open them', async () => {
     await renderHeader();
 
-    expect(screen.getByLabelText('Sem capa')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Sem foto')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByLabelText('Sem capa'));
-    await fireEvent.press(screen.getByLabelText('Sem foto'));
+    const banner = screen.getByTestId('profile-banner-empty', { includeHiddenElements: true });
+    const avatar = screen.getByTestId('profile-avatar-empty', { includeHiddenElements: true });
+    for (const placeholder of [banner, avatar]) {
+      expect(placeholder.props.accessibilityElementsHidden).toBe(true);
+      expect(placeholder.props.importantForAccessibility).toBe('no-hide-descendants');
+    }
+    expect(screen.queryByLabelText('Sem capa')).toBeNull();
+    expect(screen.queryByLabelText('Sem foto')).toBeNull();
+    await fireEvent.press(banner);
+    await fireEvent.press(avatar);
     expect(screen.queryByTestId('image-viewer')).toBeNull();
   });
 

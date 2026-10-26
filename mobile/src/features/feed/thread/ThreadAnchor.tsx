@@ -131,7 +131,13 @@ function AnchorFollowButton({ authorId, name }: { authorId: string; name: string
   if (isMe || following === undefined || followingAtOpen !== false) return null;
   return (
     <View style={styles.follow}>
-      <FollowButton userId={authorId} following={following} name={name} size="small" />
+      <FollowButton
+        userId={authorId}
+        following={following}
+        followsMe={profile.data?.followsMe}
+        name={name}
+        size="small"
+      />
     </View>
   );
 }

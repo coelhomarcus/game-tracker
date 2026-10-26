@@ -364,7 +364,8 @@ export function useDeleteComment(postId: string) {
         commentCount: Math.max(0, p.commentCount - removed),
       }));
       showToast("Comentário apagado");
-      void invalidateOwnReplies(client);
+      // Replies other people wrote to this comment went with it (cascade): any Respostas list may hold one.
+      void client.invalidateQueries({ queryKey: ["userReplies"] });
       whenIdle(client);
     },
     onError: (error) => showToast(authErrorMessage(error)),

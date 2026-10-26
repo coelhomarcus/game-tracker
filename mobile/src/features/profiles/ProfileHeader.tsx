@@ -40,7 +40,11 @@ export function ProfileBackButton({ hidden = false }: { hidden?: boolean }) {
       // Scrolled away under the compact header, whose own Voltar is the one to read.
       accessibilityElementsHidden={hidden}
       importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
-      onPress={() => router.back()}
+      onPress={() => {
+        // A profile opened from a deep link may have nothing below it.
+        if (router.canGoBack()) router.back();
+        else router.navigate('/');
+      }}
       style={[
         styles.back,
         { top: Math.max(0, insets.top + BACK_TOP - edge), left: Math.max(0, BACK_LEFT - edge) },
@@ -110,9 +114,9 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
         </Pressable>
       ) : (
         <View
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel="Sem capa"
+          testID="profile-banner-empty"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           pointerEvents="box-none"
           style={[styles.banner, styles.noBanner]}
         />
@@ -145,7 +149,7 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
           <ProfileMenu username={profile.username} />
         </View>
         <View pointerEvents="box-none" style={styles.identity}>
-          <Text size="_3xl" weight="bold" tone="high">
+          <Text size="_3xl" weight="bold" tone="high" accessibilityRole="header">
             {name}
           </Text>
           <View pointerEvents="box-none" style={styles.handleRow}>
@@ -185,9 +189,9 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
         </Pressable>
       ) : (
         <View
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel="Sem foto"
+          testID="profile-avatar-empty"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           pointerEvents="box-none"
           style={styles.avatarRing}
         >

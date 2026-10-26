@@ -128,30 +128,30 @@ export function ProfileGames({ userId, own, scroll, refetchProfile }: ProfileGam
 
   return (
     <CoverGrid<LibraryGroup>
-        data={overview.groups}
-        keyExtractor={(group) => group.game.id}
-        renderItem={(group, width) => (
-          <LibraryCard
-            group={group}
-            width={width}
-            sort="recent"
-            favorite={false}
-            showStatus={status === null}
-            onPress={openGame}
-          />
-        )}
-        inset={space.lg}
-        listRef={scroll.attachList as Ref<FlashListRef<LibraryGroup>>}
-        onScroll={scroll.onScroll}
-        topInset={scroll.topInset}
-        bottomInset={PROFILE_LIST_BOTTOM_INSET}
-        minContentHeight={scroll.minContentHeight}
-        initialOffset={scroll.initialOffset}
-        onRefresh={() => void refresh()}
-        refreshing={pulling}
-        ListHeaderComponent={header}
-        ListEmptyComponent={empty}
-      />
+      data={overview.groups}
+      keyExtractor={(group) => group.game.id}
+      renderItem={(group, width) => (
+        <LibraryCard
+          group={group}
+          width={width}
+          sort="recent"
+          favorite={false}
+          showStatus={status === null}
+          onPress={openGame}
+        />
+      )}
+      inset={space.lg}
+      listRef={scroll.attachList as Ref<FlashListRef<LibraryGroup>>}
+      onScroll={scroll.onScroll}
+      topInset={scroll.topInset}
+      bottomInset={PROFILE_LIST_BOTTOM_INSET}
+      minContentHeight={scroll.minContentHeight}
+      initialOffset={scroll.initialOffset}
+      onRefresh={() => void refresh()}
+      refreshing={pulling}
+      ListHeaderComponent={header}
+      ListEmptyComponent={empty}
+    />
   );
 }
 

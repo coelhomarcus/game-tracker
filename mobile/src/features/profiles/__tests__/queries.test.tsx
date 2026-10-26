@@ -595,6 +595,42 @@ describe('useToggleFollow in the follows lists', () => {
     });
   });
 
+  it('marks the followers of that person and the own following list stale once the follow settles, without refetching', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    seed(client);
+    client.setQueryData(['follows', 'u1', 'followers'], listOf(listPerson('u2')));
+    client.setQueryData(['follows', 'me', 'following'], listOf(listPerson('u2')));
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+    expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['follows', 'u1', 'followers'] }));
+
+    await act(async () => {
+      request.resolve();
+    });
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['follows', 'u1', 'followers'],
+        exact: true,
+        refetchType: 'none',
+      }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['follows', 'me', 'following'],
+      exact: true,
+      refetchType: 'none',
+    });
+    expect(client.getQueryState(['follows', 'u1', 'followers'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['follows', 'me', 'following'])?.isInvalidated).toBe(true);
+    // The open list keeps its rows; the next mount brings the true membership.
+    expect(rows(client, ['follows', 'me', 'following'])).toEqual([['u2', false]]);
+  });
+
   it('counts an unfollow from a list whose user has no cached profile', async () => {
     const request = deferred();
     mocked.setFollow.mockReturnValue(request.promise);

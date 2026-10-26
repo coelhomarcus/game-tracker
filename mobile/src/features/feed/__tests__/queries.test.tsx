@@ -1828,6 +1828,7 @@ describe("own profile tabs", () => {
     await act(async () => {
       await remove.result.current.mutateAsync(comment("c1"));
     });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ["userReplies", "me"], exact: true });
+    // The replies of other people went with the comment: every Respostas list is stale.
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userReplies"] });
   });
 });

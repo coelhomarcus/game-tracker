@@ -404,7 +404,9 @@ export function PagerWithHeader({
   };
   const measureHeader = (event: LayoutChangeEvent) => {
     measure(setHeaderHeight)(event);
-    if (event.nativeEvent.layout.height > 0) setHeaderMeasured(true);
+    // Any layout event counts, even at height 0: the pager must not stay hidden for a header
+    // that really is empty. Only a positive height replaces the estimate.
+    setHeaderMeasured(true);
   };
 
   const translateY = useDerivedValue(() =>

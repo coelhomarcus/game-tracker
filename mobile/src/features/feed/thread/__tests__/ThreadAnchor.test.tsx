@@ -54,14 +54,14 @@ function makePost(overrides: Partial<Post> = {}): Post {
 }
 
 /** The profile query of the author: whether the user follows them, or still loading. */
-function profileFollowing(following: boolean | undefined) {
+function profileFollowing(following: boolean | undefined, followsMe?: boolean) {
   mockedUseProfile.mockImplementation(
     (id) =>
       ({
         data:
           id === undefined || following === undefined
             ? undefined
-            : ({ id, isFollowedByMe: following } as UserProfile),
+            : ({ id, isFollowedByMe: following, followsMe } as UserProfile),
       }) as ReturnType<typeof useProfile>,
   );
 }
@@ -193,6 +193,13 @@ describe('ThreadAnchor follow button', () => {
 
     expect(mockedUseProfile).toHaveBeenCalledWith('u1');
     expect(follow).toHaveBeenCalledWith({ id: 'u1', follow: true });
+  });
+
+  it('says "Seguir de volta" to an author who follows the user', async () => {
+    profileFollowing(false, true);
+    await renderAnchor();
+
+    expect(screen.getByText('Seguir de volta')).toBeOnTheScreen();
   });
 
   it('shows no follow button on the own post, without asking for the profile', async () => {

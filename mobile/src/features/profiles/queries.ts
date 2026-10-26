@@ -193,6 +193,15 @@ function refreshProfiles(client: QueryClient, id: string) {
   for (const profileId of ids) {
     void client.invalidateQueries({ queryKey: ['profile', profileId], exact: true });
   }
+  // Following someone adds or removes a row in two lists that the optimistic write cannot build.
+  // They are only marked stale: a row the user just unfollowed stays in an open list, and the next
+  // mount or pull brings the true membership.
+  for (const key of [
+    ['follows', id, 'followers'],
+    ...(me === undefined ? [] : [['follows', me, 'following']]),
+  ]) {
+    void client.invalidateQueries({ queryKey: key, exact: true, refetchType: 'none' });
+  }
 }
 
 export type FollowVariables = {
