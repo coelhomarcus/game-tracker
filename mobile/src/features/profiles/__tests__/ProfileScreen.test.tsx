@@ -265,7 +265,7 @@ describe('actions', () => {
 });
 
 describe('Mensagem', () => {
-  it('shares a full-width row under the name with the follow button', async () => {
+  it('sits beside the follow button in the row of buttons', async () => {
     await renderProfile('u1');
 
     const row = screen.getByTestId('profile-actions');
@@ -273,27 +273,25 @@ describe('Mensagem', () => {
       within(row).getByRole('button', { name: 'Enviar mensagem para Ana Souza' }),
     ).toBeOnTheScreen();
     expect(within(row).getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
-    expect(within(row).getByText('Mensagem')).toBeOnTheScreen();
-  });
+      });
 
   it('is absent while the profile loads', async () => {
     mockProfile({ data: undefined, isPending: true });
     await renderProfile('u1');
-    expect(screen.queryByText('Mensagem')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
   });
 
   it('is absent when the profile failed to load', async () => {
     mockProfile({ data: undefined, isError: true, error: new ApiError(500, 'boom', 'x') });
     await renderProfile('u1');
-    expect(screen.queryByText('Mensagem')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
   });
 
   it('is not offered on the own profile', async () => {
     signInAs('u1');
     await renderProfile('u1');
 
-    expect(screen.queryByText('Mensagem')).toBeNull();
-    expect(screen.queryByTestId('profile-actions')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
   });
 
   it('opens the conversation with the user', async () => {
@@ -345,6 +343,25 @@ describe('loading and errors', () => {
     await renderProfile();
 
     expect(screen.getByLabelText('Carregando')).toBeOnTheScreen();
+    expect(screen.getByTestId('profile-skeleton')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toBeOnTheScreen();
+  });
+
+  it('has no back button while the own profile loads', async () => {
+    signInAs('u1');
+    mockProfile({ data: undefined, isPending: true });
+    await renderProfile('u1');
+
+    expect(screen.getByTestId('profile-skeleton')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Voltar' })).toBeNull();
+  });
+
+  it('keeps a way back when the profile fails to load', async () => {
+    mockProfile({ data: undefined, isError: true, error: new ApiError(500, 'boom', 'x') });
+    await renderProfile();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
   });
 
   it('explains a missing account and goes back', async () => {

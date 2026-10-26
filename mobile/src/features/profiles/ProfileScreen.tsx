@@ -1,17 +1,14 @@
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState, Screen, Tabs } from '@/components';
-import { displayName } from '@/features/feed/types';
+import { EmptyState, Screen, Tabs } from '@/components';
 import { useSession } from '@/features/auth';
 import { ApiError } from '@/lib/http/errors';
-import { colors, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
-import { FollowButton } from './FollowButton';
-import { MessageButton } from './MessageButton';
 import { ProfileGames } from './ProfileGames';
-import { ProfileHeader } from './ProfileHeader';
+import { ProfileBackButton, ProfileHeader, ProfileHeaderSkeleton } from './ProfileHeader';
 import { ProfilePosts } from './ProfilePosts';
 import { useProfile } from './queries';
 import type { UserProfile } from './types';
@@ -42,29 +39,9 @@ type TopProps = {
  * lists can use it as their header without it being remounted on every render.
  */
 function ProfileTop({ profile, own, tab, onSelectTab }: TopProps) {
-  const router = useRouter();
-  const name = displayName(profile);
-  // Two buttons beside the name would squeeze it; somebody else's profile gets its own row.
-  const actions = own ? (
-    <Button
-      label="Editar perfil"
-      color="secondary"
-      onPress={() => router.push('/me/edit' as Href)}
-    />
-  ) : undefined;
-  const actionsRow = own ? undefined : (
-    <View testID="profile-actions" style={styles.actions}>
-      <View style={styles.action}>
-        <FollowButton userId={profile.id} following={profile.isFollowedByMe} name={name} />
-      </View>
-      <View style={styles.action}>
-        <MessageButton userId={profile.id} name={name} />
-      </View>
-    </View>
-  );
   return (
     <View>
-      <ProfileHeader profile={profile} actions={actions} actionsRow={actionsRow} />
+      <ProfileHeader profile={profile} own={own} />
       <View style={styles.tabs}>
         <Tabs items={TABS} selected={tab} onSelect={onSelectTab} />
       </View>
@@ -100,6 +77,7 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
     const missing = profile.error instanceof ApiError && profile.error.status === 404;
     return (
       <Screen>
+        {own || missing ? null : <ProfileBackButton />}
         <View style={styles.center}>
           {missing ? (
             <EmptyState
@@ -120,9 +98,7 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
 
   return (
     <Screen>
-      <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
-      </View>
+      <ProfileHeaderSkeleton showBack={!own} />
     </Screen>
   );
 }
@@ -177,8 +153,6 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', gap: space.sm },
-  action: { flex: 1 },
   tabs: { paddingVertical: space.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

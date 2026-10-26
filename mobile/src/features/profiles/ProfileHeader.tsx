@@ -1,78 +1,182 @@
-import type { ReactNode } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, type Href } from 'expo-router';
+import { useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatar, Text } from '@/components';
-import { displayName } from '@/features/feed/types';
+import { Avatar, Button, Skeleton, Text } from '@/components';
+import { ImageViewer } from '@/features/feed/ImageViewer';
+import { displayName, type PostImage } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
-import { colors, space } from '@/theme/tokens';
+import { colors, radii, space } from '@/theme/tokens';
 
+import { FollowButton } from './FollowButton';
+import { MessageButton } from './MessageButton';
+import { ProfileMenu } from './ProfileMenu';
 import type { UserProfile } from './types';
 
-const AVATAR_SIZE = 88;
-const AVATAR_RING = 3;
-const AVATAR_OVERLAP = 44;
+const BANNER_HEIGHT = 150;
+const AVATAR_SIZE = 90;
+const AVATAR_RING = 2;
+const AVATAR_TOP = 104;
+const AVATAR_LEFT = 10;
+const BACK_CIRCLE = 31;
+const BACK_TOUCH = 48;
+const BACK_TOP = 6;
+const BACK_LEFT = 12;
+/** Keeps the buttons clear of the avatar that overlaps the body. */
+const BUTTONS_INDENT = 90;
+const BIO_LINES = 15;
+
+/** The 31 dp scrim circle over the banner, in a real 48 dp box so it is easy to hit. */
+export function ProfileBackButton() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const edge = (BACK_TOUCH - BACK_CIRCLE) / 2;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Voltar"
+      onPress={() => router.back()}
+      style={[styles.back, { top: insets.top + BACK_TOP - edge, left: BACK_LEFT - edge }]}
+    >
+      <View style={styles.backCircle}>
+        <Ionicons name="arrow-back" size={20} color={colors.onPrimary} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** What the header looks like while the profile loads. */
+export function ProfileHeaderSkeleton({ showBack }: { showBack: boolean }) {
+  return (
+    <View accessible accessibilityLabel="Carregando" testID="profile-skeleton">
+      <Skeleton height={BANNER_HEIGHT} radius={0} />
+      <View style={[styles.avatarRing, styles.skeletonAvatar]}>
+        <Skeleton.Circle size={AVATAR_SIZE} />
+      </View>
+      <View style={styles.body}>
+        <View style={styles.buttons}>
+          <Skeleton width={140} height={34} radius={17} />
+        </View>
+      </View>
+      {showBack ? <ProfileBackButton /> : null}
+    </View>
+  );
+}
 
 export type ProfileHeaderProps = {
   profile: UserProfile;
-  /** Rendered at the right of the name row (follow or edit button). */
-  actions?: ReactNode;
-  /** Rendered on a full-width row under the name row (follow and message on somebody else). */
-  actionsRow?: ReactNode;
+  /** The signed-in user's own profile: edit instead of follow and message, and no back button. */
+  own?: boolean;
 };
 
-export function ProfileHeader({ profile, actions, actionsRow }: ProfileHeaderProps) {
+export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
+  const router = useRouter();
+  const [viewing, setViewing] = useState<PostImage | null>(null);
   const name = displayName(profile);
   const bannerUrl = resolveImageUrl(profile.bannerUrl);
   const avatarUrl = resolveImageUrl(profile.avatarUrl);
   const bio = profile.bio?.trim();
 
+  const view = (url: string, alt: string) => setViewing({ url, width: null, height: null, alt });
+  const openCount = (kind: 'followers' | 'following') =>
+    router.push(`/users/${profile.id}/${kind}` as Href);
+
   return (
     <View>
-      {bannerUrl ? (
-        <Image
-          accessibilityRole="image"
+      {bannerUrl && profile.bannerUrl ? (
+        <Pressable
+          accessibilityRole="imagebutton"
           accessibilityLabel={`Capa de ${name}`}
-          source={{ uri: bannerUrl }}
-          style={styles.banner}
-        />
+          onPress={() => view(profile.bannerUrl as string, `Capa de ${name}`)}
+        >
+          <Image source={{ uri: bannerUrl }} style={styles.banner} />
+        </Pressable>
       ) : (
         <View
           accessible
           accessibilityRole="image"
           accessibilityLabel="Sem capa"
-          style={styles.banner}
+          style={[styles.banner, styles.noBanner]}
         />
       )}
-      <View style={styles.content}>
-        <View
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel={avatarUrl ? `Foto de ${name}` : 'Sem foto'}
-          style={styles.avatarRing}
-        >
-          <Avatar uri={avatarUrl} name={name} size={AVATAR_SIZE} />
+      <View style={styles.body}>
+        <View testID="profile-actions" style={styles.buttons}>
+          {own ? (
+            <Button
+              label="Editar perfil"
+              color="secondary"
+              size="small"
+              onPress={() => router.push('/me/edit' as Href)}
+            />
+          ) : (
+            <>
+              <MessageButton userId={profile.id} name={name} />
+              <FollowButton
+                userId={profile.id}
+                following={profile.isFollowedByMe}
+                followsMe={profile.followsMe}
+                name={name}
+                size="small"
+                showIcon
+                announce
+              />
+            </>
+          )}
+          <ProfileMenu username={profile.username} />
         </View>
-        <View style={styles.nameRow}>
-          <View style={styles.names}>
-            <Text size="_3xl" weight="bold" tone="high">
-              {name}
-            </Text>
+        <View style={styles.identity}>
+          <Text size="_3xl" weight="bold" tone="high">
+            {name}
+          </Text>
+          <View style={styles.handleRow}>
+            {profile.followsMe ? (
+              <View style={styles.followsYou}>
+                <Text size="sm">Segue você</Text>
+              </View>
+            ) : null}
             <Text tone="medium">{`@${profile.username}`}</Text>
           </View>
-          {actions}
         </View>
-        {actionsRow}
+        <View style={styles.counts}>
+          <Count
+            value={profile.followerCount}
+            word={plural(profile.followerCount, 'seguidor')}
+            onPress={() => openCount('followers')}
+          />
+          <Count value={profile.followingCount} word=" seguindo" onPress={() => openCount('following')} />
+          <Count value={profile.entryCount} word={plural(profile.entryCount, 'registro')} />
+        </View>
         {bio ? (
-          <Text testID="profile-bio">
+          <Text testID="profile-bio" selectable numberOfLines={BIO_LINES}>
             {bio}
           </Text>
         ) : null}
-        <View style={styles.counts}>
-          <Count value={profile.followerCount} word={plural(profile.followerCount, 'seguidor')} />
-          <Count value={profile.followingCount} word=" seguindo" />
-          <Count value={profile.entryCount} word={plural(profile.entryCount, 'registro')} />
-        </View>
       </View>
+      {avatarUrl && profile.avatarUrl ? (
+        <Pressable
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Foto de ${name}`}
+          onPress={() => view(profile.avatarUrl as string, `Foto de ${name}`)}
+          style={styles.avatarRing}
+        >
+          <Avatar uri={avatarUrl} name={name} size={AVATAR_SIZE} />
+        </Pressable>
+      ) : (
+        <View
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel="Sem foto"
+          style={styles.avatarRing}
+        >
+          <Avatar uri={null} name={name} size={AVATAR_SIZE} />
+        </View>
+      )}
+      {own ? null : <ProfileBackButton />}
+      {viewing ? (
+        <ImageViewer images={[viewing]} initialIndex={0} onClose={() => setViewing(null)} />
+      ) : null}
     </View>
   );
 }
@@ -81,39 +185,78 @@ function plural(value: number, singular: string): string {
   return value === 1 ? ` ${singular}` : ` ${singular}${singular.endsWith('r') ? 'es' : 's'}`;
 }
 
-function Count({ value, word }: { value: number; word: string }) {
-  return (
-    <Text size="sm" tone="medium">
-      <Text size="sm" weight="bold" tone="high">
+type CountProps = { value: number; word: string; onPress?: () => void };
+
+function Count({ value, word, onPress }: CountProps) {
+  const content = (
+    <Text>
+      <Text weight="semibold" tone="high">
         {value}
       </Text>
-      <Text size="sm" tone="medium">
-        {word}
-      </Text>
+      <Text tone="medium">{word}</Text>
     </Text>
+  );
+  if (!onPress) return content;
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${value}${word}`}
+      hitSlop={{ top: 12, bottom: 12, left: 4, right: 4 }}
+      onPress={onPress}
+    >
+      {content}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  banner: { width: '100%', aspectRatio: 3, backgroundColor: colors.bgContrast50 },
-  content: {
-    paddingHorizontal: space.lg,
-    paddingBottom: space.md,
-    gap: space.sm,
+  banner: { width: '100%', height: BANNER_HEIGHT },
+  noBanner: { backgroundColor: colors.bgContrast25 },
+  back: {
+    position: 'absolute',
+    width: BACK_TOUCH,
+    height: BACK_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backCircle: {
+    width: BACK_CIRCLE,
+    height: BACK_CIRCLE,
+    borderRadius: radii.full,
+    backgroundColor: colors.scrim,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarRing: {
-    alignSelf: 'flex-start',
-    marginTop: -(AVATAR_OVERLAP + AVATAR_RING),
+    position: 'absolute',
+    top: AVATAR_TOP,
+    left: AVATAR_LEFT,
     padding: AVATAR_RING,
-    borderRadius: (AVATAR_SIZE + AVATAR_RING * 2) / 2,
+    borderRadius: radii.full,
     backgroundColor: colors.bg,
   },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  names: { flex: 1 },
-  counts: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: space.lg,
-    rowGap: space.xs,
+  skeletonAvatar: { top: 110 },
+  body: {
+    paddingTop: space.md,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
+    gap: space.sm,
   },
+  buttons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: space.xs,
+    paddingLeft: BUTTONS_INDENT,
+    minHeight: 34,
+  },
+  identity: { gap: space._2xs },
+  handleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+  followsYou: {
+    backgroundColor: colors.bgContrast50,
+    borderRadius: radii.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  counts: { flexDirection: 'row', flexWrap: 'wrap', columnGap: space.sm, rowGap: space.xs },
 });

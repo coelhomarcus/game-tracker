@@ -67,6 +67,8 @@ export const colors = {
   selected: '#3f4b64',
   primary: primary[500],
   onPrimary: '#ffffff',
+  /** Half-transparent black behind controls drawn over images (the back button on a banner). */
+  scrim: '#00000080',
   like: primary[500],
   repost: positive500,
   /** Light red that reads at 4.5:1 on every tone; negative500/400 do not on dark surfaces. */

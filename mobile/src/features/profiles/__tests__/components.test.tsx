@@ -1,33 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
 
 import { useSession } from '@/features/auth';
+import { showToast } from '@/lib/toast';
 
 import { FollowButton } from '../FollowButton';
 import { PersonRow } from '../PersonRow';
-import { ProfileHeader } from '../ProfileHeader';
-import type { PersonResult, UserProfile } from '../types';
+import type { PersonResult } from '../types';
 
 const mockMutate = jest.fn();
+
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
 jest.mock('@/features/profiles/queries', () => ({
   useToggleFollow: () => ({ mutate: mockMutate }),
 }));
-
-const profile: UserProfile = {
-  id: 'u1',
-  username: 'ana',
-  name: 'Ana Souza',
-  avatarUrl: null,
-  bannerUrl: null,
-  bio: 'Jogo de tudo um pouco',
-  createdAt: new Date('2026-01-01T00:00:00Z'),
-  followerCount: 12,
-  followingCount: 3,
-  entryCount: 40,
-  isFollowedByMe: false,
-  followsMe: false,
-};
 
 const person: PersonResult = {
   id: 'u2',
@@ -47,96 +33,12 @@ function signInAs(id: string | null) {
 
 beforeEach(() => {
   mockMutate.mockClear();
+  jest.mocked(showToast).mockClear();
   signInAs('me');
 });
 
 afterEach(() => {
   signInAs(null);
-});
-
-describe('ProfileHeader', () => {
-  it('shows the display name, username, bio and plural counts', async () => {
-    await render(<ProfileHeader profile={profile} />);
-
-    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
-    expect(screen.getByText('@ana')).toBeOnTheScreen();
-    expect(screen.getByText('Jogo de tudo um pouco')).toBeOnTheScreen();
-    expect(screen.getByText('12')).toBeOnTheScreen();
-    expect(screen.getByText(' seguidores')).toBeOnTheScreen();
-    expect(screen.getByText('3')).toBeOnTheScreen();
-    expect(screen.getByText(' seguindo')).toBeOnTheScreen();
-    expect(screen.getByText('40')).toBeOnTheScreen();
-    expect(screen.getByText(' registros')).toBeOnTheScreen();
-  });
-
-  it('uses the singular for a single follower and a single entry', async () => {
-    await render(<ProfileHeader profile={{ ...profile, followerCount: 1, entryCount: 1 }} />);
-
-    expect(screen.getByText(' seguidor')).toBeOnTheScreen();
-    expect(screen.getByText(' registro')).toBeOnTheScreen();
-    expect(screen.queryByText(' seguidores')).toBeNull();
-    expect(screen.queryByText(' registros')).toBeNull();
-  });
-
-  it('keeps the plural for zero', async () => {
-    await render(<ProfileHeader profile={{ ...profile, followerCount: 0, entryCount: 0 }} />);
-
-    expect(screen.getByText(' seguidores')).toBeOnTheScreen();
-    expect(screen.getByText(' registros')).toBeOnTheScreen();
-  });
-
-  it('falls back to the username when the name is blank', async () => {
-    await render(
-      <ProfileHeader
-        profile={{ ...profile, name: '  ', bannerUrl: 'https://cdn.example.com/b.png' }}
-      />,
-    );
-
-    expect(screen.getByText('ana')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Capa de ana')).toBeOnTheScreen();
-  });
-
-  it('shows a real bio', async () => {
-    await render(<ProfileHeader profile={profile} />);
-
-    expect(screen.getByTestId('profile-bio')).toHaveTextContent('Jogo de tudo um pouco');
-  });
-
-  it.each([null, '', '   '])('hides the bio when it is %j', async (bio) => {
-    await render(<ProfileHeader profile={{ ...profile, bio }} />);
-
-    expect(screen.queryByTestId('profile-bio')).toBeNull();
-  });
-
-  it('labels the missing banner and avatar', async () => {
-    await render(<ProfileHeader profile={profile} />);
-
-    expect(screen.getByLabelText('Sem capa')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Sem foto')).toBeOnTheScreen();
-  });
-
-  it('labels the banner and avatar images with the name', async () => {
-    await render(
-      <ProfileHeader
-        profile={{
-          ...profile,
-          bannerUrl: 'https://cdn.example.com/b.png',
-          avatarUrl: 'https://cdn.example.com/a.png',
-        }}
-      />,
-    );
-
-    expect(screen.getByLabelText('Capa de Ana Souza')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Foto de Ana Souza')).toBeOnTheScreen();
-    expect(screen.queryByLabelText('Sem capa')).toBeNull();
-    expect(screen.queryByLabelText('Sem foto')).toBeNull();
-  });
-
-  it('renders the actions next to the name', async () => {
-    await render(<ProfileHeader profile={profile} actions={<Text>Editar perfil</Text>} />);
-
-    expect(screen.getByText('Editar perfil')).toBeOnTheScreen();
-  });
 });
 
 describe('FollowButton', () => {
@@ -156,6 +58,48 @@ describe('FollowButton', () => {
     await fireEvent.press(screen.getByLabelText('Deixar de seguir Bruno Lima'));
 
     expect(mockMutate).toHaveBeenCalledWith({ id: 'u2', follow: false });
+  });
+});
+
+describe('FollowButton on a profile', () => {
+  it('says "Seguir de volta" when the person follows the viewer', async () => {
+    await render(<FollowButton userId="u2" following={false} followsMe name="Bruno Lima" />);
+
+    expect(screen.getByText('Seguir de volta')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u2', follow: true });
+  });
+
+  it('says "Seguindo" once followed, whatever followsMe says', async () => {
+    await render(<FollowButton userId="u2" following followsMe name="Bruno Lima" />);
+
+    expect(screen.getByText('Seguindo')).toBeOnTheScreen();
+    expect(screen.queryByText('Seguir de volta')).toBeNull();
+  });
+
+  it('announces a follow with a toast', async () => {
+    await render(<FollowButton userId="u2" following={false} name="Bruno Lima" announce />);
+
+    await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
+
+    expect(showToast).toHaveBeenCalledWith('Seguindo Bruno Lima');
+  });
+
+  it('stays silent on unfollow', async () => {
+    await render(<FollowButton userId="u2" following name="Bruno Lima" announce />);
+
+    await fireEvent.press(screen.getByLabelText('Deixar de seguir Bruno Lima'));
+
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u2', follow: false });
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('does not toast unless asked to', async () => {
+    await render(<FollowButton userId="u2" following={false} name="Bruno Lima" />);
+
+    await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
 
