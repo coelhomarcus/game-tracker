@@ -262,12 +262,12 @@ describe('Composer layout', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the image buttons as disabled 48 dp placeholders', async () => {
+  it('shows the image buttons as enabled 48 dp boxes', async () => {
     await renderScreen();
 
     for (const name of ['Adicionar imagens', 'Tirar foto']) {
       const button = screen.getByRole('button', { name });
-      expect(button).toBeDisabled();
+      expect(button).toBeEnabled();
       expect(button).toHaveStyle({ width: 48, height: 48 });
     }
   });

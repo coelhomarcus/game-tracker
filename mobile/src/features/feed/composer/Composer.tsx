@@ -34,6 +34,7 @@ import { useCreatePost, usePost } from '../queries';
 import { displayName, isPostId, toQuotedPost, type QuotedPost as QuotedPostData } from '../types';
 import { measurePost, POST_MAX_LENGTH } from './CharProgress';
 import { ComposerFooter } from './ComposerFooter';
+import { ComposerGallery } from './ComposerGallery';
 import { ComposerTopBar } from './ComposerTopBar';
 import {
   composerKind,
@@ -44,6 +45,7 @@ import {
   type ComposerKind,
 } from './composerDraft';
 import { DiscardDraftPrompt } from './DiscardDraftPrompt';
+import { pickFromGallery, takePhoto, useComposerImages, type PickedAsset } from './ImagePicking';
 
 const AVATAR_SIZE = 42;
 const GAME_COVER_WIDTH = 36;
@@ -269,6 +271,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const [finished, setFinished] = useState(false);
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  const images = useComposerImages(restored?.images ?? []);
   // A newer choice or a removal makes the answer of an older lookup stale.
   const lookup = useRef(0);
   // Set synchronously, so a second tap before the next render does not publish twice.
@@ -295,9 +298,11 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     link: draftLink(override),
     entryId: linkedGame ? entryId : null,
     quotedPostId: quoteId,
-    images: [],
+    // Only what finished uploading can be sent again later.
+    images: images.uploaded,
   };
-  const hasContent = draftHasContent(draft);
+  // An image still uploading or failed is not in the draft, but leaving would lose it.
+  const hasContent = draftHasContent(draft) || images.items.length > 0;
 
   // Keeps the latest draft for the timer and for leaving, which run after this render.
   const latest = useRef(draft);
@@ -369,6 +374,14 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
 
   async function publish() {
     if (!canPublish || sending.current) return;
+    if (images.uploading) {
+      showToast('Aguarde o envio das imagens');
+      return;
+    }
+    if (images.failed) {
+      showToast('Remova ou tente de novo as imagens que falharam');
+      return;
+    }
     sending.current = true;
     setApiError(null);
     setPublishing(true);
@@ -378,6 +391,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
         ...(linkedGame ? { gameId: linkedGame.id } : {}),
         ...(chosenRecord ? { gameEntryId: chosenRecord.id } : {}),
         ...(quoted ? { quotedPostId: quoted.id } : {}),
+        ...(images.uploaded.length > 0 ? { images: images.uploaded } : {}),
       });
     } catch (error) {
       sending.current = false;
@@ -391,6 +405,20 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     disablePrevention();
     showToast('Publicado');
     router.back();
+  }
+
+  /** The system picker takes over the screen; one at a time. */
+  const picking = useRef(false);
+  async function pickImages(pick: () => Promise<PickedAsset[]>) {
+    if (picking.current) return;
+    picking.current = true;
+    try {
+      images.add(await pick());
+    } catch {
+      showToast('Não foi possível abrir as imagens. Tente de novo.');
+    } finally {
+      picking.current = false;
+    }
   }
 
   function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
@@ -449,6 +477,16 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
               style={styles.input}
             />
           </View>
+
+          {images.items.length > 0 ? (
+            <View style={styles.gallery}>
+              <ComposerGallery
+                images={images.items}
+                onRemove={images.remove}
+                onRetry={images.retry}
+              />
+            </View>
+          ) : null}
 
           <View style={styles.embeds}>
             {quote ? <QuotePreview quote={quote} /> : null}
@@ -523,7 +561,12 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
           )}
         </ScrollView>
 
-        <ComposerFooter count={count} />
+        <ComposerFooter
+          count={count}
+          imagesFull={images.full}
+          onPickImages={() => void pickImages(() => pickFromGallery(images.remaining))}
+          onTakePhoto={() => void pickImages(takePhoto)}
+        />
       </KeyboardAvoidingView>
 
       <GamePickerSheet
@@ -562,6 +605,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlignVertical: 'top',
   },
+  gallery: { marginHorizontal: space.lg, marginTop: space.md },
   embeds: { marginHorizontal: space.lg, marginTop: space.lg, gap: space.md },
   gameCard: {
     flexDirection: 'row',
@@ -575,11 +619,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgContrast25,
   },
   gameText: { flex: 1, gap: space._2xs },
-  remove: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  remove: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   removePressed: { backgroundColor: colors.bgContrast50 },
   records: { gap: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  pending: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  pending: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+  },
   failure: { gap: space.sm },
   pillsBar: { flexGrow: 0 },
   // The pill's 48 dp touch box already holds 7 dp of space above and below the visible pill, so

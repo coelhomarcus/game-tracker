@@ -13,6 +13,10 @@ const COUNTER_WIDTH = 65;
 export type ComposerFooterProps = {
   /** From `measurePost`. */
   count: number;
+  /** The post already holds the most images it can: the media buttons are off. */
+  imagesFull: boolean;
+  onPickImages: () => void;
+  onTakePhoto: () => void;
 };
 
 /** Ghost round icon button in the primary color, a real 48 dp box. */
@@ -37,7 +41,11 @@ function ToolbarButton({
         haptic('tap');
         onPress();
       }}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.button,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
       <Ionicons name={icon} size={ICON_SIZE} color={colors.primary} />
     </Pressable>
@@ -45,13 +53,27 @@ function ToolbarButton({
 }
 
 /** The bar under the editor, kept above the keyboard: media buttons and the character counter. */
-export function ComposerFooter({ count }: ComposerFooterProps) {
+export function ComposerFooter({
+  count,
+  imagesFull,
+  onPickImages,
+  onTakePhoto,
+}: ComposerFooterProps) {
   return (
     <View testID="composer-footer" style={styles.container}>
       <View style={styles.tools}>
-        {/* Images arrive in the next step; the buttons hold their place until then. */}
-        <ToolbarButton icon="image-outline" label="Adicionar imagens" disabled onPress={() => {}} />
-        <ToolbarButton icon="camera-outline" label="Tirar foto" disabled onPress={() => {}} />
+        <ToolbarButton
+          icon="image-outline"
+          label="Adicionar imagens"
+          disabled={imagesFull}
+          onPress={onPickImages}
+        />
+        <ToolbarButton
+          icon="camera-outline"
+          label="Tirar foto"
+          disabled={imagesFull}
+          onPress={onTakePhoto}
+        />
       </View>
       <CharProgress count={count} style={styles.counter} />
     </View>
@@ -71,7 +93,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   tools: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  button: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  button: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pressed: { backgroundColor: colors.bgContrast25 },
   disabled: { opacity: 0.5 },
   counter: { width: COUNTER_WIDTH },
