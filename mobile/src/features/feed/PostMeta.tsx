@@ -25,7 +25,8 @@ export type PostMetaProps = {
 
 /**
  * One line: the name (at most 70% of the line), the handle (the first to be cut) and the time.
- * Linked, the name and handle are one 48 dp tall profile link.
+ * Linked, the name and handle are one inline profile link, as in the design reference: the
+ * avatar beside it is the large target for the same profile.
  */
 export function PostMeta({ author, createdAt, linked = true, avatarSize }: PostMetaProps) {
   const name = displayName(author);
@@ -54,14 +55,14 @@ export function PostMeta({ author, createdAt, linked = true, avatarSize }: PostM
   );
 
   return (
-    <View style={[styles.row, !linked && styles.plainRow]}>
+    <View testID="post-meta" style={styles.row}>
       {avatarSize ? (
         <View style={styles.avatar}>
           <Avatar uri={resolveImageUrl(author.avatarUrl)} name={name} size={avatarSize} />
         </View>
       ) : null}
       {linked ? (
-        <ProfileLink user={author} hitSlop={undefined} style={[styles.who, styles.link]}>
+        <ProfileLink user={author} hitSlop={undefined} style={styles.who}>
           {who}
         </ProfileLink>
       ) : (
@@ -75,13 +76,9 @@ export function PostMeta({ author, createdAt, linked = true, avatarSize }: PostM
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center' },
-  // Unlinked, nothing needs a 48 dp box: the line keeps the design reference's spacing.
-  plainRow: { paddingBottom: space.xs },
+  row: { flexDirection: 'row', alignItems: 'center', paddingBottom: space.xs },
   avatar: { marginRight: space.xs },
   who: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
-  // A real 48 dp tall touch target; Android ignores hit slop beyond the parent's bounds.
-  link: { minHeight: 48 },
   name: { flexShrink: 0, maxWidth: '70%' },
   handle: { flexShrink: 10 },
   time: { flexShrink: 0, paddingLeft: space.xs },

@@ -10,7 +10,7 @@ import type { Post, PostPage } from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
-const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts']];
+const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts'], ['bookmarks']];
 
 type Interrupted = { query: Query; nextPage: boolean };
 
@@ -43,8 +43,8 @@ export function cancelCommentQueries(client: QueryClient, postId: string): Promi
 }
 
 /**
- * Restarts the fetches that a like cancelled: a next page is fetched again, anything else is
- * refetched. Call it once no like is in flight, so the server already holds the likes and the
+ * Restarts the fetches that a toggle cancelled: a next page is fetched again, anything else is
+ * refetched. Call it once no toggle is in flight, so the server already holds the toggles and the
  * response cannot overwrite an optimistic write. Inactive queries are left alone.
  */
 export function resumeInterrupted(client: QueryClient): void {
@@ -98,6 +98,61 @@ export function updatePostEverywhere(
   if (detail !== undefined) {
     client.setQueryData(detailKey, update(detail));
   }
+}
+
+/** A quote of a deleted post shows "Post removido" in its place, as the server will say too. */
+function withoutQuoteOf(postId: string) {
+  return (p: Post): Post =>
+    p.quotedPost?.id === postId || p.quotedPostId === postId
+      ? { ...p, quotedPostId: null, quotedPost: null, quotedPostRemoved: true }
+      : p;
+}
+
+function removeFromPages(data: PostPages, postId: string): PostPages {
+  const unquote = withoutQuoteOf(postId);
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    let pageChanged = false;
+    const items: Post[] = [];
+    for (const item of page.items) {
+      if (item.id === postId) {
+        pageChanged = true;
+        continue;
+      }
+      const next = unquote(item);
+      if (next !== item) pageChanged = true;
+      items.push(next);
+    }
+    if (!pageChanged) return page;
+    changed = true;
+    return { ...page, items };
+  });
+  return changed ? { ...data, pages } : data;
+}
+
+/**
+ * Takes a deleted post out of every cached feed, game, profile and bookmark list (its reposts
+ * too), marks the posts that quote it as quoting a removed post, and drops its own detail and
+ * comments once no screen shows them. A detail still on screen keeps its data until it closes.
+ */
+export function removePostEverywhere(client: QueryClient, postId: string): void {
+  for (const key of LIST_KEYS) {
+    for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
+      if (data === undefined) continue;
+      const next = removeFromPages(data, postId);
+      if (next !== data) client.setQueryData(queryKey, next);
+    }
+  }
+
+  const unquote = withoutQuoteOf(postId);
+  for (const [queryKey, data] of client.getQueriesData<Post>({ queryKey: ['post'] })) {
+    if (data === undefined || data.id === postId) continue;
+    const next = unquote(data);
+    if (next !== data) client.setQueryData(queryKey, next);
+  }
+
+  client.removeQueries({ queryKey: ['post', postId], exact: true, type: 'inactive' });
+  client.removeQueries({ queryKey: ['comments', postId], type: 'inactive' });
 }
 
 /**

@@ -16,7 +16,9 @@ import { socialDefaults } from '@/test-utils/postDefaults';
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useFeed: jest.fn(),
-  useTogglePostLike: () => ({ mutate: jest.fn() }),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
 }));
 jest.mock('@/features/notifications/queries', () => ({ useUnreadCount: () => 2 }));
 jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));

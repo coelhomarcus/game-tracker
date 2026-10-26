@@ -17,8 +17,8 @@ const PREVIEW_ASPECT = 16 / 9;
 
 export type QuotedPostProps = {
   post: QuotedPostData;
-  /** Defaults to opening the quoted post. */
-  onPress?: () => void;
+  /** Defaults to opening the quoted post; `null` makes it a static card, e.g. in the composer. */
+  onPress?: (() => void) | null;
 };
 
 /** The original of a quote post, one level deep: a card that opens it. */
@@ -30,15 +30,10 @@ export function QuotedPost({ post, onPress }: QuotedPostProps) {
   const label = [`Post citado de ${name}, ${time}`, status ? statusLabel[status] : null]
     .filter(Boolean)
     .join(', ');
+  const accessibilityLabel = post.content ? `${label}: ${post.content}` : label;
 
-  return (
-    <Pressable
-      testID="quoted-post"
-      accessibilityRole="link"
-      accessibilityLabel={post.content ? `${label}: ${post.content}` : label}
-      onPress={onPress ?? (() => router.push(`/posts/${post.id}` as Href))}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-    >
+  const content = (
+    <>
       <PostMeta
         author={post.author}
         createdAt={post.createdAt}
@@ -60,6 +55,30 @@ export function QuotedPost({ post, onPress }: QuotedPostProps) {
           />
         </View>
       ) : null}
+    </>
+  );
+
+  if (onPress === null) {
+    return (
+      <View
+        testID="quoted-post"
+        accessible
+        accessibilityLabel={accessibilityLabel}
+        style={styles.card}
+      >
+        {content}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      testID="quoted-post"
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress ?? (() => router.push(`/posts/${post.id}` as Href))}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
+      {content}
     </Pressable>
   );
 }

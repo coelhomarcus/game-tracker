@@ -8,14 +8,16 @@ import { useGame, useGameSearch } from '@/features/games/queries';
 import type { Game, GameSummary } from '@/features/games/types';
 import { useLibrary } from '@/features/library/queries';
 import type { GameEntry } from '@/features/library/types';
-import { NetworkError } from '@/lib/http/errors';
+import { ApiError, NetworkError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 import { colors } from '@/theme/tokens';
 
 import { CreatePostScreen } from '../CreatePostScreen';
-import { useCreatePost } from '../queries';
+import { useCreatePost, usePost } from '../queries';
+import type { Post } from '../types';
+import { socialDefaults } from '@/test-utils/postDefaults';
 
-jest.mock('../queries', () => ({ useCreatePost: jest.fn() }));
+jest.mock('../queries', () => ({ useCreatePost: jest.fn(), usePost: jest.fn() }));
 jest.mock('@/features/games/queries', () => ({ useGame: jest.fn(), useGameSearch: jest.fn() }));
 jest.mock('@/features/games/api', () => ({ gamesApi: { byIgdbId: jest.fn() } }));
 jest.mock('@/features/library/queries', () => ({ useLibrary: jest.fn() }));
@@ -495,5 +497,104 @@ describe('CreatePostScreen discard guard', () => {
     await press('Publicar');
 
     expect(mockPrevent.active).toBe(false);
+  });
+});
+
+describe('CreatePostScreen quote', () => {
+  const QUOTE_ID = '11111111-2222-4333-8444-555555555555';
+  const refetchQuote = jest.fn();
+  const quoted: Post = {
+    id: QUOTE_ID,
+    author: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
+    content: 'O chefe final é impossível',
+    type: 'status',
+    activityStatus: null,
+    createdAt: new Date(),
+    game: null,
+    entry: null,
+    imageUrl: null,
+    likeCount: 0,
+    commentCount: 0,
+    likedByMe: false,
+    ...socialDefaults,
+  };
+
+  function mockQuote(overrides: Record<string, unknown>) {
+    jest.mocked(usePost).mockReturnValue({
+      data: undefined,
+      error: null,
+      isError: false,
+      refetch: refetchQuote,
+      ...overrides,
+    } as unknown as ReturnType<typeof usePost>);
+  }
+
+  beforeEach(() => {
+    mockParams = { quote: QUOTE_ID };
+  });
+
+  it('shows the quoted post under the editor and publishes the quote', async () => {
+    mockQuote({ data: quoted });
+    await renderScreen();
+    await typeText('Concordo');
+
+    expect(usePost).toHaveBeenCalledWith(QUOTE_ID);
+    expect(screen.getByLabelText(/^Post citado de Bia, .*: O chefe final é impossível$/)).toBeOnTheScreen();
+    // A preview, not a link away from the text being written.
+    expect(screen.queryByRole('link', { name: /Post citado/ })).toBeNull();
+    await press('Publicar');
+
+    expect(mockCreate).toHaveBeenCalledWith({ content: 'Concordo', quotedPostId: QUOTE_ID });
+  });
+
+  it('waits for the quoted post before publishing', async () => {
+    mockQuote({});
+    await renderScreen();
+    await typeText('Concordo');
+
+    expect(screen.getByText('Carregando o post citado…')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+  });
+
+  it('offers a retry when the quoted post fails to load', async () => {
+    mockQuote({ isError: true, error: new NetworkError() });
+    await renderScreen();
+    await typeText('Concordo');
+
+    expect(screen.getByText('Não foi possível carregar o post citado.')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+    await press('Tentar de novo');
+    expect(refetchQuote).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the quoted post was removed when it no longer exists', async () => {
+    mockQuote({ isError: true, error: new ApiError(404, 'not_found', 'Post não encontrado') });
+    await renderScreen();
+    await typeText('Concordo');
+
+    expect(screen.getByText('Post removido')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+  });
+
+  it('quotes with a game linked from the address too', async () => {
+    mockParams = { quote: QUOTE_ID, igdbId: '11' };
+    mockQuote({ data: quoted });
+    mockPrelinkGame({ data: makeGame() });
+    await renderScreen();
+    await typeText('Oi');
+
+    await press('Publicar');
+
+    expect(mockCreate).toHaveBeenCalledWith({ content: 'Oi', gameId: 'g1', quotedPostId: QUOTE_ID });
+  });
+
+  it('ignores an address that is not a post id', async () => {
+    mockParams = { quote: 'abc' };
+    await renderScreen();
+    await typeText('Oi');
+
+    expect(usePost).not.toHaveBeenCalled();
+    await press('Publicar');
+    expect(mockCreate).toHaveBeenCalledWith({ content: 'Oi' });
   });
 });

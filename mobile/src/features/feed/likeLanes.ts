@@ -1,5 +1,6 @@
 /**
- * Toggle requests (likes, follows) are serialized per item and rolled back per item.
+ * Toggle requests (likes, reposts, bookmarks, follows) are serialized per lane and rolled back
+ * per lane; a lane is one action on one item.
  *
  * A lane exists while an item has requests in flight. It remembers the last state the
  * server is known to hold (`confirmed`), so a failure never needs a stale cache snapshot.
@@ -58,10 +59,24 @@ export function createLanes() {
   };
 }
 
-const likes = createLanes();
+/** What a post or comment toggle is about. */
+export type ToggleAction = 'like' | 'repost' | 'bookmark' | 'commentLike';
 
-export const beginLike = likes.begin;
-export const runInLane = likes.run;
-export const settleLike = likes.settle;
-/** Whether any like request, of any post or comment, is still in flight. */
-export const anyLikeInFlight = likes.anyInFlight;
+/**
+ * The lane of one action on one item. Each action has its own lane, so a like and a repost of
+ * the same post neither wait for nor roll back each other.
+ */
+export function toggleLane(action: ToggleAction, id: string): string {
+  return `${action}:${id}`;
+}
+
+const toggles = createLanes();
+
+export const beginToggle = toggles.begin;
+export const runInLane = toggles.run;
+export const settleToggle = toggles.settle;
+/**
+ * Whether any toggle request, of any post or comment, is still in flight. Until none is, a fetch
+ * the toggles cancelled stays stopped: its response could undo an optimistic write.
+ */
+export const anyToggleInFlight = toggles.anyInFlight;

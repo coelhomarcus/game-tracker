@@ -18,10 +18,7 @@ import { CommentItem } from './CommentItem';
 import { flattenComments, type FlatComment } from './flattenComments';
 import { PostFeedItem } from './PostFeedItem';
 import { useAddComment, useComments, usePost, useToggleCommentLike } from './queries';
-import type { Post } from './types';
-
-// The API answers 500 to an id that is not a UUID, so such an address is simply not a post.
-const POST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isPostId, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -31,7 +28,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export function PostDetailScreen() {
   const params = useLocalSearchParams<{ postId?: string | string[] }>();
   const postId = firstParam(params.postId)?.trim() ?? '';
-  if (!POST_ID_PATTERN.test(postId)) return <PostNotFound />;
+  if (!isPostId(postId)) return <PostNotFound />;
   return <PostLoader postId={postId} />;
 }
 
@@ -88,6 +85,7 @@ function Separator() {
 }
 
 function PostBody({ post }: { post: Post }) {
+  const router = useRouter();
   const headerHeight = useHeaderHeight();
   const comments = useComments(post.id);
   const addComment = useAddComment(post.id);
@@ -140,7 +138,11 @@ function PostBody({ post }: { post: Post }) {
     <View style={styles.header}>
       {/* Full width, past the list's padding, until the thread gets its own anchor post. */}
       <View style={styles.post}>
-        <PostFeedItem post={post} hideTopBorder />
+        <PostFeedItem
+          post={post}
+          hideTopBorder
+          onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+        />
       </View>
       <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
         {`Comentários (${post.commentCount})`}

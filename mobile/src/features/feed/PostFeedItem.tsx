@@ -12,7 +12,7 @@ import { colors, hairline, space } from '@/theme/tokens';
 import { GameEmbed } from './embeds/GameEmbed';
 import { ImageGrid } from './embeds/ImageGrid';
 import { QuotedPost, RemovedQuote } from './embeds/QuotedPost';
-import { PostActions } from './PostActions';
+import { PostControls } from './PostControls';
 import { PostMeta } from './PostMeta';
 import { displayName, type Post } from './types';
 
@@ -26,32 +26,53 @@ const AVATAR_COLUMN_LEFT = space.sm;
 const AVATAR_COLUMN_RIGHT = 10;
 /** Where the text column starts inside the row's padding (70 dp from the screen edge). */
 const TEXT_COLUMN_START = AVATAR_COLUMN_LEFT + AVATAR_SIZE + AVATAR_COLUMN_RIGHT;
+/**
+ * The avatar and the meta line start 9 dp below the row's top edge without a reason line, and
+ * 3 dp below the reason line with one, as in the design reference. The avatar's touch box starts
+ * 3 dp above the avatar, so the row pads by that much less.
+ */
+const TOP_WITHOUT_REASON = space.sm + 1 - AVATAR_OVERHANG;
 
 export type PostFeedItemProps = {
   post: Post;
-  /** Opens the post. Without it the body is plain, e.g. on the post's own page. */
+  /**
+   * Opens the post from anywhere on the row outside its own links and buttons. Without it the
+   * row is plain, e.g. on the post's own page.
+   */
   onPress?: () => void;
+  /** Runs once the user deleted the post from its controls. */
+  onDeleted?: () => void;
   /** Hides the game card, for lists already scoped to one game. */
   hideGame?: boolean;
   /** The first row of a list sits under a header that already draws a line. */
   hideTopBorder?: boolean;
 };
 
-/** One line per accessibility stop: author, time and text (and the status of an activity). */
+/**
+ * The row's one summary for screen readers: author, time and text (and the status of an
+ * activity). A post without text says how many images it has instead.
+ */
 function bodyLabel(post: Post, name: string, time: string): string {
-  if (post.type !== 'activity') return `Post de ${name}, ${time}: ${post.content}`;
+  if (post.type !== 'activity') {
+    if (post.content) return `Post de ${name}, ${time}: ${post.content}`;
+    const count = post.images.length;
+    if (count === 0) return `Post de ${name}, ${time}`;
+    return `Post de ${name}, ${time}, ${count} ${count === 1 ? 'imagem' : 'imagens'}`;
+  }
   const status = post.activityStatus ? statusLabel[post.activityStatus] : null;
   return [`${name} ${post.content}`, status, time].filter(Boolean).join(', ');
 }
 
 /**
  * A post as a full-width feed row: avatar column, meta line, text clamped to 25 lines, embeds
- * (images, quoted post, game) and the actions. Every link is a sibling of the pressable body,
- * never inside it, so each stays reachable and none of them also opens the post.
+ * (images, quoted post, game) and the controls. A tap anywhere on the row that no link or
+ * button inside takes opens the post. For screen readers the row itself is not a stop: the body
+ * carries the one summary of the post, and every link and button stays reachable on its own.
  */
 export function PostFeedItem({
   post,
   onPress,
+  onDeleted,
   hideGame = false,
   hideTopBorder = false,
 }: PostFeedItemProps) {
@@ -64,9 +85,19 @@ export function PostFeedItem({
   const clamp = useTextClamp();
 
   return (
-    <View testID="post-feed-item" style={[styles.outer, !hideTopBorder && styles.topBorder]}>
+    <Pressable
+      testID="post-feed-item"
+      accessible={false}
+      disabled={!onPress}
+      onPress={onPress}
+      style={[
+        styles.outer,
+        !hideTopBorder && styles.topBorder,
+        !post.reason && styles.topWithoutReason,
+      ]}
+    >
       {post.reason ? (
-        <View style={styles.reason}>
+        <View testID="post-reason" style={styles.reason}>
           <ProfileLink
             user={post.reason.by}
             hitSlop={undefined}
@@ -74,7 +105,13 @@ export function PostFeedItem({
             style={styles.reasonLink}
           >
             <Ionicons name="repeat" size={13} color={colors.textMedium} />
-            <Text numberOfLines={1} size="sm" weight="medium" tone="medium" style={styles.shrink}>
+            <Text
+              numberOfLines={1}
+              size="sm"
+              weight="medium"
+              tone="medium"
+              style={styles.shrink}
+            >
               {`Repostado por ${displayName(post.reason.by)}`}
             </Text>
           </ProfileLink>
@@ -92,7 +129,7 @@ export function PostFeedItem({
             <Avatar uri={resolveImageUrl(post.author.avatarUrl)} name={name} size={AVATAR_SIZE} />
           </ProfileLink>
         </View>
-        <View style={styles.content}>
+        <View testID="post-content" style={styles.content}>
           <PostMeta author={post.author} createdAt={post.createdAt} />
           <Pressable
             accessibilityRole={onPress ? 'button' : undefined}
@@ -138,10 +175,10 @@ export function PostFeedItem({
               {game ? <GameEmbed game={game} platform={post.entry?.platform} /> : null}
             </View>
           ) : null}
-          <PostActions post={post} onComment={onPress} />
+          <PostControls post={post} onReply={onPress} onDeleted={onDeleted} />
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -177,7 +214,15 @@ export type PostFeedItemSkeletonProps = {
 /** A loading row in the geometry of `PostFeedItem`. */
 export function PostFeedItemSkeleton({ hideTopBorder = false, testID }: PostFeedItemSkeletonProps) {
   return (
-    <View testID={testID} style={[styles.outer, !hideTopBorder && styles.topBorder]}>
+    <View
+      testID={testID}
+      style={[
+        styles.outer,
+        styles.skeletonBottom,
+        !hideTopBorder && styles.topBorder,
+        styles.topWithoutReason,
+      ]}
+    >
       <View style={styles.layout}>
         <View style={styles.avatarColumn}>
           <View style={styles.avatarLink}>
@@ -197,23 +242,19 @@ export function PostFeedItemSkeleton({ hideTopBorder = false, testID }: PostFeed
 }
 
 const styles = StyleSheet.create({
-  outer: { paddingLeft: 10, paddingRight: 15, paddingBottom: space.sm },
+  // No bottom padding: the controls' 48 dp touch boxes already leave the reference's space
+  // under their icons.
+  outer: { paddingLeft: 10, paddingRight: 15 },
   topBorder: { borderTopWidth: hairline, borderTopColor: colors.borderLow },
+  topWithoutReason: { paddingTop: TOP_WITHOUT_REASON },
   // Aligned with the text column, past the avatar.
-  reason: { paddingLeft: TEXT_COLUMN_START, flexDirection: 'row' },
-  // A real 48 dp tall touch target; Android ignores hit slop beyond the parent's bounds.
-  reasonLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    minHeight: 48,
-    flexShrink: 1,
-  },
+  reason: { paddingTop: space.sm, paddingLeft: TEXT_COLUMN_START, flexDirection: 'row' },
+  // An inline text link, as in the design reference; the row and the avatar are the large targets.
+  reasonLink: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
   shrink: { flexShrink: 1 },
   layout: { flexDirection: 'row' },
   avatarColumn: { paddingLeft: AVATAR_COLUMN_LEFT, paddingRight: AVATAR_COLUMN_RIGHT },
-  // 48 dp of touch around the 42 dp avatar, inside the column's padding (so within its bounds);
-  // centered on the 48 dp meta line beside it.
+  // 48 dp of touch around the 42 dp avatar, inside the column's padding (so within its bounds).
   avatarLink: {
     width: AVATAR_BOX,
     height: AVATAR_BOX,
@@ -221,10 +262,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: { flex: 1 },
+  // Starts level with the avatar inside its touch box.
+  content: { flex: 1, paddingTop: AVATAR_OVERHANG },
   body: { gap: space.sm },
   status: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   showMore: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center' },
   embeds: { marginTop: space.sm, gap: space.sm },
-  skeletonMeta: { minHeight: 48, justifyContent: 'center' },
+  skeletonBottom: { paddingBottom: space.sm },
+  skeletonMeta: { paddingBottom: space.xs },
 });

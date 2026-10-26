@@ -5,14 +5,16 @@ import { StyleSheet, Text } from 'react-native';
 import type { Game } from '@/features/games/types';
 
 import { GameEmbed } from '../embeds/GameEmbed';
-import { PostActions } from '../PostActions';
 import { PostFeedItem } from '../PostFeedItem';
 import { PostList } from '../PostList';
 import type { Post, PostPage } from '../types';
 import { socialDefaults } from '@/test-utils/postDefaults';
 
-const mockMutate = jest.fn();
-jest.mock('../queries', () => ({ useTogglePostLike: () => ({ mutate: mockMutate }) }));
+jest.mock('../queries', () =>
+  jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
+);
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -122,11 +124,11 @@ describe('PostFeedItem', () => {
   it('opens the post from the comment counter only when the row is pressable', async () => {
     const onPress = jest.fn();
     await render(<PostFeedItem post={post()} onPress={onPress} />);
-    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 2 comentários' }));
     expect(onPress).toHaveBeenCalledTimes(1);
 
     await screen.rerender(<PostFeedItem post={post()} />);
-    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Comentar, 2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
   });
 
@@ -135,8 +137,9 @@ describe('PostFeedItem', () => {
     await render(<PostFeedItem post={post()} onPress={onPress} />);
 
     // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
+    // The name is an inline text link; the avatar beside it is the large target.
     const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
-    expect(nameLink).toHaveStyle({ minHeight: 48 });
+    expect(nameLink).not.toHaveStyle({ minHeight: 48 });
     await fireEvent.press(nameLink);
     const avatarLink = screen.getByTestId('author-avatar-link', HIDDEN);
     // A real 48 dp box around the 42 dp avatar.
@@ -170,58 +173,6 @@ describe('GameEmbed', () => {
     await screen.rerender(<GameEmbed game={game} />);
     expect(screen.getByText('PC')).toBeOnTheScreen();
     expect(screen.queryByText('Switch')).toBeNull();
-  });
-});
-
-describe('PostActions', () => {
-  it('labels the like button with the count and toggles with the received post', async () => {
-    const received = post();
-    await render(<PostActions post={received} />);
-
-    await fireEvent.press(screen.getByLabelText('Curtir post, 3 curtidas'));
-
-    expect(mockMutate).toHaveBeenCalledTimes(1);
-    expect(mockMutate).toHaveBeenCalledWith(received);
-  });
-
-  it('offers to unlike a liked post', async () => {
-    await render(<PostActions post={post({ likedByMe: true, likeCount: 4 })} />);
-
-    expect(screen.getByLabelText('Descurtir post, 4 curtidas')).toBeOnTheScreen();
-  });
-
-  it('uses the singular for one like and one comment', async () => {
-    const single = post({ likeCount: 1, commentCount: 1 });
-    await render(<PostActions post={single} />);
-    expect(screen.getByLabelText('Curtir post, 1 curtida')).toBeOnTheScreen();
-    expect(screen.getByLabelText('1 comentário')).toBeOnTheScreen();
-
-    await screen.rerender(<PostActions post={{ ...single, likedByMe: true }} />);
-    expect(screen.getByLabelText('Descurtir post, 1 curtida')).toBeOnTheScreen();
-  });
-
-  it('uses the plural for zero and several', async () => {
-    await render(<PostActions post={post({ likeCount: 0, commentCount: 0 })} />);
-    expect(screen.getByLabelText('Curtir post, 0 curtidas')).toBeOnTheScreen();
-    expect(screen.getByLabelText('0 comentários')).toBeOnTheScreen();
-  });
-
-  it('calls onComment from the comment counter', async () => {
-    const onComment = jest.fn();
-    await render(<PostActions post={post()} onComment={onComment} />);
-
-    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
-
-    expect(onComment).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows the comment counter as plain text without onComment', async () => {
-    await render(<PostActions post={post()} />);
-
-    expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
-    await fireEvent.press(screen.getByLabelText('2 comentários'));
-    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
@@ -282,11 +233,11 @@ describe('PostFeedItem for an activity', () => {
     const onPress = jest.fn();
     const activity = post({ type: 'activity' });
     await render(<PostFeedItem post={activity} onPress={onPress} />);
-    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 2 comentários' }));
     expect(onPress).toHaveBeenCalledTimes(1);
 
     await screen.rerender(<PostFeedItem post={activity} />);
-    expect(screen.queryByRole('button', { name: '2 comentários' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Comentar, 2 comentários' })).toBeNull();
     expect(screen.getByLabelText('2 comentários')).toBeOnTheScreen();
   });
 
@@ -297,7 +248,6 @@ describe('PostFeedItem for an activity', () => {
 
     // Screen readers stop once: the avatar link is touch-only, the name link is the exposed one.
     const nameLink = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
-    expect(nameLink).toHaveStyle({ minHeight: 48 });
     await fireEvent.press(nameLink);
     await fireEvent.press(screen.getByTestId('author-avatar-link', HIDDEN));
 
@@ -373,7 +323,7 @@ describe('PostList', () => {
   it('opens the post from the comment counter in the feed', async () => {
     await render(<PostList query={feedQuery()} />);
 
-    await fireEvent.press(screen.getByRole('button', { name: '2 comentários' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 2 comentários' }));
 
     expect(mockPush).toHaveBeenCalledWith('/posts/p1');
   });

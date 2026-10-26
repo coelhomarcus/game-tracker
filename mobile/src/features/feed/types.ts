@@ -81,6 +81,28 @@ export function postKey(post: Pick<Post, 'id' | 'reason'>): string {
   return post.reason ? `repost:${post.id}:${post.reason.by.id}` : `post:${post.id}`;
 }
 
+// The API answers 500 to an id that is not a UUID, so such an id is simply not a post.
+const POST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether `value` can be a post id at all (a UUID), e.g. one read from an address. */
+export function isPostId(value: string): boolean {
+  return POST_ID_PATTERN.test(value);
+}
+
+/** The summary a quote shows of `post`, e.g. in the composer before the quote exists. */
+export function toQuotedPost(post: Post): QuotedPost {
+  return {
+    id: post.id,
+    author: post.author,
+    content: post.content,
+    type: post.type,
+    activityStatus: post.activityStatus,
+    images: post.images,
+    game: post.game,
+    createdAt: post.createdAt,
+  };
+}
+
 export type PostPage = {
   items: Post[];
   nextCursor: string | null;

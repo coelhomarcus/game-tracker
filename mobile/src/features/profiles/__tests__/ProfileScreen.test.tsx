@@ -25,7 +25,9 @@ jest.mock('../queries', () => ({
 }));
 jest.mock('@/features/chat/queries', () => ({ useStartConversation: jest.fn() }));
 jest.mock('@/features/feed/queries', () => ({
-  useTogglePostLike: () => ({ mutate: jest.fn() }),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
 }));
 
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };

@@ -9,7 +9,9 @@ import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/features/feed/queries', () => ({
   useGamePosts: jest.fn(),
-  useTogglePostLike: () => ({ mutate: jest.fn() }),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
 }));
 
 const mockPush = jest.fn();

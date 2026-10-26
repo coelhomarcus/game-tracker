@@ -20,7 +20,9 @@ jest.mock('../queries', () => ({
 }));
 jest.mock('@/features/feed/queries', () => ({
   useGamePosts: jest.fn(),
-  useTogglePostLike: jest.fn(),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
 }));
 jest.mock('@/features/library/queries', () => ({
   useLibrary: jest.fn(),

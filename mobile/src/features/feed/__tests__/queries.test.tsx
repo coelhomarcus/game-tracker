@@ -21,8 +21,11 @@ import {
   useFeed,
   useGamePosts,
   usePost,
+  useDeletePost,
   useToggleCommentLike,
+  useTogglePostBookmark,
   useTogglePostLike,
+  useTogglePostRepost,
 } from "../queries";
 import { findCachedPost, updatePostEverywhere } from "../postCache";
 import type { Comment, Post, PostPage } from "../types";
@@ -36,6 +39,9 @@ jest.mock("@/features/feed/api", () => ({
     post: jest.fn(),
     create: jest.fn(),
     setLike: jest.fn(),
+    setRepost: jest.fn(),
+    setBookmark: jest.fn(),
+    deletePost: jest.fn(),
     comments: jest.fn(),
     addComment: jest.fn(),
     setCommentLike: jest.fn(),
@@ -1119,5 +1125,342 @@ describe("profile post lists", () => {
     });
 
     expect(cachedPost(client, key).commentCount).toBe(2);
+  });
+});
+
+describe("useTogglePostRepost", () => {
+  it("flips the repost in the feed, the game posts, a profile list and the detail at once", async () => {
+    const pending = deferred();
+    mocked.setRepost.mockReturnValue(pending.promise);
+    const client = freshClient();
+    const target = post("p1", { repostCount: 4 });
+    seedEverywhere(client, target);
+    client.setQueryData(["userPosts", "u1", "post"], singlePage([target]));
+    const { result } = await renderHook(() => useTogglePostRepost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(target);
+    });
+
+    const reposted = { repostedByMe: true, repostCount: 5 };
+    expect(cachedPost(client, ["feed", "general"], 1)).toMatchObject(reposted);
+    expect(cachedPost(client, ["gamePosts", "g1"])).toMatchObject(reposted);
+    expect(cachedPost(client, ["userPosts", "u1", "post"])).toMatchObject(reposted);
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject(reposted);
+    expect(mocked.setRepost).toHaveBeenCalledWith("p1", true);
+
+    await act(async () => pending.resolve());
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject(reposted);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("undoes a repost using the state the user saw", async () => {
+    mocked.setRepost.mockResolvedValue(undefined);
+    const client = freshClient();
+    const target = post("p1", { repostedByMe: true, repostCount: 2 });
+    seedEverywhere(client, target);
+    const { result } = await renderHook(() => useTogglePostRepost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(target);
+    });
+
+    expect(mocked.setRepost).toHaveBeenCalledWith("p1", false);
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({
+      repostedByMe: false,
+      repostCount: 1,
+    });
+  });
+
+  it("restores every copy and says so when the request fails", async () => {
+    mocked.setRepost.mockRejectedValue(new Error("offline"));
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const before = snapshotAll(client);
+    const { result } = await renderHook(() => useTogglePostRepost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(snapshotAll(client)).toEqual(before);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+
+  it("ends at the pre-tap state when a double tap fails both times, sending in order", async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setRepost.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const before = snapshotAll(client);
+    const { result } = await renderHook(() => useTogglePostRepost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+      result.current.mutate(post("p1", { repostedByMe: true, repostCount: 1 }));
+    });
+    expect(mocked.setRepost).toHaveBeenCalledTimes(1);
+
+    await act(async () => first.reject());
+    await waitFor(() => expect(mocked.setRepost).toHaveBeenCalledTimes(2));
+    expect(mocked.setRepost).toHaveBeenLastCalledWith("p1", false);
+    expect(showToast).not.toHaveBeenCalled();
+    await act(async () => second.reject());
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(snapshotAll(client)).toEqual(before);
+    expect(showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a like of the same post when its repost fails: each action has its own lane", async () => {
+    const reposting = deferred();
+    mocked.setRepost.mockReturnValue(reposting.promise);
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(
+      () => ({ like: useTogglePostLike(), repost: useTogglePostRepost() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await act(async () => {
+      result.current.repost.mutate(post("p1"));
+    });
+    // The like does not wait for the repost in flight.
+    await act(async () => {
+      await result.current.like.mutateAsync(cachedPost(client, ["feed", "general"], 1));
+    });
+    expect(mocked.setLike).toHaveBeenCalledWith("p1", true);
+
+    await act(async () => reposting.reject());
+    await waitFor(() => expect(result.current.repost.isError).toBe(true));
+
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({
+      likedByMe: true,
+      likeCount: 3,
+      repostedByMe: false,
+      repostCount: 0,
+    });
+  });
+
+  it("refreshes the own profile, which lists the repost, once nothing is in flight", async () => {
+    mocked.setRepost.mockResolvedValue(undefined);
+    useSession.setState({
+      status: "signedIn",
+      user: { id: "me" } as ReturnType<typeof useSession.getState>["user"],
+    });
+    const client = freshClient();
+    const spy = jest.spyOn(client, "invalidateQueries");
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useTogglePostRepost(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(post("p1"));
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userPosts", "me"] });
+    useSession.setState({ status: "signedOut", user: null });
+  });
+});
+
+describe("useTogglePostBookmark", () => {
+  it("saves the post in every copy, the saved list too", async () => {
+    mocked.setBookmark.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    client.setQueryData(["bookmarks"], singlePage([post("p1")]));
+    const { result } = await renderHook(() => useTogglePostBookmark(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+    });
+
+    const saved = { bookmarkedByMe: true, bookmarkCount: 1 };
+    expect(cachedPost(client, ["feed", "general"], 1)).toMatchObject(saved);
+    expect(cachedPost(client, ["gamePosts", "g1"])).toMatchObject(saved);
+    expect(cachedPost(client, ["bookmarks"])).toMatchObject(saved);
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject(saved);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mocked.setBookmark).toHaveBeenCalledWith("p1", true);
+  });
+
+  it("rolls back and says so when the request fails", async () => {
+    mocked.setBookmark.mockRejectedValue(new Error("offline"));
+    const client = freshClient();
+    const target = post("p1", { bookmarkedByMe: true, bookmarkCount: 1 });
+    seedEverywhere(client, target);
+    const before = snapshotAll(client);
+    const { result } = await renderHook(() => useTogglePostBookmark(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(target);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(mocked.setBookmark).toHaveBeenCalledWith("p1", false);
+    expect(snapshotAll(client)).toEqual(before);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+
+  it("ends at the confirmed state when the first tap succeeds and the second fails", async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setBookmark.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useTogglePostBookmark(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+      result.current.mutate(post("p1", { bookmarkedByMe: true, bookmarkCount: 1 }));
+    });
+    await act(async () => first.resolve());
+    await waitFor(() => expect(mocked.setBookmark).toHaveBeenCalledTimes(2));
+    await act(async () => second.reject());
+
+    await waitFor(() =>
+      expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({
+        bookmarkedByMe: true,
+        bookmarkCount: 1,
+      }),
+    );
+  });
+});
+
+describe("useDeletePost", () => {
+  const byBia: Post["reason"] = {
+    type: "repost",
+    by: { id: "u2", username: "bia", name: null, avatarUrl: null },
+    at: new Date("2026-01-02T00:00:00Z"),
+  };
+
+  function seedLists(client: QueryClient) {
+    client.setQueryData(
+      ["feed", "general"],
+      singlePage([post("p1", { reason: byBia }), post("other"), post("p1")]),
+    );
+    client.setQueryData(["userPosts", "u1", "post"], singlePage([post("p1"), post("other")]));
+    client.setQueryData(["gamePosts", "g1"], singlePage([post("p1")]));
+    client.setQueryData(["bookmarks"], singlePage([post("p1")]));
+  }
+
+  const ids = (client: QueryClient, key: unknown[]) =>
+    client.getQueryData<Pages>(key)!.pages[0].items.map((item) => item.id);
+
+  it("removes the post and its reposts from the feed, profile, game and saved lists", async () => {
+    mocked.deletePost.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedLists(client);
+    const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync(post("p1"));
+    });
+
+    expect(mocked.deletePost).toHaveBeenCalledWith("p1");
+    expect(ids(client, ["feed", "general"])).toEqual(["other"]);
+    expect(ids(client, ["userPosts", "u1", "post"])).toEqual(["other"]);
+    expect(ids(client, ["gamePosts", "g1"])).toEqual([]);
+    expect(ids(client, ["bookmarks"])).toEqual([]);
+    expect(showToast).toHaveBeenCalledWith("Post apagado");
+  });
+
+  it("marks the quotes of the post as quoting a removed post, in lists and details", async () => {
+    mocked.deletePost.mockResolvedValue(undefined);
+    const client = freshClient();
+    const original = post("p1");
+    const quotedPost = {
+      id: "p1",
+      author,
+      content: original.content,
+      type: original.type,
+      activityStatus: null,
+      images: [],
+      game: null,
+      createdAt: original.createdAt,
+    };
+    const quote = post("q1", { quotedPostId: "p1", quotedPost });
+    client.setQueryData(["feed", "general"], singlePage([quote, original]));
+    client.setQueryData(["post", "q1"], quote);
+    const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync(original);
+    });
+
+    const removed = { quotedPostId: null, quotedPost: null, quotedPostRemoved: true };
+    expect(client.getQueryData<Pages>(["feed", "general"])!.pages[0].items).toEqual([
+      { ...quote, ...removed },
+    ]);
+    expect(client.getQueryData<Post>(["post", "q1"])).toEqual({ ...quote, ...removed });
+  });
+
+  it("drops the detail and comments of the post once no screen shows them", async () => {
+    mocked.deletePost.mockResolvedValue(undefined);
+    const client = freshClient();
+    client.setQueryData(["post", "p1"], post("p1"));
+    client.setQueryData(["comments", "p1"], [comment("c1")]);
+    const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync(post("p1"));
+    });
+
+    expect(client.getQueryState(["post", "p1"])).toBeUndefined();
+    expect(client.getQueryState(["comments", "p1"])).toBeUndefined();
+  });
+
+  it("keeps every list and says so when the deletion fails", async () => {
+    mocked.deletePost.mockRejectedValue(new Error("offline"));
+    const client = freshClient();
+    seedLists(client);
+    const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      result.current.mutate(post("p1"));
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(ids(client, ["feed", "general"])).toEqual(["p1", "other", "p1"]);
+    expect(ids(client, ["userPosts", "u1", "post"])).toEqual(["p1", "other"]);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+});
+
+describe("useCreatePost with a quote", () => {
+  it("counts the new quote on the quoted post", async () => {
+    mocked.create.mockResolvedValue(post("new", { quotedPostId: "p1" }));
+    const client = freshClient();
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useCreatePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ content: "olha isso", quotedPostId: "p1" });
+    });
+
+    expect(mocked.create).toHaveBeenCalledWith({ content: "olha isso", quotedPostId: "p1" });
+    expect(client.getQueryData<Post>(["post", "p1"])).toMatchObject({ quoteCount: 1 });
+    expect(cachedPost(client, ["feed", "general"], 1)).toMatchObject({ quoteCount: 1 });
   });
 });

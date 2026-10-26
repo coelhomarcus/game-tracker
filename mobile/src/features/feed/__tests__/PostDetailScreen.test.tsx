@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { authErrorMessage } from '@/features/auth';
+import { authErrorMessage, useSession } from '@/features/auth';
 import { ApiError, NetworkError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
@@ -15,15 +15,26 @@ jest.mock('../queries', () => ({
   useComments: jest.fn(),
   useAddComment: jest.fn(),
   useToggleCommentLike: jest.fn(),
-  useTogglePostLike: () => ({ mutate: jest.fn() }),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
+  useDeletePost: () => ({ mutate: mockDeletePost }),
 }));
+const mockDeletePost = jest.fn();
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 let mockParams: Record<string, string | string[]> = {};
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useRouter: () => ({
+    push: mockPush,
+    replace: mockReplace,
+    back: mockBack,
+    canGoBack: mockCanGoBack,
+  }),
   useLocalSearchParams: () => mockParams,
   // The header is rendered in place so the tests can read its title.
   Stack: {
@@ -508,5 +519,42 @@ describe('PostDetailScreen composer', () => {
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await act(async () => finish());
     expect(screen.getByPlaceholderText('Escreva um comentário').props.value).toBe('');
+  });
+});
+
+describe('PostDetailScreen deleting the post', () => {
+  afterEach(() => {
+    useSession.setState({ status: 'signedOut', user: null });
+  });
+
+  async function deleteFromTheMenu() {
+    useSession.setState({
+      status: 'signedIn',
+      user: { id: 'u1' } as ReturnType<typeof useSession.getState>['user'],
+    });
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar post' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+    expect(mockDeletePost).toHaveBeenCalledWith(
+      expect.objectContaining({ id: POST_ID }),
+      expect.any(Object),
+    );
+    await act(async () => mockDeletePost.mock.calls[0][1].onSuccess());
+  }
+
+  it('leaves the page once the own post is deleted', async () => {
+    await deleteFromTheMenu();
+
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('goes to the feed when there is no page to go back to', async () => {
+    mockCanGoBack.mockReturnValueOnce(false);
+    await deleteFromTheMenu();
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/');
   });
 });

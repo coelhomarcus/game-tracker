@@ -11,7 +11,11 @@ import { QuotedPost } from '../embeds/QuotedPost';
 import { MAX_POST_LINES, PostFeedItem, PostFeedItemSkeleton } from '../PostFeedItem';
 import type { Post, PostImage, QuotedPost as QuotedPostData } from '../types';
 
-jest.mock('../queries', () => ({ useTogglePostLike: () => ({ mutate: jest.fn() }) }));
+jest.mock('../queries', () =>
+  jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
+);
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -116,9 +120,10 @@ describe('PostFeedItem layout', () => {
     expect(row).toHaveStyle({
       paddingLeft: 10,
       paddingRight: 15,
-      paddingBottom: 8,
       borderTopWidth: StyleSheet.hairlineWidth,
     });
+    // The controls' 48 dp touch boxes end the row: no padding under them.
+    expect(row).not.toHaveStyle({ paddingBottom: 8 });
 
     await screen.rerender(<PostFeedItem post={post()} hideTopBorder />);
     expect(screen.getByTestId('post-feed-item')).not.toHaveStyle({
@@ -138,6 +143,71 @@ describe('PostFeedItem layout', () => {
     expect(handle.props.numberOfLines).toBe(1);
     expect(handle).toHaveStyle({ flexShrink: 10 });
   });
+
+  it('keeps the design reference spacing: avatar and meta 9 dp down, text right under the meta', async () => {
+    await render(<PostFeedItem post={post()} />);
+
+    // 6 dp of row padding plus the 3 dp the 48 dp avatar box adds around the 42 dp avatar.
+    expect(screen.getByTestId('post-feed-item')).toHaveStyle({ paddingTop: 6 });
+    expect(screen.getByTestId('post-content')).toHaveStyle({ paddingTop: 3 });
+    const meta = screen.getByTestId('post-meta');
+    expect(meta).toHaveStyle({ paddingBottom: 4 });
+    expect(meta).not.toHaveStyle({ minHeight: 48 });
+  });
+});
+
+describe('PostFeedItem row press', () => {
+  it('opens the post from anywhere on the row outside its links and buttons', async () => {
+    const onPress = jest.fn();
+    await render(<PostFeedItem post={post()} onPress={onPress} />);
+
+    await fireEvent.press(screen.getByText('· há 5 min'));
+    await fireEvent.press(screen.getByTestId('post-feed-item'));
+
+    expect(onPress).toHaveBeenCalledTimes(2);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('opens a post that has only images, while a tap on an image opens the viewer', async () => {
+    const onPress = jest.fn();
+    const imageOnly = post({ content: '', images: images(2), game: null });
+    await render(withSafeArea(<PostFeedItem post={imageOnly} onPress={onPress} />));
+
+    await fireEvent.press(screen.getByTestId('post-feed-item'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole('imagebutton', { name: 'Imagem 1 de 2' }));
+    expect(screen.getByTestId('image-viewer')).toBeOnTheScreen();
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one summary for screen readers, which counts the images of a post without text', async () => {
+    const imageOnly = post({ content: '', images: images(2), game: null });
+    await render(withSafeArea(<PostFeedItem post={imageOnly} onPress={jest.fn()} />));
+
+    // The row itself is not a stop: the summary and every link and button are.
+    expect(screen.getByTestId('post-feed-item').props.accessible).toBe(false);
+    expect(screen.getByRole('button', { name: 'Post de Ana Souza, há 5 min, 2 imagens' })).toBeOnTheScreen();
+  });
+
+  it('opens nothing without onPress, e.g. on the post page', async () => {
+    await render(<PostFeedItem post={post()} />);
+
+    await fireEvent.press(screen.getByTestId('post-feed-item'));
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Post de / })).toBeNull();
+  });
+
+  it('does not open the post from its controls', async () => {
+    const onPress = jest.fn();
+    await render(<PostFeedItem post={post()} onPress={onPress} />);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Curtir post, 3 curtidas' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Compartilhar' }));
+
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });
 
 describe('PostFeedItem reason', () => {
@@ -149,7 +219,10 @@ describe('PostFeedItem reason', () => {
 
     expect(screen.getByText('Repostado por Bia')).toBeOnTheScreen();
     const link = screen.getByRole('button', { name: 'Repostado por Bia' });
-    expect(link).toHaveStyle({ minHeight: 48 });
+    // An inline text link, as in the design reference, 8 dp below the row's top edge.
+    expect(link).not.toHaveStyle({ minHeight: 48 });
+    expect(screen.getByTestId('post-reason')).toHaveStyle({ paddingTop: 8 });
+    expect(screen.getByTestId('post-feed-item')).not.toHaveStyle({ paddingTop: 6 });
     await fireEvent.press(link);
 
     expect(mockPush).toHaveBeenCalledWith('/users/u2');

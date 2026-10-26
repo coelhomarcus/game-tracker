@@ -10,11 +10,14 @@ import { useGame } from '@/features/games/queries';
 import type { Game } from '@/features/games/types';
 import { useLibrary } from '@/features/library/queries';
 import { statusLabel } from '@/features/library/status';
+import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
 
+import { QuotedPost, RemovedQuote } from './embeds/QuotedPost';
 import { GamePickerSheet } from './GamePickerSheet';
-import { useCreatePost } from './queries';
+import { useCreatePost, usePost } from './queries';
+import { isPostId, toQuotedPost, type QuotedPost as QuotedPostData } from './types';
 
 const MAX_LENGTH = 500;
 
@@ -34,19 +37,87 @@ function parseIgdbId(value: string | string[] | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-/** Route entry: `?igdbId=` (from the game page) starts the post already linked to that game. */
-export function CreatePostScreen() {
-  const params = useLocalSearchParams<{ igdbId?: string | string[] }>();
-  const igdbId = parseIgdbId(params.igdbId);
-  return igdbId === null ? <Composer /> : <PrelinkedComposer igdbId={igdbId} />;
+function parsePostId(value: string | string[] | undefined): string | null {
+  const text = (Array.isArray(value) ? value[0] : value)?.trim();
+  return text !== undefined && isPostId(text) ? text : null;
 }
 
-function PrelinkedComposer({ igdbId }: { igdbId: number }) {
+/** The post being quoted, from `?quote=`. */
+type Quote =
+  | { kind: 'loading' }
+  | { kind: 'failed'; retry: () => void }
+  | { kind: 'removed' }
+  | { kind: 'ready'; post: QuotedPostData };
+
+/**
+ * Route entry: `?igdbId=` (from the game page) starts the post already linked to that game, and
+ * `?quote=<postId>` (from a post's repost button) makes it a quote of that post.
+ */
+export function CreatePostScreen() {
+  const params = useLocalSearchParams<{
+    igdbId?: string | string[];
+    quote?: string | string[];
+  }>();
+  const igdbId = parseIgdbId(params.igdbId);
+  const quoteId = parsePostId(params.quote);
+  const composer = (quote?: Quote) =>
+    igdbId === null ? (
+      <Composer quote={quote} />
+    ) : (
+      <PrelinkedComposer igdbId={igdbId} quote={quote} />
+    );
+  return quoteId === null ? composer() : <QuoteLoader postId={quoteId} render={composer} />;
+}
+
+function QuoteLoader({
+  postId,
+  render,
+}: {
+  postId: string;
+  render: (quote: Quote) => ReactNode;
+}) {
+  const post = usePost(postId);
+  let quote: Quote = { kind: 'loading' };
+  if (post.data) quote = { kind: 'ready', post: toQuotedPost(post.data) };
+  else if (post.error instanceof ApiError && post.error.status === 404) quote = { kind: 'removed' };
+  else if (post.isError) quote = { kind: 'failed', retry: () => void post.refetch() };
+  return render(quote);
+}
+
+function PrelinkedComposer({ igdbId, quote }: { igdbId: number; quote?: Quote }) {
   const game = useGame(igdbId);
   let link: GameLink = { kind: 'resolving' };
   if (game.data) link = { kind: 'linked', game: game.data };
   else if (game.isError) link = { kind: 'failed', retry: () => void game.refetch() };
-  return <Composer prelink={link} />;
+  return <Composer prelink={link} quote={quote} />;
+}
+
+/** The quoted post under the editor, or why it is not there yet. */
+function QuotePreview({ quote }: { quote: Quote }) {
+  switch (quote.kind) {
+    case 'ready':
+      return <QuotedPost post={quote.post} onPress={null} />;
+    case 'removed':
+      return <RemovedQuote />;
+    case 'failed':
+      return (
+        <View style={styles.failure}>
+          <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
+            Não foi possível carregar o post citado.
+          </Text>
+          <Button label="Tentar de novo" color="secondary" onPress={quote.retry} />
+        </View>
+      );
+    case 'loading':
+      return (
+        <View style={styles.linking}>
+          <ActivityIndicator accessibilityLabel="Carregando" color={colors.textMedium} />
+          <Text size="sm" tone="medium">
+            Carregando o post citado…
+          </Text>
+        </View>
+      );
+  }
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -106,9 +177,9 @@ function GameRow({ game, onRemove }: { game: Game; onRemove: () => void }) {
 
 const GAME_COVER_WIDTH = 36;
 
-type ComposerProps = { prelink?: GameLink };
+type ComposerProps = { prelink?: GameLink; quote?: Quote };
 
-function Composer({ prelink = NO_LINK }: ComposerProps) {
+function Composer({ prelink = NO_LINK, quote }: ComposerProps) {
   const router = useRouter();
   const create = useCreatePost();
   const library = useLibrary();
@@ -133,7 +204,10 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
   const chosenRecord = records.find((entry) => entry.id === entryId);
 
   const trimmed = text.trim();
-  const ready = link.kind === 'none' || link.kind === 'linked';
+  const quoted = quote?.kind === 'ready' ? quote.post : null;
+  // A quote is only sent once the quoted post is known to exist.
+  const ready =
+    (link.kind === 'none' || link.kind === 'linked') && (quote === undefined || quoted !== null);
   const canPublish = trimmed.length >= 1 && text.length <= MAX_LENGTH && !publishing && ready;
 
   const disablePrevention = usePreventRemove(trimmed.length > 0 && !published, ({ repeat }) => {
@@ -176,6 +250,7 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
         content: trimmed,
         ...(linkedGame ? { gameId: linkedGame.id } : {}),
         ...(chosenRecord ? { gameEntryId: chosenRecord.id } : {}),
+        ...(quoted ? { quotedPostId: quoted.id } : {}),
       });
     } catch (error) {
       setApiError(authErrorMessage(error));
@@ -216,6 +291,8 @@ function Composer({ prelink = NO_LINK }: ComposerProps) {
             {`${text.length}/${MAX_LENGTH}`}
           </Text>
         </View>
+
+        {quote ? <QuotePreview quote={quote} /> : null}
 
         <Section title="Jogo (opcional)">
           {link.kind === 'linked' ? (
