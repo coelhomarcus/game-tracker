@@ -3,10 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { useSession, type User } from '@/features/auth';
+import { feedApi } from '@/features/feed/api';
 import { showToast } from '@/lib/toast';
 
 import { profilesApi } from '../api';
 import {
+  useFollowList,
   usePeopleSearch,
   useProfile,
   useToggleFollow,
@@ -15,8 +17,15 @@ import {
   useUserEntries,
   useUserFavorites,
   useUserPosts,
+  useUserReplies,
 } from '../queries';
-import type { PersonResult, PickedImage, UserProfile } from '../types';
+import type {
+  FollowListPage,
+  FollowListPerson,
+  PersonResult,
+  PickedImage,
+  UserProfile,
+} from '../types';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/features/profiles/api', () => ({
@@ -24,6 +33,10 @@ jest.mock('@/features/profiles/api', () => ({
     get: jest.fn(),
     search: jest.fn(),
     posts: jest.fn(),
+    userPosts: jest.fn(),
+    replies: jest.fn(),
+    followers: jest.fn(),
+    following: jest.fn(),
     entries: jest.fn(),
     favorites: jest.fn(),
     setFollow: jest.fn(),
@@ -32,7 +45,10 @@ jest.mock('@/features/profiles/api', () => ({
   },
 }));
 
+jest.mock('@/features/feed/api', () => ({ feedApi: { myLikes: jest.fn() } }));
+
 const mocked = jest.mocked(profilesApi);
+const mockedFeed = jest.mocked(feedApi);
 
 const me: User = {
   id: 'me',
@@ -57,6 +73,7 @@ function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile 
     followingCount: 2,
     entryCount: 1,
     isFollowedByMe: false,
+    followsMe: false,
     ...overrides,
   };
 }
@@ -148,28 +165,80 @@ describe('profile reads', () => {
   });
 
   it('useUserPosts chains pages through nextCursor and stays idle without an id', async () => {
-    mocked.posts.mockResolvedValueOnce({ items: [], nextCursor: 'c1' });
-    mocked.posts.mockResolvedValueOnce({ items: [], nextCursor: null });
+    mocked.userPosts.mockResolvedValueOnce({ items: [], nextCursor: 'c1' });
+    mocked.userPosts.mockResolvedValueOnce({ items: [], nextCursor: null });
     const client = freshClient();
-    const { result } = await renderHook(() => useUserPosts('u1', 'activity'), {
+    const { result } = await renderHook(() => useUserPosts('u1', 'posts'), {
       wrapper: wrapperFor(client),
     });
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
-    expect(mocked.posts).toHaveBeenLastCalledWith('u1', 'activity', undefined);
+    expect(mocked.userPosts).toHaveBeenLastCalledWith('u1', { cursor: undefined });
     expect(result.current.hasNextPage).toBe(true);
 
     await act(async () => {
       await result.current.fetchNextPage();
     });
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
-    expect(mocked.posts).toHaveBeenLastCalledWith('u1', 'activity', 'c1');
+    expect(mocked.userPosts).toHaveBeenLastCalledWith('u1', { cursor: 'c1' });
     expect(result.current.hasNextPage).toBe(false);
+    expect(client.getQueryData(['userPosts', 'u1', 'posts'])).toBeDefined();
 
-    const idle = await renderHook(() => useUserPosts(undefined, 'post'), {
+    const idle = await renderHook(() => useUserPosts(undefined, 'posts'), {
       wrapper: wrapperFor(client),
     });
     expect(idle.result.current.fetchStatus).toBe('idle');
-    expect(mocked.posts).toHaveBeenCalledTimes(2);
+    expect(mocked.userPosts).toHaveBeenCalledTimes(2);
+  });
+
+  it('useUserPosts asks for the media filter on Mídia and for the own likes on Curtidas', async () => {
+    mocked.userPosts.mockResolvedValue({ items: [], nextCursor: null });
+    mockedFeed.myLikes.mockResolvedValue({ items: [], nextCursor: null });
+    const client = freshClient();
+    const media = await renderHook(() => useUserPosts('u1', 'media'), { wrapper: wrapperFor(client) });
+    const likes = await renderHook(() => useUserPosts('me', 'likes'), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(media.result.current.data).toBeDefined());
+    await waitFor(() => expect(likes.result.current.data).toBeDefined());
+    expect(mocked.userPosts).toHaveBeenCalledWith('u1', { filter: 'media', cursor: undefined });
+    expect(mockedFeed.myLikes).toHaveBeenCalledWith(undefined);
+    // Under the profile's post lists, where post toggles and the own-profile refreshes reach them.
+    expect(client.getQueryData(['userPosts', 'u1', 'media'])).toBeDefined();
+    expect(client.getQueryData(['userPosts', 'me', 'likes'])).toBeDefined();
+  });
+
+  it('useUserReplies pages through the comments of a user', async () => {
+    mocked.replies.mockResolvedValueOnce({ items: [], nextCursor: 'c1' });
+    mocked.replies.mockResolvedValueOnce({ items: [], nextCursor: null });
+    const client = freshClient();
+    const { result } = await renderHook(() => useUserReplies('u1'), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+    expect(mocked.replies).toHaveBeenLastCalledWith('u1', undefined);
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+    expect(mocked.replies).toHaveBeenLastCalledWith('u1', 'c1');
+    expect(result.current.hasNextPage).toBe(false);
+
+    const idle = await renderHook(() => useUserReplies(undefined), { wrapper: wrapperFor(client) });
+    expect(idle.result.current.fetchStatus).toBe('idle');
+  });
+
+  it.each(['followers', 'following'] as const)('useFollowList pages through %s', async (kind) => {
+    mocked[kind].mockResolvedValueOnce({ items: [], nextCursor: 'c1' });
+    mocked[kind].mockResolvedValueOnce({ items: [], nextCursor: null });
+    const client = freshClient();
+    const { result } = await renderHook(() => useFollowList('u1', kind), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+    expect(mocked[kind]).toHaveBeenLastCalledWith('u1', undefined);
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+    expect(mocked[kind]).toHaveBeenLastCalledWith('u1', 'c1');
+    expect(client.getQueryData(['follows', 'u1', kind])).toBeDefined();
   });
 });
 
@@ -429,6 +498,212 @@ describe('useToggleFollow', () => {
     await waitFor(() => expect(followed(client, ['profile', 'u1'])).toBe(true));
     expect(client.getQueryData<UserProfile>(['profile', 'u1'])?.followerCount).toBe(6);
     expect(showToast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useToggleFollow announce', () => {
+  it('confirms an announced follow with a toast once the server has it, with no observer left', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    client.setQueryData(['profile', 'u1'], profile('u1'));
+    const { result, unmount } = await renderHook(() => useToggleFollow(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true, announce: 'Ana' });
+    });
+    // The button that asked is gone (the compact header drops it on the optimistic write).
+    await unmount();
+    expect(showToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      request.resolve();
+    });
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Seguindo Ana'));
+  });
+
+  it('stays silent without announce, on an unfollow and when the follow fails', async () => {
+    mocked.setFollow.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+    const client = freshClient();
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u1', follow: true });
+    });
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u2', follow: false, announce: 'Bia' });
+    });
+    expect(showToast).not.toHaveBeenCalled();
+
+    mocked.setFollow.mockRejectedValueOnce(new Error('boom'));
+    client.setQueryData(['profile', 'u3'], profile('u3'));
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u3', follow: true, announce: 'Caio' }).catch(() => undefined);
+    });
+    expect(showToast).not.toHaveBeenCalledWith('Seguindo Caio');
+  });
+});
+
+describe('useToggleFollow in the follows lists', () => {
+  function listPerson(id: string, overrides: Partial<FollowListPerson> = {}): FollowListPerson {
+    return { ...person(id), followsMe: false, ...overrides };
+  }
+
+  function listOf(...items: FollowListPerson[]) {
+    return { pages: [{ items, nextCursor: null }], pageParams: [undefined] };
+  }
+
+  function rows(client: QueryClient, key: unknown[]) {
+    return client
+      .getQueryData<{ pages: FollowListPage[] }>(key)
+      ?.pages.flatMap((page) => page.items.map((p) => [p.id, p.isFollowedByMe]));
+  }
+
+  function seed(client: QueryClient) {
+    client.setQueryData(['profile', 'me'], profile('me', { followingCount: 2 }));
+    client.setQueryData(['profile', 'u1'], profile('u1'));
+    client.setQueryData(['follows', 'me', 'followers'], listOf(listPerson('u1'), listPerson('u2')));
+    client.setQueryData(['follows', 'u9', 'following'], listOf(listPerson('u1')));
+  }
+
+  it('updates the row in every list, the profile and the own following count right away', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    seed(client);
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+
+    expect(rows(client, ['follows', 'me', 'followers'])).toEqual([
+      ['u1', true],
+      ['u2', false],
+    ]);
+    expect(rows(client, ['follows', 'u9', 'following'])).toEqual([['u1', true]]);
+    expect(client.getQueryData<UserProfile>(['profile', 'u1'])).toMatchObject({
+      isFollowedByMe: true,
+      followerCount: 6,
+    });
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.followingCount).toBe(3);
+
+    await act(async () => {
+      request.resolve();
+    });
+  });
+
+  it('marks the followers of that person and the own following list stale once the follow settles, without refetching', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    seed(client);
+    client.setQueryData(['follows', 'u1', 'followers'], listOf(listPerson('u2')));
+    client.setQueryData(['follows', 'me', 'following'], listOf(listPerson('u2')));
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+    expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['follows', 'u1', 'followers'] }));
+
+    await act(async () => {
+      request.resolve();
+    });
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['follows', 'u1', 'followers'],
+        exact: true,
+        refetchType: 'none',
+      }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['follows', 'me', 'following'],
+      exact: true,
+      refetchType: 'none',
+    });
+    expect(client.getQueryState(['follows', 'u1', 'followers'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['follows', 'me', 'following'])?.isInvalidated).toBe(true);
+    // The open list keeps its rows; the next mount brings the true membership.
+    expect(rows(client, ['follows', 'me', 'following'])).toEqual([['u2', false]]);
+  });
+
+  it('counts an unfollow from a list whose user has no cached profile', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    client.setQueryData(['profile', 'me'], profile('me', { followingCount: 2 }));
+    client.setQueryData(['follows', 'me', 'following'], listOf(listPerson('u2', { isFollowedByMe: true })));
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      result.current.mutate({ id: 'u2', follow: false });
+    });
+
+    // The row stays, now offering to follow again.
+    expect(rows(client, ['follows', 'me', 'following'])).toEqual([['u2', false]]);
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.followingCount).toBe(1);
+    await act(async () => {
+      request.resolve();
+    });
+  });
+
+  it('rolls the rows and both counts back when the follow fails', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    seed(client);
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+
+    await act(async () => {
+      request.reject(new Error('boom'));
+    });
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledTimes(1));
+    expect(rows(client, ['follows', 'me', 'followers'])).toEqual([
+      ['u1', false],
+      ['u2', false],
+    ]);
+    expect(rows(client, ['follows', 'u9', 'following'])).toEqual([['u1', false]]);
+    expect(client.getQueryData<UserProfile>(['profile', 'u1'])).toMatchObject({
+      isFollowedByMe: false,
+      followerCount: 5,
+    });
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.followingCount).toBe(2);
+  });
+
+  it('nets the own following count over a follow and unfollow of the same user', async () => {
+    const first = deferred();
+    const second = deferred();
+    mocked.setFollow.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = freshClient();
+    seed(client);
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true });
+    });
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: false });
+    });
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.followingCount).toBe(2);
+
+    await act(async () => {
+      first.resolve();
+    });
+    await waitFor(() => expect(mocked.setFollow).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      second.reject(new Error('boom'));
+    });
+
+    // The server confirmed the follow before the unfollow failed.
+    await waitFor(() => expect(rows(client, ['follows', 'me', 'followers'])?.[0]).toEqual(['u1', true]));
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.followingCount).toBe(3);
   });
 });
 

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardEvents } from 'react-native-keyboard-controller';
 
 import { Text, TextField, type TextFieldInput } from '@/components';
 import { authErrorMessage } from '@/features/auth';
@@ -16,24 +17,56 @@ export type CommentComposerProps = {
   /** `null` for a comment on the post itself. */
   replyTo: ReplyTarget | null;
   onCancelReply: () => void;
+  /**
+   * Changes every time the page asks the user to write (the prompt, a Responder button): the
+   * field takes focus again, even when it is already open.
+   */
+  focusRequest: number;
+  /**
+   * The keyboard went away with nothing typed and nobody being answered, so there is nothing to
+   * keep the field open for.
+   */
+  onDismiss: () => void;
   /** Receives the trimmed text; a rejection keeps the text in the field. */
   onSubmit: (content: string) => Promise<void>;
 };
 
 /** The field pinned under the thread, with the reply bar above it while answering. */
-export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentComposerProps) {
+export function CommentComposer({
+  replyTo,
+  onCancelReply,
+  focusRequest,
+  onDismiss,
+  onSubmit,
+}: CommentComposerProps) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const input = useRef<TextFieldInput>(null);
-  const replyId = replyTo?.commentId;
 
-  // Choosing someone to answer is a request to type: bring the keyboard up.
+  // Asking to write (the prompt, answering someone) is a request to type: bring the keyboard up.
   useEffect(() => {
-    if (replyId !== undefined) input.current?.focus();
-  }, [replyId]);
+    input.current?.focus();
+  }, [focusRequest]);
 
   const trimmed = text.trim();
-  const canSend = trimmed.length > 0 && text.length <= MAX_LENGTH && !sending;
+  const empty = trimmed.length === 0;
+
+  // Answering someone keeps the field open when the keyboard goes away: a sheet or dialog opened
+  // from the thread hides it too, and the target would be lost.
+  const dismissible = empty && !replyTo;
+
+  // Hiding the keyboard (the back gesture) does not always blur the field on Android, so both
+  // are watched. A field that stays open is blurred by hand: left with native focus it would
+  // ignore the next focus() and the keyboard would not come back.
+  useEffect(() => {
+    const subscription = KeyboardEvents.addListener('keyboardDidHide', () => {
+      if (dismissible) onDismiss();
+      else input.current?.blur();
+    });
+    return () => subscription.remove();
+  }, [dismissible, onDismiss]);
+
+  const canSend = !empty && text.length <= MAX_LENGTH && !sending;
   const placeholder = replyTo ? 'Escreva sua resposta' : 'Escreva um comentário';
 
   async function send() {
@@ -59,7 +92,11 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Cancelar resposta"
-            onPress={onCancelReply}
+            onPress={() => {
+              onCancelReply();
+              // With nothing typed there is nothing left to write: back to the prompt.
+              if (empty) onDismiss();
+            }}
             style={styles.iconButton}
           >
             <Ionicons name="close" size={20} color={colors.text} />
@@ -76,6 +113,9 @@ export function CommentComposer({ replyTo, onCancelReply, onSubmit }: CommentCom
             returnKeyType="send"
             value={text}
             onChangeText={setText}
+            onBlur={() => {
+              if (dismissible) onDismiss();
+            }}
             onSubmitEditing={() => void send()}
             inputRef={input}
           />

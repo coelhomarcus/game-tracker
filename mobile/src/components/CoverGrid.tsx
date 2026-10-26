@@ -1,6 +1,14 @@
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { useState, type ComponentType, type ReactElement, type ReactNode, type Ref } from 'react';
+import { FlashList, type FlashListProps, type FlashListRef } from '@shopify/flash-list';
+import {
+  useState,
+  type ComponentType,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+  type RefAttributes,
+} from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Animated, { type ScrollHandlerProcessed } from 'react-native-reanimated';
 
 const GAP = 8;
 const DEFAULT_MIN_ITEM_WIDTH = 76;
@@ -19,6 +27,14 @@ export function gridColumns(
 
 type Slot = ReactElement | ComponentType | null;
 
+// FlashList hands Reanimated its scroll view (`getScrollableNode`), so a worklet scroll handler
+// runs on the UI thread as with `Animated.FlatList`. The cast restores the generic props.
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as unknown as <T>(
+  props: FlashListProps<T> & RefAttributes<FlashListRef<T>> & {
+    onScroll?: ScrollHandlerProcessed<Record<string, unknown>>;
+  },
+) => ReactElement;
+
 export type CoverGridProps<T> = {
   data: T[];
   keyExtractor: (item: T) => string;
@@ -35,6 +51,16 @@ export type CoverGridProps<T> = {
   inset?: number;
   /** Handle to the underlying list, e.g. to scroll it to the top. */
   listRef?: Ref<FlashListRef<T>>;
+  /** A Reanimated scroll handler (`useAnimatedScrollHandler`), e.g. for a header over the grid. */
+  onScroll?: ScrollHandlerProcessed<Record<string, unknown>>;
+  /** Room above the content for a header floating over the grid; the refresh spinner starts below it. */
+  topInset?: number;
+  /** Room below the content, e.g. to keep the last row clear of a floating button. */
+  bottomInset?: number;
+  /** The content is at least this tall (a pager's lists, so their shared header can collapse). */
+  minContentHeight?: number;
+  /** Where the grid starts when it mounts. */
+  initialOffset?: number;
 };
 
 export function CoverGrid<T>({
@@ -48,6 +74,11 @@ export function CoverGrid<T>({
   minItemWidth,
   inset = 0,
   listRef,
+  onScroll,
+  topInset = 0,
+  bottomInset,
+  minContentHeight,
+  initialOffset,
 }: CoverGridProps<T>) {
   const [width, setWidth] = useState<number | null>(null);
 
@@ -57,6 +88,14 @@ export function CoverGrid<T>({
   }
 
   const grid = width === null ? null : gridColumns(width - inset * 2, minItemWidth);
+  const contentStyle = {
+    ...(inset > 0 && { paddingHorizontal: inset }),
+    ...(topInset > 0 && { paddingTop: topInset }),
+    ...(bottomInset !== undefined && { paddingBottom: bottomInset }),
+    ...(minContentHeight !== undefined && { minHeight: minContentHeight }),
+  };
+  // Only a grid under a scroll-driven header needs the animated list.
+  const List = onScroll ? AnimatedFlashList : FlashList;
 
   return (
     <View testID="cover-grid" style={styles.container} onLayout={onLayout}>
@@ -64,7 +103,7 @@ export function CoverGrid<T>({
         // The list is GAP wider than the container and each cell pads GAP / 2 per side, so the
         // gutters sit between columns and the covers line up with the page edges.
         <View testID="cover-grid-list" style={styles.list}>
-          <FlashList
+          <List<T>
             ref={listRef}
             key={grid.columns}
             data={data}
@@ -75,10 +114,13 @@ export function CoverGrid<T>({
                 {renderItem(item, grid.itemWidth)}
               </View>
             )}
-            contentContainerStyle={inset > 0 ? { paddingHorizontal: inset } : undefined}
+            contentContainerStyle={Object.keys(contentStyle).length > 0 ? contentStyle : undefined}
+            contentOffset={initialOffset ? { x: 0, y: initialOffset } : undefined}
             keyboardShouldPersistTaps="handled"
             onRefresh={onRefresh}
             refreshing={refreshing}
+            progressViewOffset={topInset > 0 ? topInset : undefined}
+            {...(onScroll ? { onScroll, scrollEventThrottle: 16 } : null)}
             ListHeaderComponent={ListHeaderComponent}
             ListHeaderComponentStyle={styles.slot}
             ListEmptyComponent={ListEmptyComponent}

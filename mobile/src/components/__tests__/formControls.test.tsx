@@ -172,6 +172,19 @@ describe('TextField design', () => {
     expect(input).toHaveStyle({ borderColor: colors.borderLow });
   });
 
+  it('tells the caller when the field loses focus, besides restyling it', async () => {
+    const onBlur = jest.fn();
+    await render(<TextField label="Nome" value="" onChangeText={() => {}} onBlur={onBlur} />);
+    const input = screen.getByLabelText('Nome');
+
+    await fireEvent(input, 'focus');
+    expect(onBlur).not.toHaveBeenCalled();
+    await fireEvent(input, 'blur');
+
+    expect(onBlur).toHaveBeenCalledTimes(1);
+    expect(input).toHaveStyle({ borderColor: colors.borderLow });
+  });
+
   it('styles the label and error with the new Text tones', async () => {
     await render(<TextField label="Nome" value="" onChangeText={() => {}} error="Obrigatório" />);
     expect(screen.getByText('Nome')).toHaveStyle({ color: colors.textMedium, fontFamily: 'Inter_500Medium' });

@@ -1,10 +1,13 @@
 import { Stack } from 'expo-router';
+import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button, EmptyState, Layout } from '@/components';
 import { useSession } from '@/features/auth';
 import { realtimeBridge } from '@/features/chat/realtimeBridge';
+import { watchSessionForDrafts } from '@/features/feed/composer/composerDraft';
+import { COMPOSER_ROUTE, COMPOSER_STACK_OPTIONS } from '@/features/feed/composer/presentation';
 import { pushController } from '@/features/push/pushController';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, space } from '@/theme/tokens';
@@ -23,6 +26,9 @@ export function SessionGate() {
     started.current = true;
     void bootstrap();
   }, [bootstrap]);
+
+  // A signed-out account must leave no composer draft behind for the next one.
+  useEffect(() => watchSessionForDrafts(), []);
 
   // One realtime connection while signed in; the token is read again on every attempt. The bridge
   // listens first so it sees the first connect.
@@ -90,7 +96,14 @@ export function SessionGate() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="games" options={{ headerShown: false }} />
-        <Stack.Screen name="posts" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="posts"
+          options={({ route }) =>
+            getFocusedRouteNameFromRoute(route) === COMPOSER_ROUTE
+              ? COMPOSER_STACK_OPTIONS
+              : { headerShown: false }
+          }
+        />
         <Stack.Screen name="users" options={{ headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: false }} />
         <Stack.Screen name="me" options={{ headerShown: false }} />

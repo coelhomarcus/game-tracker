@@ -2,8 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button, Text } from '@/components';
-import { ActivityCard } from '@/features/feed/ActivityCard';
-import { PostCard } from '@/features/feed/PostCard';
+import { PostFeedItem } from '@/features/feed/PostFeedItem';
 import { useGamePosts } from '@/features/feed/queries';
 import { postKey } from '@/features/feed/types';
 import { colors, space } from '@/theme/tokens';
@@ -42,23 +41,17 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
           </View>
         ) : (
           <>
-            {posts.map((post) =>
-              post.type === 'activity' ? (
-                <ActivityCard
+            {/* Rows run edge to edge, past the page's padding, and draw their own lines. */}
+            <View style={styles.rows}>
+              {posts.map((post) => (
+                <PostFeedItem
                   key={postKey(post)}
                   post={post}
                   hideGame
                   onPress={() => open(post.id)}
                 />
-              ) : (
-                <PostCard
-                  key={postKey(post)}
-                  post={post}
-                  hideGame
-                  onPress={() => open(post.id)}
-                />
-              ),
-            )}
+              ))}
+            </View>
             {hasNextPage ? (
               <Button
                 label="Carregar mais"
@@ -86,4 +79,5 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
 const styles = StyleSheet.create({
   section: { gap: space.md },
   empty: { gap: space.xs },
+  rows: { marginHorizontal: -space.lg },
 });

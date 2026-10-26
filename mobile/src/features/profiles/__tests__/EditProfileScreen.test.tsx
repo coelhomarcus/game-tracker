@@ -51,6 +51,7 @@ const profile: UserProfile = {
   followingCount: 0,
   entryCount: 0,
   isFollowedByMe: false,
+  followsMe: false,
 };
 
 const photo: PickedImage = {

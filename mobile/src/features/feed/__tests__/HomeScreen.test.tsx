@@ -16,7 +16,9 @@ import { socialDefaults } from '@/test-utils/postDefaults';
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useFeed: jest.fn(),
-  useTogglePostLike: () => ({ mutate: jest.fn() }),
+  ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
+    '@/test-utils/postControlHooks',
+  ).postControlHooks(),
 }));
 jest.mock('@/features/notifications/queries', () => ({ useUnreadCount: () => 2 }));
 jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
@@ -141,7 +143,8 @@ describe('HomeScreen header', () => {
 
     expect(screen.getByTestId('home-header-float')).toHaveStyle({ position: 'absolute', top: 0, zIndex: 1 });
     const list = screen.getByTestId('post-list');
-    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 120);
+    // The first row starts right under the header: rows pad themselves.
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(120);
     expect(list.props.progressViewOffset).toBe(120);
   });
 
@@ -172,7 +175,7 @@ describe('HomeScreen header', () => {
     await renderHome(24);
 
     const list = screen.getByTestId('post-list');
-    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 24 + 48 + 48);
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(24 + 48 + 48);
   });
 
   it('keeps the room for the header after switching scope', async () => {
@@ -182,7 +185,7 @@ describe('HomeScreen header', () => {
     await fireEvent.press(screen.getByRole('tab', { name: 'Seguindo' }));
 
     const list = screen.getByTestId('post-list');
-    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(16 + 120);
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingTop).toBe(120);
   });
 
   it('scrolls the feed to the top from the title', async () => {

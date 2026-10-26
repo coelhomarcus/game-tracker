@@ -10,15 +10,25 @@ import {
 } from '@tanstack/react-query';
 
 import { authErrorMessage, useSession, type User } from '@/features/auth';
+import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
 import type { PostPage } from '@/features/feed/types';
 import { showToast } from '@/lib/toast';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { profilesApi, type ProfileChanges } from './api';
-import type { ImageKind, PersonResult, PickedImage, UserProfile } from './types';
+import type {
+  FollowListPage,
+  ImageKind,
+  PersonResult,
+  PickedImage,
+  UserProfile,
+  UserReplyPage,
+} from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
+type FollowPages = InfiniteData<FollowListPage, string | undefined>;
+type ReplyPages = InfiniteData<UserReplyPage, string | undefined>;
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_MIN_LENGTH = 2;
@@ -40,12 +50,49 @@ export function usePeopleSearch(term: string) {
   });
 }
 
-/** `type` picks the activity tab or the posts tab of the profile. */
-export function useUserPosts(id: string | undefined, type: 'activity' | 'post') {
+/**
+ * The post lists of a profile: `posts` (the user's posts and reposts), `media` (their own posts
+ * with an image) and `likes` (what the signed-in user liked: only asked for on the own profile).
+ * All live under `['userPosts', id]`, where post toggles and the own-profile refreshes reach them.
+ */
+export type ProfileFeed = 'posts' | 'media' | 'likes';
+
+function fetchProfileFeed(id: string, feed: ProfileFeed, cursor: string | undefined) {
+  if (feed === 'likes') return feedApi.myLikes(cursor);
+  return profilesApi.userPosts(id, feed === 'media' ? { filter: 'media', cursor } : { cursor });
+}
+
+export function useUserPosts(id: string | undefined, feed: ProfileFeed) {
   return useInfiniteQuery<PostPage, Error, PostPages, readonly unknown[], string | undefined>({
-    queryKey: ['userPosts', id, type],
+    queryKey: ['userPosts', id, feed],
     queryFn:
-      id === undefined ? skipToken : ({ pageParam }) => profilesApi.posts(id, type, pageParam),
+      id === undefined ? skipToken : ({ pageParam }) => fetchProfileFeed(id, feed, pageParam),
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+/** The comments a user wrote (the Respostas tab), newest first. */
+export function useUserReplies(id: string | undefined) {
+  return useInfiniteQuery<UserReplyPage, Error, ReplyPages, readonly unknown[], string | undefined>({
+    queryKey: ['userReplies', id],
+    queryFn: id === undefined ? skipToken : ({ pageParam }) => profilesApi.replies(id, pageParam),
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+export type FollowListKind = 'followers' | 'following';
+
+/** Who follows the user, or whom they follow, newest follow first. */
+export function useFollowList(id: string | undefined, kind: FollowListKind) {
+  return useInfiniteQuery<FollowListPage, Error, FollowPages, readonly unknown[], string | undefined>({
+    queryKey: ['follows', id, kind],
+    queryFn:
+      id === undefined
+        ? skipToken
+        : ({ pageParam }) =>
+            kind === 'followers' ? profilesApi.followers(id, pageParam) : profilesApi.following(id, pageParam),
     initialPageParam: undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
@@ -80,8 +127,52 @@ function withFollow(followed: boolean) {
         };
 }
 
-/** Applies the follow state to the user's profile and to every cached people search. */
+/** Whether the signed-in user follows `id`, as the cache shows it now (profile, lists, search). */
+function cachedFollowState(client: QueryClient, id: string): boolean | undefined {
+  const profile = client.getQueryData<UserProfile>(['profile', id]);
+  if (profile) return profile.isFollowedByMe;
+  for (const [, data] of client.getQueriesData<FollowPages>({ queryKey: ['follows'] })) {
+    for (const page of data?.pages ?? []) {
+      const person = page.items.find((p) => p.id === id);
+      if (person) return person.isFollowedByMe;
+    }
+  }
+  for (const [, results] of client.getQueriesData<PersonResult[]>({ queryKey: ['people'] })) {
+    const person = results?.find((p) => p.id === id);
+    if (person) return person.isFollowedByMe;
+  }
+  return undefined;
+}
+
+/** The list with `id`'s row moved to `followed`; the same object when no row changes. */
+function withFollowedRow(pages: FollowPages | undefined, id: string, followed: boolean) {
+  const changes = pages?.pages.some((page) =>
+    page.items.some((p) => p.id === id && p.isFollowedByMe !== followed),
+  );
+  if (!pages || !changes) return pages;
+  return {
+    ...pages,
+    pages: pages.pages.map((page) => ({
+      ...page,
+      items: page.items.map((p) => (p.id === id ? { ...p, isFollowedByMe: followed } : p)),
+    })),
+  };
+}
+
+/**
+ * Applies the follow state to the user's profile, every cached people search and followers or
+ * following list, and to the signed-in user's "seguindo" count when the state really changes.
+ */
 function setFollowEverywhere(client: QueryClient, id: string, followed: boolean) {
+  const before = cachedFollowState(client, id);
+  const me = useSession.getState().user?.id;
+  if (before !== undefined && before !== followed && me !== undefined && me !== id) {
+    client.setQueryData<UserProfile>(['profile', me], (profile) =>
+      profile
+        ? { ...profile, followingCount: Math.max(0, profile.followingCount + (followed ? 1 : -1)) }
+        : profile,
+    );
+  }
   client.setQueryData<UserProfile>(['profile', id], (profile) =>
     profile ? withFollow(followed)(profile) : profile,
   );
@@ -89,6 +180,9 @@ function setFollowEverywhere(client: QueryClient, id: string, followed: boolean)
     results?.some((p) => p.id === id && p.isFollowedByMe !== followed)
       ? results.map((p) => (p.id === id ? { ...p, isFollowedByMe: followed } : p))
       : results,
+  );
+  client.setQueriesData<FollowPages>({ queryKey: ['follows'] }, (pages) =>
+    withFollowedRow(pages, id, followed),
   );
 }
 
@@ -99,7 +193,27 @@ function refreshProfiles(client: QueryClient, id: string) {
   for (const profileId of ids) {
     void client.invalidateQueries({ queryKey: ['profile', profileId], exact: true });
   }
+  // Following someone adds or removes a row in two lists that the optimistic write cannot build.
+  // They are only marked stale: a row the user just unfollowed stays in an open list, and the next
+  // mount or pull brings the true membership.
+  for (const key of [
+    ['follows', id, 'followers'],
+    ...(me === undefined ? [] : [['follows', me, 'following']]),
+  ]) {
+    void client.invalidateQueries({ queryKey: key, exact: true, refetchType: 'none' });
+  }
 }
+
+export type FollowVariables = {
+  id: string;
+  follow: boolean;
+  /**
+   * The person's name, to confirm a follow with a toast ("Seguindo <nome>") once the server has
+   * it. The hook shows it, so it appears even when the button that asked unmounts on the
+   * optimistic write (the compact header's Seguir does).
+   */
+  announce?: string;
+};
 
 /**
  * Optimistic everywhere the user is cached. Requests of one user run in order; a failure
@@ -118,22 +232,36 @@ export function useToggleFollow() {
     // profile's "following" count changes with every follow, so both are refetched once.
     if (!followLanes.has(lane)) refreshProfiles(client, id);
   };
-  return useMutation<void, Error, { id: string; follow: boolean }>({
+  return useMutation<void, Error, FollowVariables>({
     mutationFn: ({ id, follow }) =>
       followLanes.run(followLane(id), () => profilesApi.setFollow(id, follow)),
     onMutate: async ({ id, follow }) => {
       followLanes.begin(followLane(id), !follow);
+      const me = useSession.getState().user?.id;
       await Promise.all([
         client.cancelQueries({ queryKey: ['profile', id], exact: true }),
+        // The own profile's "seguindo" count is written too.
+        me === undefined || me === id
+          ? undefined
+          : client.cancelQueries({
+              queryKey: ['profile', me],
+              exact: true,
+              predicate: (query) => query.state.data !== undefined,
+            }),
         client.cancelQueries({
           queryKey: ['people'],
+          predicate: (query) => query.state.data !== undefined,
+        }),
+        client.cancelQueries({
+          queryKey: ['follows'],
           predicate: (query) => query.state.data !== undefined,
         }),
       ]);
       setFollowEverywhere(client, id, follow);
     },
-    onSuccess: (_data, { id, follow }) => {
+    onSuccess: (_data, { id, follow, announce }) => {
       settle(id, follow);
+      if (follow && announce !== undefined) showToast(`Seguindo ${announce}`);
       return client.invalidateQueries({ queryKey: ['feed', 'following'] });
     },
     onError: (error, { id, follow }) => settle(id, follow, error),

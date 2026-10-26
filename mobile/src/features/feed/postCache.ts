@@ -6,11 +6,11 @@ import {
   type QueryKey,
 } from '@tanstack/react-query';
 
-import type { Post, PostPage } from './types';
+import type { Comment, Post, PostPage } from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
-const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts']];
+const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts'], ['bookmarks']];
 
 type Interrupted = { query: Query; nextPage: boolean };
 
@@ -38,13 +38,91 @@ export function cancelPostQueries(client: QueryClient, postId: string): Promise<
   return cancelAndRemember(client, [...LIST_KEYS, ['post', postId]]);
 }
 
+/** Every cached comment tree of the post: one per sort order, `['comments', postId, sort]`. */
+function commentsKey(postId: string): QueryKey {
+  return ['comments', postId];
+}
+
+/** Stops the in-flight fetches of the post's comments, in every sort order. */
 export function cancelCommentQueries(client: QueryClient, postId: string): Promise<void> {
-  return cancelAndRemember(client, [['comments', postId]]);
+  return cancelAndRemember(client, [commentsKey(postId)]);
+}
+
+function mapComment(comments: Comment[], id: string, update: (c: Comment) => Comment): Comment[] {
+  let changed = false;
+  const mapped = comments.map((comment) => {
+    const replies = mapComment(comment.replies, id, update);
+    let next = replies === comment.replies ? comment : { ...comment, replies };
+    if (next.id === id) next = update(next);
+    if (next !== comment) changed = true;
+    return next;
+  });
+  return changed ? mapped : comments;
 }
 
 /**
- * Restarts the fetches that a like cancelled: a next page is fetched again, anything else is
- * refetched. Call it once no like is in flight, so the server already holds the likes and the
+ * Applies `update` to the comment in every cached comment tree of the post (each sort order),
+ * immutably. Only trees that hold the comment are written.
+ */
+export function updateCommentEverywhere(
+  client: QueryClient,
+  postId: string,
+  commentId: string,
+  update: (c: Comment) => Comment,
+): void {
+  for (const [queryKey, tree] of client.getQueriesData<Comment[]>({ queryKey: commentsKey(postId) })) {
+    if (tree === undefined) continue;
+    const next = mapComment(tree, commentId, update);
+    if (next !== tree) client.setQueryData(queryKey, next);
+  }
+}
+
+/** The comment and every reply below it. */
+export function countWithReplies(comment: Comment): number {
+  return comment.replies.reduce((sum, reply) => sum + countWithReplies(reply), 1);
+}
+
+type Removal = { tree: Comment[]; removed: Comment | null };
+
+function withoutComment(comments: Comment[], id: string): Removal {
+  let removed: Comment | null = null;
+  const kept: Comment[] = [];
+  for (const comment of comments) {
+    if (comment.id === id) {
+      removed = comment;
+      continue;
+    }
+    const inner: Removal | null = removed === null ? withoutComment(comment.replies, id) : null;
+    if (inner?.removed) {
+      removed = inner.removed;
+      kept.push({ ...comment, replies: inner.tree });
+    } else {
+      kept.push(comment);
+    }
+  }
+  return removed === null ? { tree: comments, removed: null } : { tree: kept, removed };
+}
+
+/**
+ * Takes the comment and its replies out of every cached comment tree of the post (each sort
+ * order). Returns how many comments went with it (itself included), as the largest cached copy
+ * held them, or 0 when no tree held it.
+ */
+export function removeCommentEverywhere(client: QueryClient, postId: string, commentId: string): number {
+  let count = 0;
+  for (const [queryKey, tree] of client.getQueriesData<Comment[]>({ queryKey: commentsKey(postId) })) {
+    if (tree === undefined) continue;
+    const { tree: next, removed } = withoutComment(tree, commentId);
+    if (removed === null) continue;
+    count = Math.max(count, countWithReplies(removed));
+    client.setQueryData(queryKey, next);
+  }
+  return count;
+}
+
+/**
+ * Restarts the fetches that a toggle cancelled: a next page is fetched again, anything else is
+ * refetched. Call it once no toggle is in flight, so the server already holds the toggles and the
  * response cannot overwrite an optimistic write. Inactive queries are left alone.
  */
 export function resumeInterrupted(client: QueryClient): void {
@@ -98,6 +176,105 @@ export function updatePostEverywhere(
   if (detail !== undefined) {
     client.setQueryData(detailKey, update(detail));
   }
+}
+
+/** A quote of a deleted post shows "Post removido" in its place, as the server will say too. */
+function withoutQuoteOf(postId: string) {
+  return (p: Post): Post =>
+    p.quotedPost?.id === postId || p.quotedPostId === postId
+      ? { ...p, quotedPostId: null, quotedPost: null, quotedPostRemoved: true }
+      : p;
+}
+
+function removeFromPages(data: PostPages, postId: string): PostPages {
+  const unquote = withoutQuoteOf(postId);
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    let pageChanged = false;
+    const items: Post[] = [];
+    for (const item of page.items) {
+      if (item.id === postId) {
+        pageChanged = true;
+        continue;
+      }
+      const next = unquote(item);
+      if (next !== item) pageChanged = true;
+      items.push(next);
+    }
+    if (!pageChanged) return page;
+    changed = true;
+    return { ...page, items };
+  });
+  return changed ? { ...data, pages } : data;
+}
+
+/** Posts deleted in this session, per client, so a post page still open for one can say so. */
+const deletedPosts = new WeakMap<QueryClient, Set<string>>();
+
+/** Whether the user deleted the post in this session. */
+export function isDeletedPost(client: QueryClient, postId: string): boolean {
+  return deletedPosts.get(client)?.has(postId) ?? false;
+}
+
+/** Drops the post's detail and comments now, or once the last screen showing them closes. */
+function dropDetail(client: QueryClient, postId: string): void {
+  const drop = () => {
+    client.removeQueries({ queryKey: ['post', postId], exact: true });
+    client.removeQueries({ queryKey: commentsKey(postId) });
+  };
+  const cache = client.getQueryCache();
+  const detail = cache.find({ queryKey: ['post', postId], exact: true });
+  if (detail === undefined || detail.getObserversCount() === 0) {
+    drop();
+    return;
+  }
+  // A page still shows it (the one the user deleted it from, or one lower in the stack): its
+  // data stays until that page goes, so it does not flash empty while it closes.
+  const unsubscribe = cache.subscribe((event) => {
+    if (event.type !== 'observerRemoved' || event.query !== detail) return;
+    if (detail.getObserversCount() > 0) return;
+    unsubscribe();
+    drop();
+  });
+}
+
+/**
+ * Takes a deleted post out of every cached feed, game, profile and bookmark list (its reposts
+ * too), marks the posts that quote it as quoting a removed post, takes its quote off the count
+ * of the post it quoted, and drops its own detail and comments once no screen shows them.
+ */
+export function removePostEverywhere(
+  client: QueryClient,
+  post: Pick<Post, 'id' | 'quotedPostId'>,
+): void {
+  const postId = post.id;
+  const deleted = deletedPosts.get(client) ?? new Set<string>();
+  deleted.add(postId);
+  deletedPosts.set(client, deleted);
+
+  if (post.quotedPostId !== null) {
+    updatePostEverywhere(client, post.quotedPostId, (p) => ({
+      ...p,
+      quoteCount: Math.max(0, p.quoteCount - 1),
+    }));
+  }
+
+  for (const key of LIST_KEYS) {
+    for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
+      if (data === undefined) continue;
+      const next = removeFromPages(data, postId);
+      if (next !== data) client.setQueryData(queryKey, next);
+    }
+  }
+
+  const unquote = withoutQuoteOf(postId);
+  for (const [queryKey, data] of client.getQueriesData<Post>({ queryKey: ['post'] })) {
+    if (data === undefined || data.id === postId) continue;
+    const next = unquote(data);
+    if (next !== data) client.setQueryData(queryKey, next);
+  }
+
+  dropDetail(client, postId);
 }
 
 /**

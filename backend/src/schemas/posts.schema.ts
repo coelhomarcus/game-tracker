@@ -9,7 +9,8 @@ const postImageSchema = z.object({
 });
 
 export const createPostSchema = z.object({
-  content: z.string().min(1).max(500),
+  // Aparado antes de medir. Pode ficar vazio só quando o post tem imagem (veja o refine abaixo).
+  content: z.string().trim().max(500).default(''),
   gameEntryId: z.string().uuid().optional(),
   // Vínculo livre a qualquer jogo do catálogo, sem exigir um playthrough
   // trackeado. Se gameEntryId também vier, o service deriva o gameId dali
@@ -25,6 +26,10 @@ export const createPostSchema = z.object({
 }).refine((post) => !(post.imageUrl && post.images?.length), {
   message: 'Use imageUrl ou images, não os dois',
   path: ['images'],
+}).refine((post) => post.content.length > 0 || Boolean(post.imageUrl) || (post.images?.length ?? 0) > 0, {
+  // Só o texto ou uma imagem sustentam um post; citar sozinho não.
+  message: 'Escreva algo ou anexe uma imagem',
+  path: ['content'],
 });
 
 export const bookmarksQuerySchema = z.object({

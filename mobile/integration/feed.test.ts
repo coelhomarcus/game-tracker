@@ -1,6 +1,5 @@
 // Feed, posts and comments. Requires the synthetic games 900001/900002 (`npm run test:seed` in
 // backend/).
-import { flattenComments } from '@/features/feed/flattenComments';
 import type { Comment, Post, PostPage } from '@/features/feed/types';
 import type { EntryDraft, GameEntry } from '@/features/library/types';
 
@@ -12,6 +11,7 @@ import {
   FIXTURE_GAME_TWO,
   signUpAccount,
 } from './backend';
+import { threadComments } from './threadComments';
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -51,7 +51,7 @@ async function allPages(
 }
 
 function commentIn(tree: Comment[], id: string): Comment | undefined {
-  return flattenComments(tree).find((row) => row.comment.id === id)?.comment;
+  return threadComments(tree).find((comment) => comment.id === id);
 }
 
 describeBackend('feed against the test API', () => {
@@ -180,7 +180,7 @@ describeBackend('feed against the test API', () => {
     await a.feed.addComment(post.id, 'nível 3', l2.id);
 
     tree = await a.feed.comments(post.id);
-    expect(flattenComments(tree)).toHaveLength(4);
+    expect(threadComments(tree)).toHaveLength(4);
     expect(commentIn(tree, l2.id)?.replies.map((c) => c.content)).toEqual(['nível 3']);
     // The post counter counts every level.
     expect((await a.feed.post(post.id)).commentCount).toBe(4);

@@ -25,3 +25,17 @@ export function invalidateOwnProfile(
   }
   return Promise.all(invalidations);
 }
+
+/** The own Respostas tab, after the user wrote or deleted a comment. */
+export function invalidateOwnReplies(client: QueryClient): Promise<unknown> {
+  const me = useSession.getState().user?.id;
+  if (me === undefined) return Promise.resolve();
+  return client.invalidateQueries({ queryKey: ['userReplies', me], exact: true });
+}
+
+/** The own Curtidas tab, after the user liked or unliked a post. */
+export function invalidateOwnLikes(client: QueryClient): Promise<unknown> {
+  const me = useSession.getState().user?.id;
+  if (me === undefined) return Promise.resolve();
+  return client.invalidateQueries({ queryKey: ['userPosts', me, 'likes'], exact: true });
+}

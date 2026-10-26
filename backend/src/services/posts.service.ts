@@ -400,7 +400,13 @@ export async function getUserPosts(
   cursor: string | undefined,
   limit: number,
   type?: 'activity' | 'post',
+  filter?: 'media',
 ) {
+  if (filter === 'media') {
+    // Só os posts do próprio usuário com ao menos uma imagem (tabela ou `image_url` legado); sem reposts.
+    const hasImage = sql`(${posts.imageUrl} is not null or exists(select 1 from ${postImages} where ${postImages.postId} = ${posts.id}))`;
+    return timeline(viewerId, { posts: and(eq(posts.userId, targetUserId), hasImage)!, reposts: null }, cursor, limit);
+  }
   const typeFilter = type === 'activity' ? eq(posts.type, 'activity') : type === 'post' ? ne(posts.type, 'activity') : undefined;
   const postsFilter = typeFilter ? and(eq(posts.userId, targetUserId), typeFilter)! : eq(posts.userId, targetUserId);
   const repostsFilter = type === 'activity' ? null : eq(reposts.userId, targetUserId);
@@ -415,6 +421,43 @@ export async function getUserPosts(
 export async function searchPosts(viewerId: string, term: string, cursor: string | undefined, limit: number) {
   const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
   return timeline(viewerId, { posts: sql`${posts.content} ilike ${pattern}`, reposts: null }, cursor, limit);
+}
+
+/**
+ * Os posts que o usuário curtiu, a curtida mais recente primeiro. Paginação keyset por
+ * (likes.created_at, likes.id), com microssegundos. Itens com `reason: null`, como nos salvos.
+ */
+export async function getLikedPosts(userId: string, cursor: string | undefined, limit: number) {
+  const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
+  if (cursor !== undefined && !decoded) throw new AppError(400, 'validation_error', 'Cursor inválido');
+  const cut = decoded
+    ? sql`and (${likes.createdAt}, ${likes.id}) < (${decoded.at}::timestamptz, ${decoded.id}::uuid)`
+    : sql``;
+
+  const result = await db.execute<BookmarkRow>(sql`
+    select ${likes.id} as id, ${likes.postId} as post_id,
+      to_char(${likes.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text
+    from ${likes}
+    where ${likes.userId} = ${userId} ${cut}
+    order by ${likes.createdAt} desc, ${likes.id} desc
+    limit ${limit + 1}
+  `);
+
+  const rows = result.rows;
+  const page = rows.slice(0, limit);
+  const postsById = await hydratePosts(
+    page.map((r) => r.post_id),
+    userId,
+  );
+  const items = page.flatMap((row) => {
+    const post = postsById.get(row.post_id);
+    return post ? [{ ...post, reason: null }] : [];
+  });
+
+  const last = page[page.length - 1];
+  const nextCursor =
+    rows.length > limit && last ? encodeTimelineCursor({ at: last.at_text, id: last.id, kind: 'post' }) : null;
+  return { items, nextCursor };
 }
 
 /** Posts sobre um jogo: só os originais. */

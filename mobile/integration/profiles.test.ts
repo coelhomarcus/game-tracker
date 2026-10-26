@@ -223,3 +223,87 @@ describeBackend('profiles against the test API', () => {
     expect((await authApi.me(a.app.api)).name).toBe('Nome Novo');
   });
 });
+
+describeBackend('follows lists, media and likes against the test API', () => {
+  it('followers and following: newest first, with both relation flags and the profile followsMe', async () => {
+    const owner = await signUpAccount('fo');
+    const first = await signUpAccount('f1');
+    const second = await signUpAccount('f2');
+    const viewer = await signUpAccount('fv');
+
+    await first.profiles.setFollow(owner.user.id, true);
+    await second.profiles.setFollow(owner.user.id, true);
+    await owner.profiles.setFollow(second.user.id, true);
+    await viewer.profiles.setFollow(first.user.id, true);
+
+    const followers = await viewer.profiles.followers(owner.user.id);
+    expect(followers.items.map((p) => p.id)).toEqual([second.user.id, first.user.id]);
+    expect(followers.nextCursor).toBeNull();
+    expect(followers.items.map((p) => [p.isFollowedByMe, p.followsMe])).toEqual([
+      [false, false],
+      [true, false],
+    ]);
+    expect((await viewer.profiles.following(owner.user.id)).items.map((p) => p.id)).toEqual([
+      second.user.id,
+    ]);
+
+    // followsMe: the profile's owner follows the viewer. The owner follows only `second`.
+    expect((await second.profiles.get(owner.user.id)).followsMe).toBe(true);
+    expect((await first.profiles.get(owner.user.id)).followsMe).toBe(false);
+    expect((await viewer.profiles.get(owner.user.id)).followsMe).toBe(false);
+    // Both fans follow the owner back.
+    expect((await owner.profiles.get(first.user.id)).followsMe).toBe(true);
+    expect((await owner.profiles.get(owner.user.id)).followsMe).toBe(false);
+  });
+
+  it('pages through more followers than one page, with the opaque cursor and no repeats', async () => {
+    const owner = await signUpAccount('fp');
+    const fans: Account[] = [];
+    for (let i = 0; i < 21; i++) fans.push(await signUpAccount(`fa${i}`));
+    for (const fan of fans) await fan.profiles.setFollow(owner.user.id, true);
+
+    const first = await owner.profiles.followers(owner.user.id);
+    expect(first.items).toHaveLength(20);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await owner.profiles.followers(owner.user.id, first.nextCursor ?? undefined);
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+    const ids = [...first.items, ...second.items].map((p) => p.id);
+    expect(new Set(ids).size).toBe(21);
+    expect(ids[0]).toBe(fans[20]!.user.id);
+  });
+
+  it('the media filter keeps only original posts with an image', async () => {
+    const a = await signUpAccount('mf');
+    const b = await signUpAccount('mg');
+    const image = picked(gradientPng(60, 40), 'foto.png', 'image/png');
+    const uploaded = await withNativeFormData(() => a.feed.uploadPostImage(image));
+    await a.feed.create({ content: 'só texto' });
+    const withImage = await a.feed.create({ content: 'com foto', images: [uploaded] });
+    const other = await b.feed.create({ content: 'de outra pessoa' });
+    await a.feed.setRepost(other.id, true);
+
+    const media = await b.profiles.userPosts(a.user.id, { filter: 'media' });
+    expect(media.items.map((p) => p.id)).toEqual([withImage.id]);
+    expect(media.items[0]!.reason).toBeNull();
+    expect(media.items[0]!.images).toHaveLength(1);
+    const all = await b.profiles.userPosts(a.user.id);
+    expect(all.items.length).toBeGreaterThan(media.items.length);
+  });
+
+  it('my likes lists the posts I liked, newest like first, privately', async () => {
+    const author = await signUpAccount('la');
+    const reader = await signUpAccount('lr');
+    const one = await author.feed.create({ content: 'um' });
+    const two = await author.feed.create({ content: 'dois' });
+    await reader.feed.setLike(one.id, true);
+    await reader.feed.setLike(two.id, true);
+    await reader.feed.setLike(one.id, false);
+    await reader.feed.setLike(one.id, true);
+
+    const mine = await reader.feed.myLikes();
+    expect(mine.items.map((p) => p.id)).toEqual([one.id, two.id]);
+    expect(mine.items.every((p) => p.likedByMe && p.reason === null)).toBe(true);
+    expect((await author.feed.myLikes()).items).toEqual([]);
+  });
+});

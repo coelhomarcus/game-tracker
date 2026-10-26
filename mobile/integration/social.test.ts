@@ -1,6 +1,5 @@
 // Reposts, bookmarks, quotes, post images, deletes, post search, mentions, comment sorting and
 // the profile limits. Requires the synthetic games (`npm run test:seed` in backend/).
-import { flattenComments } from '@/features/feed/flattenComments';
 import type { Comment, Post, PostPage } from '@/features/feed/types';
 import { postKey } from '@/features/feed/types';
 
@@ -13,6 +12,7 @@ import {
   type Account,
 } from './backend';
 import { gradientPng, picked, served, withNativeFormData } from './images';
+import { threadComments } from './threadComments';
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -30,7 +30,7 @@ async function allPages(load: (cursor?: string) => Promise<PostPage>, maxPages =
 }
 
 /** The ids of a comment tree, in the order the screen would list them (parents before replies). */
-const commentOrder = (tree: Comment[]) => flattenComments(tree).map((row) => row.comment.content);
+const commentOrder = (tree: Comment[]) => threadComments(tree).map((comment) => comment.content);
 
 async function uploadPostImage(account: Account, width: number, height: number) {
   const image = picked(gradientPng(width, height), 'foto.png', 'image/png');
@@ -424,10 +424,10 @@ describeBackend('comment sorting against the test API', () => {
     const b = await signUpAccount('cb');
     const post = await a.feed.create({ content: 'Post' });
     for (const text of ['um', 'dois', 'tres']) await b.feed.addComment(post.id, text);
-    const dois = flattenComments(await a.feed.comments(post.id)).find(
-      (row) => row.comment.content === 'dois',
+    const dois = threadComments(await a.feed.comments(post.id)).find(
+      (comment) => comment.content === 'dois',
     )!;
-    await a.feed.setCommentLike(dois.comment.id, true);
+    await a.feed.setCommentLike(dois.id, true);
 
     expect(commentOrder(await a.feed.comments(post.id))).toEqual(['um', 'dois', 'tres']);
     expect(commentOrder(await a.feed.comments(post.id, 'oldest'))).toEqual(['um', 'dois', 'tres']);

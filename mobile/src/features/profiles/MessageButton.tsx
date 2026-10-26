@@ -8,7 +8,7 @@ import { showToast } from '@/lib/toast';
 
 export type MessageButtonProps = { userId: string; name: string };
 
-/** Finds or creates the conversation with the user and opens it. */
+/** A round icon button that finds or creates the conversation with the user and opens it. */
 export function MessageButton({ userId, name }: MessageButtonProps) {
   const router = useRouter();
   const start = useStartConversation();
@@ -29,7 +29,9 @@ export function MessageButton({ userId, name }: MessageButtonProps) {
 
   return (
     <Button
-      label="Mensagem"
+      icon="chatbubble-outline"
+      shape="round"
+      size="small"
       accessibilityLabel={`Enviar mensagem para ${name}`}
       color="secondary"
       disabled={start.isPending}

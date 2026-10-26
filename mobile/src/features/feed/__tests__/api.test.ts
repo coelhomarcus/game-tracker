@@ -556,6 +556,27 @@ describe('feedApi', () => {
     expect(page.items[0]).toMatchObject({ id: 'p1', bookmarkedByMe: true, reason: null });
   });
 
+  it('myLikes pages through /users/me/likes with the opaque cursor', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/me/likes`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json({
+          items: [{ ...postJson, likedByMe: true, reason: null }],
+          nextCursor: 'eyJhIjoxfQ',
+        });
+      }),
+    );
+
+    const page = await feedApi.myLikes();
+    await feedApi.myLikes(page.nextCursor ?? undefined);
+
+    expect(seen[0].get('limit')).toBe('20');
+    expect(seen[0].has('cursor')).toBe(false);
+    expect(seen[1].get('cursor')).toBe('eyJhIjoxfQ');
+    expect(page.items[0]).toMatchObject({ id: 'p1', likedByMe: true, reason: null });
+  });
+
   it('searchPosts sends the trimmed term and the cursor only when given', async () => {
     const seen: URLSearchParams[] = [];
     server.use(

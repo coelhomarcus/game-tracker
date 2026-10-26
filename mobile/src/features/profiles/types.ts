@@ -1,3 +1,5 @@
+import { parseUserSummary, type UserSummary } from '@/features/games/types';
+
 export type ImageKind = 'avatar' | 'banner';
 
 /** An image chosen with the system picker, ready to upload. */
@@ -20,6 +22,8 @@ export type UserProfile = {
   followingCount: number;
   entryCount: number;
   isFollowedByMe: boolean;
+  /** The profile's owner follows the signed-in user. */
+  followsMe: boolean;
 };
 
 /** One row of the people search. */
@@ -31,6 +35,24 @@ export type PersonResult = {
   bio: string | null;
   isFollowedByMe: boolean;
 };
+
+/** One row of a followers/following list: a search result plus whether they follow the viewer. */
+export type FollowListPerson = PersonResult & { followsMe: boolean };
+
+export type FollowListPage = { items: FollowListPerson[]; nextCursor: string | null };
+
+/** One comment a user wrote, with the post it answers (the Respostas tab of a profile). */
+export type UserReply = {
+  id: string;
+  postId: string;
+  parentCommentId: string | null;
+  content: string;
+  createdAt: Date;
+  /** The post the comment is on: its author and text, quoted under the comment. */
+  post: { id: string; author: UserSummary; content: string };
+};
+
+export type UserReplyPage = { items: UserReply[]; nextCursor: string | null };
 
 // The API payloads are trusted for required fields; optional ones are read defensively.
 type Json = Record<string, any>;
@@ -56,6 +78,7 @@ export function parseUserProfile(json: Json): UserProfile {
     followingCount: count(json.followingCount),
     entryCount: count(json.gameEntryCount),
     isFollowedByMe: json.isFollowedByMe === true,
+    followsMe: json.followsMe === true,
   };
 }
 
@@ -67,5 +90,34 @@ export function parsePersonResult(json: Json): PersonResult {
     avatarUrl: nullableString(json.avatarUrl),
     bio: nullableString(json.bio),
     isFollowedByMe: json.isFollowedByMe === true,
+  };
+}
+
+export function parseFollowListPage(json: Json): FollowListPage {
+  return {
+    items: (json.items as Json[]).map((item) => ({
+      ...parsePersonResult(item),
+      followsMe: item.followsMe === true,
+    })),
+    nextCursor: nullableString(json.nextCursor),
+  };
+}
+
+/** `GET /users/:id/comments`: comment rows, each with its post and the post's author. */
+export function parseUserReplyPage(json: Json): UserReplyPage {
+  return {
+    items: (json.items as Json[]).map((item) => ({
+      id: item.id,
+      postId: item.postId,
+      parentCommentId: nullableString(item.parentCommentId),
+      content: typeof item.content === 'string' ? item.content : '',
+      createdAt: new Date(item.createdAt),
+      post: {
+        id: item.post?.id ?? item.postId,
+        author: parseUserSummary(item.post?.user ?? {}),
+        content: typeof item.post?.content === 'string' ? item.post.content : '',
+      },
+    })),
+    nextCursor: nullableString(json.nextCursor),
   };
 }

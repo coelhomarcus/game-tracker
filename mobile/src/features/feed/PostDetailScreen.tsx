@@ -1,28 +1,31 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState, type ReactElement } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
+import { ActivityIndicator, FlatList, Keyboard, StyleSheet, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import { EmptyState, Screen, Text } from '@/components';
+import { EmptyState, Screen } from '@/components';
 import { ApiError } from '@/lib/http/errors';
+import { usePreferences } from '@/lib/preferences';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, space } from '@/theme/tokens';
 
-import { ActivityCard } from './ActivityCard';
 import { CommentComposer, type ReplyTarget } from './CommentComposer';
-import { CommentItem } from './CommentItem';
-import { flattenComments, type FlatComment } from './flattenComments';
-import { PostCard } from './PostCard';
-import { useAddComment, useComments, usePost, useToggleCommentLike } from './queries';
-import type { Post } from './types';
-
-// The API answers 500 to an id that is not a UUID, so such an address is simply not a post.
-const POST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import {
+  useAddComment,
+  useComments,
+  useDeleteComment,
+  useDeletedPostCheck,
+  usePost,
+  useToggleCommentLike,
+} from './queries';
+import { buildThread, type ThreadRow } from './thread/buildThread';
+import { ThreadAnchor } from './thread/ThreadAnchor';
+import { ThreadItemLinear } from './thread/ThreadItemLinear';
+import { ThreadItemTree } from './thread/ThreadItemTree';
+import { ThreadMenu } from './thread/ThreadMenu';
+import { ThreadReadMore } from './thread/ThreadReadMore';
+import { ThreadReplyPrompt } from './thread/ThreadReplyPrompt';
+import { isPostId, type Comment, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -32,7 +35,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export function PostDetailScreen() {
   const params = useLocalSearchParams<{ postId?: string | string[] }>();
   const postId = firstParam(params.postId)?.trim() ?? '';
-  if (!POST_ID_PATTERN.test(postId)) return <PostNotFound />;
+  if (!isPostId(postId)) return <PostNotFound />;
   return <PostLoader postId={postId} />;
 }
 
@@ -40,7 +43,7 @@ function PostNotFound() {
   const router = useRouter();
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post' }} />
+      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <EmptyState
           title="Post não encontrado"
@@ -53,16 +56,28 @@ function PostNotFound() {
 }
 
 function PostLoader({ postId }: { postId: string }) {
+  const wasDeleted = useDeletedPostCheck();
   const post = usePost(postId);
+  // A page left open lower in the stack for a post the user then deleted elsewhere says so when
+  // it is shown again. The page the user deletes from goes back with its post still drawn.
+  const [deleted, setDeleted] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (wasDeleted(postId)) setDeleted(true);
+    }, [wasDeleted, postId]),
+  );
+
+  // The server no longer has it, even if a cached copy is still there.
+  const gone = post.error instanceof ApiError && post.error.status === 404;
+  if (deleted || gone) return <PostNotFound />;
 
   // A failed background refetch keeps the previous data, so the loaded post stays.
   if (post.data) return <PostBody post={post.data} />;
 
   if (post.isError) {
-    if (post.error instanceof ApiError && post.error.status === 404) return <PostNotFound />;
     return (
       <Screen>
-        <Stack.Screen options={{ title: 'Post' }} />
+        <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
         <View style={styles.center}>
           <EmptyState
             title="Não foi possível carregar o post"
@@ -74,7 +89,7 @@ function PostLoader({ postId }: { postId: string }) {
   }
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post' }} />
+      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
@@ -82,95 +97,197 @@ function PostLoader({ postId }: { postId: string }) {
   );
 }
 
-const keyExtractor = (item: FlatComment) => item.comment.id;
+/**
+ * The page's list: the anchor post first, then the comment rows, or the state of the comments
+ * (loading, failed, none) while there are none to show.
+ */
+type PageItem = { type: 'anchor'; key: string } | { type: 'status'; key: string } | ThreadRow;
 
-function Separator() {
-  return <View style={styles.separator} />;
+const ANCHOR_ITEM: PageItem = { type: 'anchor', key: 'anchor' };
+const STATUS_ITEM: PageItem = { type: 'status', key: 'comments-status' };
+
+const keyExtractor = (item: PageItem) => item.key;
+
+/**
+ * The anchor post is the list's first item (an item, not a list header: the list counts its
+ * header outside the indexes), so it keeps its place while the rows below it change.
+ */
+const MAINTAIN_ANCHOR = { minIndexForVisible: 0 };
+
+/** Whether `id` is the comment or one of the replies below it. */
+function holds(comment: Comment, id: string): boolean {
+  return comment.id === id || comment.replies.some((reply) => holds(reply, id));
 }
 
+/**
+ * The thread: the post as its anchor, then the comments in the view and order chosen in the
+ * header's menu, with the composer pinned under them above the keyboard.
+ */
 function PostBody({ post }: { post: Post }) {
+  const router = useRouter();
   const headerHeight = useHeaderHeight();
-  const comments = useComments(post.id);
+  const view = usePreferences((state) => state.threadView);
+  const sort = usePreferences((state) => state.threadSort);
+  const comments = useComments(post.id, sort);
   const addComment = useAddComment(post.id);
   const toggleLike = useToggleCommentLike(post.id);
+  const deleteComment = useDeleteComment(post.id);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  // The reply prompt stands in for the composer until the user asks to write; the composer then
+  // stays while it holds a draft. `focusRequest` makes an open composer take focus again.
+  const [composing, setComposing] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  // The comments being deleted: the row (and its replies) wait dimmed, and cannot be deleted twice.
+  const [deleting, setDeleting] = useState<readonly Comment[]>([]);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const listRef = useRef<FlatList<PageItem>>(null);
 
-  const rows = useMemo(() => flattenComments(comments.data ?? []), [comments.data]);
+  const items = useMemo(() => {
+    const rows = buildThread(comments.data ?? [], { mode: view, expanded });
+    return [ANCHOR_ITEM, ...(rows.length > 0 ? rows : [STATUS_ITEM])];
+  }, [comments.data, view, expanded]);
 
-  const renderItem = ({ item }: { item: FlatComment }) => (
-    <CommentItem
-      item={item}
-      onToggleLike={(comment) => toggleLike.mutate(comment)}
-      onReply={(comment) => setReplyTo({ commentId: comment.id, username: comment.author.username })}
-    />
+  // Another view or order brings the post back to the top, where it then stays while the
+  // replies change under it (`maintainVisibleContentPosition` on the list).
+  const pinAnchor = useCallback(
+    () => listRef.current?.scrollToOffset({ offset: 0, animated: false }),
+    [],
   );
+  const headerRight = useCallback(() => <ThreadMenu onChange={pinAnchor} />, [pinAnchor]);
+
+  const { mutate: like } = toggleLike;
+  const { mutate: remove } = deleteComment;
+  const openComposer = useCallback((target: ReplyTarget | null) => {
+    setReplyTo(target);
+    setComposing(true);
+    setFocusRequest((count) => count + 1);
+  }, []);
+  const closeComposer = useCallback(() => {
+    Keyboard.dismiss();
+    setComposing(false);
+    setReplyTo(null);
+  }, []);
+  const onReply = useCallback(
+    (comment: Comment) =>
+      openComposer({ commentId: comment.id, username: comment.author.username }),
+    [openComposer],
+  );
+  const onReplyToPost = useCallback(() => openComposer(null), [openComposer]);
+  const onToggleLike = useCallback((comment: Comment) => like(comment), [like]);
+  const onDelete = useCallback(
+    (comment: Comment) => {
+      if (deleting.some((pending) => pending.id === comment.id)) return;
+      setDeleting((current) => [...current, comment]);
+      remove(comment, {
+        // A reply to the deleted comment, or to one of its replies, has nothing left to answer.
+        onSuccess: () =>
+          setReplyTo((target) => (target && holds(comment, target.commentId) ? null : target)),
+        onSettled: () => setDeleting((current) => current.filter((c) => c.id !== comment.id)),
+      });
+    },
+    [remove, deleting],
+  );
+  const onExpand = useCallback(
+    (branchId: string) => setExpanded((current) => new Set(current).add(branchId)),
+    [],
+  );
+
+  const waiting = (id: string) => deleting.some((pending) => holds(pending, id));
+  const Item = view === 'tree' ? ThreadItemTree : ThreadItemLinear;
+  const renderItem = ({ item }: { item: PageItem }) => {
+    switch (item.type) {
+      case 'anchor':
+        return anchor;
+      case 'status':
+        return status;
+      case 'comment':
+        return (
+          // Always wrapped, so a row keeps its state when its delete starts or ends.
+          <View
+            testID={waiting(item.comment.id) ? 'comment-row-deleting' : undefined}
+            pointerEvents={waiting(item.comment.id) ? 'none' : 'auto'}
+            style={waiting(item.comment.id) ? styles.deleting : undefined}
+          >
+            <Item row={item} onReply={onReply} onToggleLike={onToggleLike} onDelete={onDelete} />
+          </View>
+        );
+      case 'readMore':
+        return <ThreadReadMore row={item} onExpand={onExpand} mode={view} />;
+    }
+  };
 
   async function submit(content: string) {
     await addComment.mutateAsync({
       content,
       ...(replyTo ? { parentCommentId: replyTo.commentId } : {}),
     });
-    setReplyTo(null);
+    closeComposer();
   }
 
-  let empty: ReactElement;
+  let status: ReactElement;
   if (comments.data) {
-    empty = (
-      <Text tone="medium" style={styles.empty}>
-        Ainda não há comentários. Seja o primeiro.
-      </Text>
+    status = (
+      <EmptyState title="Nenhum comentário ainda" message="Seja a primeira pessoa a comentar." />
     );
   } else if (comments.isError) {
-    empty = (
+    status = (
       <EmptyState
         title="Não foi possível carregar os comentários"
         action={{ label: 'Tentar de novo', onPress: () => void comments.refetch() }}
       />
     );
   } else {
-    empty = (
+    status = (
       <ActivityIndicator
         testID="comments-loading"
         accessibilityLabel="Carregando comentários"
         color={colors.textMedium}
+        style={styles.loading}
       />
     );
   }
 
-  const header = (
-    <View style={styles.header}>
-      {post.type === 'activity' ? <ActivityCard post={post} /> : <PostCard post={post} />}
-      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
-        {`Comentários (${post.commentCount})`}
-      </Text>
-    </View>
+  const anchor = (
+    <ThreadAnchor
+      post={post}
+      onReply={onReplyToPost}
+      onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+    />
   );
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: post.type === 'activity' ? 'Atividade' : 'Post' }} />
+      <Stack.Screen
+        options={{ title: post.type === 'activity' ? 'Atividade' : 'Post', headerRight }}
+      />
       <KeyboardAvoidingView
+        testID="post-keyboard-avoider"
         behavior="padding"
         keyboardVerticalOffset={headerHeight}
         style={styles.fill}
       >
         <FlatList
+          ref={listRef}
           testID="comment-list"
-          data={rows}
+          data={items}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          ItemSeparatorComponent={Separator}
-          ListHeaderComponent={header}
-          ListEmptyComponent={empty}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          maintainVisibleContentPosition={MAINTAIN_ANCHOR}
           style={styles.fill}
         />
-        <CommentComposer
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onSubmit={submit}
-        />
+        {composing ? (
+          <CommentComposer
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            focusRequest={focusRequest}
+            onDismiss={closeComposer}
+            onSubmit={submit}
+          />
+        ) : (
+          <ThreadReplyPrompt onPress={onReplyToPost} />
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -179,8 +296,7 @@ function PostBody({ post }: { post: Post }) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  content: { padding: space.lg, flexGrow: 1 },
-  header: { gap: space.lg, paddingBottom: space.lg },
-  separator: { height: space.md },
-  empty: { textAlign: 'center', padding: space._2xl },
+  content: { flexGrow: 1, paddingBottom: space.lg },
+  loading: { padding: space._2xl },
+  deleting: { opacity: 0.5 },
 });

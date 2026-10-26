@@ -33,6 +33,7 @@ export type TextFieldProps = {
   autoCapitalize?: TextInputProps['autoCapitalize'];
   returnKeyType?: TextInputProps['returnKeyType'];
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
+  onBlur?: () => void;
   inputRef?: Ref<TextFieldInput>;
 };
 
@@ -45,6 +46,7 @@ export function TextField({
   multiline,
   maxLines,
   inputRef,
+  onBlur,
   ...inputProps
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
@@ -80,7 +82,10 @@ export function TextField({
         placeholderTextColor={colors.textMedium}
         selectionColor={primary[500]}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false);
+          onBlur?.();
+        }}
         style={[
           styles.input,
           multilineStyle,

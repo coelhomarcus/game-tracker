@@ -103,7 +103,7 @@ export function Button({
         <View style={styles.content}>
           {icon ? <Ionicons name={icon} size={iconSize[size]} color={textColor} /> : null}
           {label && !round ? (
-            <Text size={size === 'tiny' ? 'sm' : 'md'} weight="medium" style={[styles.label, { color: textColor }]}>
+            <Text numberOfLines={1} size={size === 'tiny' ? 'sm' : 'md'} weight="medium" style={[styles.label, { color: textColor }]}>
               {label}
             </Text>
           ) : null}

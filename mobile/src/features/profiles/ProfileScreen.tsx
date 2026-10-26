@@ -1,28 +1,32 @@
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, EmptyState, Screen, Tabs } from '@/components';
-import { displayName } from '@/features/feed/types';
+import {
+  EmptyState,
+  Fab,
+  PagerWithHeader,
+  Screen,
+  type PagerScrollProps,
+  type PagerTab,
+  type PagerWithHeaderHandle,
+} from '@/components';
 import { useSession } from '@/features/auth';
 import { ApiError } from '@/lib/http/errors';
-import { colors, space } from '@/theme/tokens';
 
-import { FollowButton } from './FollowButton';
-import { MessageButton } from './MessageButton';
+import { ProfileCompactHeader } from './ProfileCompactHeader';
 import { ProfileGames } from './ProfileGames';
-import { ProfileHeader } from './ProfileHeader';
+import { ProfileBackButton, ProfileHeader, ProfileHeaderSkeleton } from './ProfileHeader';
+import { ProfileLikes } from './ProfileLikes';
+import { ProfileMedia } from './ProfileMedia';
 import { ProfilePosts } from './ProfilePosts';
+import { ProfileReplies } from './ProfileReplies';
+import { ScrollToTopOnTabPress, type Refetch } from './profileList';
 import { useProfile } from './queries';
 import type { UserProfile } from './types';
 
-type TabValue = 'games' | 'activity' | 'posts';
-
-const TABS: { value: TabValue; label: string }[] = [
-  { value: 'games', label: 'Jogos' },
-  { value: 'activity', label: 'Atividade' },
-  { value: 'posts', label: 'Posts' },
-];
+const COMPOSER = '/posts/new' as Href;
 
 export type ProfileScreenProps = {
   userId: string;
@@ -30,57 +34,18 @@ export type ProfileScreenProps = {
   tabRoot?: boolean;
 };
 
-type TopProps = {
-  profile: UserProfile;
-  own: boolean;
-  tab: TabValue;
-  onSelectTab: (tab: TabValue) => void;
-};
-
 /**
- * Banner, identity and section tabs. Defined at module scope and rendered as an element, so the
- * lists can use it as their header without it being remounted on every render.
- */
-function ProfileTop({ profile, own, tab, onSelectTab }: TopProps) {
-  const router = useRouter();
-  const name = displayName(profile);
-  // Two buttons beside the name would squeeze it; somebody else's profile gets its own row.
-  const actions = own ? (
-    <Button
-      label="Editar perfil"
-      color="secondary"
-      onPress={() => router.push('/me/edit' as Href)}
-    />
-  ) : undefined;
-  const actionsRow = own ? undefined : (
-    <View testID="profile-actions" style={styles.actions}>
-      <View style={styles.action}>
-        <FollowButton userId={profile.id} following={profile.isFollowedByMe} name={name} />
-      </View>
-      <View style={styles.action}>
-        <MessageButton userId={profile.id} name={name} />
-      </View>
-    </View>
-  );
-  return (
-    <View>
-      <ProfileHeader profile={profile} actions={actions} actionsRow={actionsRow} />
-      <View style={styles.tabs}>
-        <Tabs items={TABS} selected={tab} onSelect={onSelectTab} />
-      </View>
-    </View>
-  );
-}
-
-/**
- * The profile of a user, own or somebody else's. Each tab is its own list (a grid for Jogos, a
- * post list for the other two) that shares the same header, because a virtualized grid cannot
- * be nested in another scrolling list.
+ * The profile of a user, own or somebody else's: the header over a pager of lists (Jogos, Posts,
+ * Respostas, Mídia and, on the own profile, Curtidas). Each page is its own list, because a
+ * virtualized grid cannot be nested in another scrolling list; the header moves with the list
+ * that shows.
  */
 export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
   const router = useRouter();
   const profile = useProfile(userId);
   const own = useSession((state) => state.user?.id) === userId;
+  const { refetch } = profile;
+  const refetchProfile = useCallback(() => refetch(), [refetch]);
 
   // A failed background refetch keeps the previous data, so the loaded profile stays.
   if (profile.data) {
@@ -90,7 +55,7 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
           profile={profile.data}
           own={own}
           tabRoot={tabRoot}
-          refetchProfile={() => profile.refetch()}
+          refetchProfile={refetchProfile}
         />
       </Screen>
     );
@@ -114,15 +79,15 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
             />
           )}
         </View>
+        {/* After the filling View, so nothing covers it. */}
+        {own || missing ? null : <ProfileBackButton />}
       </Screen>
     );
   }
 
   return (
     <Screen>
-      <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
-      </View>
+      <ProfileHeaderSkeleton showBack={!own} />
     </Screen>
   );
 }
@@ -131,54 +96,81 @@ type BodyProps = {
   profile: UserProfile;
   own: boolean;
   tabRoot: boolean;
-  refetchProfile: () => Promise<{ isError: boolean }>;
+  refetchProfile: Refetch;
 };
 
 function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
-  const [tab, setTab] = useState<TabValue>('games');
-  const select = useCallback((next: TabValue) => setTab(next), []);
-  const top = <ProfileTop profile={profile} own={own} tab={tab} onSelectTab={select} />;
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const pagerRef = useRef<PagerWithHeaderHandle>(null);
+  // The compact header is up: the overlay back button under it is not read out twice.
+  const [collapsed, setCollapsed] = useState(false);
+  const { id, username, name, avatarUrl } = profile;
+  const author = useMemo(() => ({ id, username, name, avatarUrl }), [id, username, name, avatarUrl]);
 
-  switch (tab) {
-    case 'games':
-      return (
-        <ProfileGames
-          key="games"
-          userId={profile.id}
-          own={own}
-          top={top}
-          tabRoot={tabRoot}
-          refetchProfile={refetchProfile}
-        />
-      );
-    case 'activity':
-      return (
-        <ProfilePosts
-          key="activity"
-          userId={profile.id}
-          type="activity"
-          top={top}
-          tabRoot={tabRoot}
-          refetchProfile={refetchProfile}
-        />
-      );
-    case 'posts':
-      return (
-        <ProfilePosts
-          key="posts"
-          userId={profile.id}
-          type="post"
-          top={top}
-          tabRoot={tabRoot}
-          refetchProfile={refetchProfile}
-        />
-      );
-  }
+  const tabs = useMemo<PagerTab[]>(() => {
+    const list: PagerTab[] = [
+      {
+        key: 'games',
+        label: 'Jogos',
+        render: (scroll: PagerScrollProps) => (
+          <ProfileGames userId={id} own={own} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      },
+      {
+        key: 'posts',
+        label: 'Posts',
+        render: (scroll) => (
+          <ProfilePosts userId={id} own={own} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      },
+      {
+        key: 'replies',
+        label: 'Respostas',
+        render: (scroll) => (
+          <ProfileReplies author={author} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      },
+      {
+        key: 'media',
+        label: 'Mídia',
+        render: (scroll) => (
+          <ProfileMedia userId={id} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      },
+    ];
+    if (own) {
+      list.push({
+        key: 'likes',
+        label: 'Curtidas',
+        render: (scroll) => (
+          <ProfileLikes userId={id} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      });
+    }
+    return list;
+  }, [author, id, own, refetchProfile]);
+
+  return (
+    <View style={styles.body}>
+      <PagerWithHeader
+        ref={pagerRef}
+        header={<ProfileHeader profile={profile} own={own} backHidden={collapsed} />}
+        tabs={tabs}
+        initialTab="games"
+        // The own profile sits under the Perfil tab's header, which stays; a pushed profile is
+        // edge-to-edge and gets the compact header once it scrolls.
+        compactHeader={own ? undefined : <ProfileCompactHeader profile={profile} />}
+        statusBarHeight={own ? 0 : insets.top}
+        onCompactHeaderChange={setCollapsed}
+      />
+      <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
+      {tabRoot ? <ScrollToTopOnTabPress listRef={pagerRef} /> : null}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', gap: space.sm },
-  action: { flex: 1 },
-  tabs: { paddingVertical: space.sm },
+  body: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

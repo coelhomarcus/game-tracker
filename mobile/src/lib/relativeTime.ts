@@ -30,3 +30,11 @@ export function formatRelativeTime(at: Date, now: Date = new Date()): string {
   const dayMonth = `${pad(at.getDate())}/${pad(at.getMonth() + 1)}`;
   return at.getFullYear() === now.getFullYear() ? dayMonth : `${dayMonth}/${at.getFullYear()}`;
 }
+
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** The full local date and time of an instant, e.g. "26 de out de 2026 às 14:05". */
+export function formatFullDate(at: Date): string {
+  const date = `${at.getDate()} de ${MONTHS[at.getMonth()]} de ${at.getFullYear()}`;
+  return `${date} às ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}

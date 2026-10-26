@@ -1,37 +1,32 @@
-import { useCallback, useMemo, useRef, type ReactElement } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
+import { useCallback, type ReactElement } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { EmptyState } from '@/components';
+import { EmptyState, FAB_BOTTOM, FAB_SIZE, type PagerScrollProps } from '@/components';
 import { PostList } from '@/features/feed/PostList';
-import type { Post } from '@/features/feed/types';
 import { colors, space } from '@/theme/tokens';
 
-import { refreshAll, ScrollToTopOnTabPress, type Refetch } from './profileList';
+import { refreshAll, type Refetch } from './profileList';
 import { useUserPosts } from './queries';
 
-const COPY = {
-  activity: { empty: 'Ainda não há atividades', error: 'Não foi possível carregar a atividade' },
-  post: { empty: 'Ainda não há posts', error: 'Não foi possível carregar os posts' },
-} as const;
+const COMPOSER = '/posts/new' as Href;
+/** Keeps the last row clear of the compose button. */
+export const PROFILE_LIST_BOTTOM_INSET = FAB_SIZE + 2 * FAB_BOTTOM;
 
-export type ProfilePostsProps = {
-  userId: string;
-  /** The activity tab or the written posts tab. */
-  type: 'activity' | 'post';
-  /** Profile header and tabs, shown above the list. */
-  top: ReactElement;
-  /** Whether this is the Perfil tab itself, so pressing its button scrolls back to the top. */
-  tabRoot: boolean;
+export type ProfilePostFeedProps = {
+  query: ReturnType<typeof useUserPosts>;
+  /** From the profile's pager: the list floats under its shared header. */
+  scroll: PagerScrollProps;
   refetchProfile: Refetch;
+  copy: { empty: string; error: string };
+  emptyAction?: { label: string; onPress: () => void };
 };
 
-/** The activity or the posts of a user, as the list under the profile header. */
-export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: ProfilePostsProps) {
-  const query = useUserPosts(userId, type);
-  const listRef = useRef<FlatList<Post>>(null);
+/** A post list page of the profile (Posts, Mídia, Curtidas), with its loading and empty states. */
+export function ProfilePostFeed({ query, scroll, refetchProfile, copy, emptyAction }: ProfilePostFeedProps) {
   const { refetch } = query;
+  const { attachList, onScroll, topInset, minContentHeight, initialOffset } = scroll;
 
-  const header = useMemo(() => <View style={styles.header}>{top}</View>, [top]);
   const refresh = useCallback(
     () => refreshAll([refetchProfile, () => refetch()]),
     [refetchProfile, refetch],
@@ -39,11 +34,11 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
 
   let empty: ReactElement;
   if (query.data !== undefined) {
-    empty = <EmptyState title={COPY[type].empty} />;
+    empty = <EmptyState title={copy.empty} action={emptyAction} />;
   } else if (query.isError) {
     empty = (
       <EmptyState
-        title={COPY[type].error}
+        title={copy.error}
         action={{ label: 'Tentar de novo', onPress: () => void refetch() }}
       />
     );
@@ -56,21 +51,42 @@ export function ProfilePosts({ userId, type, top, tabRoot, refetchProfile }: Pro
   }
 
   return (
-    <>
-      <PostList
-        ref={listRef}
-        query={query}
-        ListHeaderComponent={header}
-        ListEmptyComponent={empty}
-        onRefresh={refresh}
-      />
-      {tabRoot ? <ScrollToTopOnTabPress listRef={listRef} /> : null}
-    </>
+    <PostList
+      ref={attachList}
+      query={query}
+      ListEmptyComponent={empty}
+      onRefresh={refresh}
+      onScroll={onScroll}
+      topInset={topInset}
+      minContentHeight={minContentHeight}
+      initialOffset={initialOffset}
+      bottomInset={PROFILE_LIST_BOTTOM_INSET}
+    />
+  );
+}
+
+export type ProfilePostsProps = {
+  userId: string;
+  own: boolean;
+  scroll: PagerScrollProps;
+  refetchProfile: Refetch;
+};
+
+/** The Posts tab: the user's posts and reposts. */
+export function ProfilePosts({ userId, own, scroll, refetchProfile }: ProfilePostsProps) {
+  const router = useRouter();
+  const query = useUserPosts(userId, 'posts');
+  return (
+    <ProfilePostFeed
+      query={query}
+      scroll={scroll}
+      refetchProfile={refetchProfile}
+      copy={{ empty: 'Nenhum post ainda', error: 'Não foi possível carregar os posts' }}
+      emptyAction={own ? { label: 'Escrever um post', onPress: () => router.push(COMPOSER) } : undefined}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  // The list pads its content on every side; undo the top and add the gap to the first card.
-  header: { marginHorizontal: -space.lg, marginTop: -space.lg, marginBottom: space.md },
   loading: { padding: space._2xl, alignItems: 'center' },
 });

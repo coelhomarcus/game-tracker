@@ -5,12 +5,16 @@ import { parseEntry, type GameEntry } from '@/features/library/types';
 import { imageForm } from '@/lib/imageForm';
 
 import {
+  parseFollowListPage,
   parsePersonResult,
   parseUserProfile,
+  parseUserReplyPage,
+  type FollowListPage,
   type ImageKind,
   type PersonResult,
   type PickedImage,
   type UserProfile,
+  type UserReplyPage,
 } from './types';
 
 const PAGE_SIZE = 20;
@@ -18,6 +22,10 @@ const PAGE_SIZE = 20;
 const UPLOAD_TIMEOUT_MS = 120_000;
 
 type Json = Record<string, unknown>;
+
+function pageQuery(cursor?: string): Record<string, string | number> {
+  return cursor === undefined ? { limit: PAGE_SIZE } : { limit: PAGE_SIZE, cursor };
+}
 
 export type ProfileChanges = { username?: string; name?: string; bio?: string };
 
@@ -36,6 +44,29 @@ export const profilesApi = {
     const query =
       cursor === undefined ? { type, limit: PAGE_SIZE } : { type, limit: PAGE_SIZE, cursor };
     return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }));
+  },
+
+  /** A profile's own posts. `media` keeps only the originals that carry an image (no reposts). */
+  async userPosts(id: string, options: { filter?: 'media'; cursor?: string } = {}): Promise<PostPage> {
+    const query: Record<string, string | number> = { limit: PAGE_SIZE };
+    if (options.filter !== undefined) query.filter = options.filter;
+    if (options.cursor !== undefined) query.cursor = options.cursor;
+    return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }));
+  },
+
+  /** Who follows `id`, newest follow first. The cursor is opaque. */
+  async followers(id: string, cursor?: string): Promise<FollowListPage> {
+    return parseFollowListPage(await api.get<Json>(`/users/${id}/followers`, { query: pageQuery(cursor) }));
+  },
+
+  /** Who `id` follows, newest follow first. The cursor is opaque. */
+  async following(id: string, cursor?: string): Promise<FollowListPage> {
+    return parseFollowListPage(await api.get<Json>(`/users/${id}/following`, { query: pageQuery(cursor) }));
+  },
+
+  /** The comments `id` wrote, newest first, each with the post it answers. The cursor is opaque. */
+  async replies(id: string, cursor?: string): Promise<UserReplyPage> {
+    return parseUserReplyPage(await api.get<Json>(`/users/${id}/comments`, { query: pageQuery(cursor) }));
   },
 
   async entries(id: string): Promise<GameEntry[]> {
