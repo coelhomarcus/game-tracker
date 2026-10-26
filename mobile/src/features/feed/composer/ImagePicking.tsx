@@ -16,6 +16,9 @@ const QUALITY = 0.85;
 export const PHOTOS_DENIED = 'Permita o acesso às fotos nas configurações';
 export const CAMERA_DENIED = 'Permita o acesso à câmera nas configurações';
 export const RATE_LIMITED = 'Muitas imagens em pouco tempo, tente de novo em alguns minutos';
+export const IMAGE_REJECTED = 'Imagem inválida ou grande demais';
+/** The same upload message is not repeated within this time (several images fail together). */
+const REPEAT_TOAST_MS = 2000;
 
 /** An image the system picker returned: what to upload, and its shape for the preview. */
 export type PickedAsset = UploadableImage & { width: number; height: number };
@@ -128,6 +131,16 @@ export function useComposerImages(initial: PostImageInput[]) {
   // The attempt each in-flight upload belongs to; a missing or newer one makes a result stale.
   const attempts = useRef(new Map<string, number>());
   const counter = useRef(0);
+  const lastToast = useRef<{ message: string; at: number } | null>(null);
+
+  /** A toast, unless the same one showed a moment ago (e.g. four uploads failing at once). */
+  const notify = useCallback((message: string) => {
+    const now = Date.now();
+    const last = lastToast.current;
+    if (last && last.message === message && now - last.at < REPEAT_TOAST_MS) return;
+    lastToast.current = { message, at: now };
+    showToast(message);
+  }, []);
 
   const commit = useCallback((update: (list: ComposerImage[]) => ComposerImage[]) => {
     latest.current = update(latest.current);
@@ -159,11 +172,13 @@ export function useComposerImages(initial: PostImageInput[]) {
       } catch (error) {
         if (attempts.current.get(id) !== attempt) return;
         attempts.current.delete(id);
-        if (error instanceof ApiError && error.status === 429) showToast(RATE_LIMITED);
+        if (error instanceof ApiError) {
+          notify(error.status === 429 ? RATE_LIMITED : IMAGE_REJECTED);
+        }
         patch(id, { status: 'failed' });
       }
     },
-    [patch],
+    [patch, notify],
   );
 
   const add = useCallback(
@@ -193,6 +208,20 @@ export function useComposerImages(initial: PostImageInput[]) {
     [upload],
   );
 
+  /**
+   * A restored image whose file cannot be loaded any more: it cannot be sent, and there is
+   * nothing to upload again, so it can only be removed.
+   */
+  const markBroken = useCallback(
+    (id: string) => {
+      const item = latest.current.find((candidate) => candidate.id === id);
+      if (item && item.source === null && item.status === 'done') {
+        patch(id, { status: 'failed', image: null });
+      }
+    },
+    [patch],
+  );
+
   const uploaded = items.flatMap((item) => (item.image ? [item.image] : []));
   return {
     items,
@@ -205,5 +234,6 @@ export function useComposerImages(initial: PostImageInput[]) {
     add,
     remove,
     retry,
+    markBroken,
   };
 }

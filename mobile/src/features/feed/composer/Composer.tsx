@@ -39,6 +39,7 @@ import { ComposerTopBar } from './ComposerTopBar';
 import {
   composerKind,
   draftHasContent,
+  findDraft,
   useComposerDrafts,
   useDraftsHydrated,
   type ComposerDraft,
@@ -248,14 +249,14 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const create = useCreatePost();
   const library = useLibrary();
   const user = useSession((state) => state.user);
-  const saveDraft = useComposerDrafts((state) => state.saveDraft);
-  const clearDraft = useComposerDrafts((state) => state.clearDraft);
+  const userId = user?.id ?? null;
+  const saveDraftFor = useComposerDrafts((state) => state.saveDraft);
+  const clearDraftFor = useComposerDrafts((state) => state.clearDraft);
 
-  // The draft of this kind of composer, read once when it opens.
-  const [restored] = useState(() => {
-    const draft = useComposerDrafts.getState().drafts[kind];
-    return draft && draftHasContent(draft) ? draft : null;
-  });
+  // The draft this account left in this kind of composer, read once when it opens.
+  const [restored] = useState(() =>
+    userId === null ? null : findDraft(useComposerDrafts.getState().drafts, userId, kind),
+  );
 
   const [text, setText] = useState(restored?.text ?? '');
   // What the user chose or cleared; until then the game of the address (if any) applies.
@@ -286,12 +287,21 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const chosenRecord = records.find((entry) => entry.id === entryId);
 
   const trimmed = text.trim();
-  const { count, over } = measurePost(text);
+  // The ring counts what is typed; the limit applies to what is sent (trimmed).
+  const { count } = measurePost(text);
+  const { over } = measurePost(trimmed);
   const quoted = quote?.kind === 'ready' ? quote.post : null;
   // A quote is only sent once the quoted post is known to exist.
   const ready =
     (link.kind === 'none' || link.kind === 'linked') && (quote === undefined || quoted !== null);
-  const canPublish = trimmed.length >= 1 && !over && !publishing && ready;
+  // Text or at least one finished image; never while an image is still uploading or has failed.
+  const canPublish =
+    (trimmed.length >= 1 || images.uploaded.length > 0) &&
+    !over &&
+    !publishing &&
+    !images.uploading &&
+    !images.failed &&
+    ready;
 
   const draft: Omit<ComposerDraft, 'savedAt'> = {
     text,
@@ -310,11 +320,22 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     latest.current = draft;
   });
 
+  // Whether this account still owns the session: after a sign-out or an expiry nothing is saved.
+  const sessionIsMine = useCallback(
+    () => userId !== null && useSession.getState().user?.id === userId,
+    [userId],
+  );
+
+  const clearDraft = useCallback(() => {
+    if (userId !== null) clearDraftFor(userId, kind);
+  }, [userId, kind, clearDraftFor]);
+
   const storeDraft = useCallback(() => {
+    if (userId === null || !sessionIsMine()) return;
     const current = latest.current;
-    if (draftHasContent(current)) saveDraft(kind, { ...current, savedAt: Date.now() });
-    else clearDraft(kind);
-  }, [kind, saveDraft, clearDraft]);
+    if (draftHasContent(current)) saveDraftFor(userId, kind, { ...current, savedAt: Date.now() });
+    else clearDraftFor(userId, kind);
+  }, [userId, kind, sessionIsMine, saveDraftFor, clearDraftFor]);
 
   useEffect(() => {
     if (restored) showToast('Rascunho restaurado');
@@ -337,7 +358,17 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     [storeDraft],
   );
 
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const disablePrevention = usePreventRemove(hasContent && !finished, ({ repeat }) => {
+    // Android back while the post is going out: stay, the publish decides what happens next.
+    if (sending.current) return;
     setLeave(() => repeat);
   });
 
@@ -366,7 +397,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     const repeat = leave;
     done.current = true;
     if (keepDraft) storeDraft();
-    else clearDraft(kind);
+    else clearDraft();
     setLeave(null);
     setFinished(true);
     repeat?.();
@@ -399,11 +430,15 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
       setPublishing(false);
       return;
     }
+    // The composer may be gone already (left through the prompt, or unmounted): then there is
+    // nothing to go back from.
+    const closed = done.current || !mounted.current;
     done.current = true;
-    clearDraft(kind);
+    clearDraft();
+    showToast('Publicado');
+    if (closed) return;
     setFinished(true);
     disablePrevention();
-    showToast('Publicado');
     router.back();
   }
 
@@ -484,6 +519,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
                 images={images.items}
                 onRemove={images.remove}
                 onRetry={images.retry}
+                onBroken={images.markBroken}
               />
             </View>
           ) : null}

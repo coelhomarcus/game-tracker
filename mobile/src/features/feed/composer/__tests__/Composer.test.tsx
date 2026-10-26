@@ -88,7 +88,7 @@ function makeDraft(overrides: Partial<ComposerDraft> = {}): ComposerDraft {
     entryId: null,
     quotedPostId: null,
     images: [],
-    savedAt: 1,
+    savedAt: Date.now(),
     ...overrides,
   };
 }
@@ -191,7 +191,7 @@ async function tryToLeave() {
   return repeat;
 }
 
-const drafts = () => useComposerDrafts.getState().drafts;
+const drafts = () => useComposerDrafts.getState().drafts.me ?? {};
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -385,6 +385,74 @@ describe('Composer publishing', () => {
 
     await act(async () => resolve());
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes once when Publicar is pressed twice before the screen re-renders', async () => {
+    let resolve: () => void = () => {};
+    mockCreate.mockReturnValue(new Promise<void>((done) => (resolve = done)));
+    await renderScreen();
+    await typeText('Olá');
+
+    // The accessibility click of the button, fired twice in one act: the disabled state of the
+    // first press has not rendered yet, so only the synchronous guard can stop the second.
+    const click = publishButton().props.onClick as (event: unknown) => void;
+    const event = { stopPropagation: () => {}, nativeEvent: {} };
+    await act(async () => {
+      click(event);
+      click(event);
+    });
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    await act(async () => resolve());
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('measures the limit on the trimmed text', async () => {
+    await renderScreen();
+
+    await typeText(`  ${'a'.repeat(500)}  `);
+
+    expect(publishButton()).toBeEnabled();
+    await press('Publicar');
+    expect(mockCreate).toHaveBeenCalledWith({ content: 'a'.repeat(500) });
+  });
+
+  it('still refuses 501 characters once trimmed', async () => {
+    await renderScreen();
+
+    await typeText(` ${'a'.repeat(501)} `);
+
+    expect(publishButton()).toBeDisabled();
+  });
+
+  it('ignores Android back while the post is going out', async () => {
+    let resolve: () => void = () => {};
+    mockCreate.mockReturnValue(new Promise<void>((done) => (resolve = done)));
+    await renderScreen();
+    await typeText('Olá');
+    await press('Publicar');
+
+    const repeat = await tryToLeave();
+
+    expect(screen.queryByText('Descartar rascunho?')).not.toBeOnTheScreen();
+    expect(repeat).not.toHaveBeenCalled();
+    await act(async () => resolve());
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not go back when the composer is already gone by the time the post is published', async () => {
+    let resolve: () => void = () => {};
+    mockCreate.mockReturnValue(new Promise<void>((done) => (resolve = done)));
+    const view = await renderScreen();
+    await typeText('Olá');
+    await press('Publicar');
+
+    await view.unmount();
+    await act(async () => resolve());
+
+    expect(showToast).toHaveBeenCalledWith('Publicado');
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(drafts().plain).toBeUndefined();
   });
 });
 
@@ -779,7 +847,7 @@ describe('Composer drafts', () => {
   });
 
   it('drops the draft when the text is erased', async () => {
-    useComposerDrafts.setState({ drafts: { plain: makeDraft() } });
+    useComposerDrafts.setState({ drafts: { me: { plain: makeDraft() } } });
     await renderScreen();
 
     await typeText('  ');
@@ -821,8 +889,10 @@ describe('Composer drafts', () => {
   it('restores the draft of its own kind and says so', async () => {
     useComposerDrafts.setState({
       drafts: {
-        plain: makeDraft({ text: 'Do feed' }),
-        [`quote:${QUOTE_ID}`]: makeDraft({ text: 'Da citação', quotedPostId: QUOTE_ID }),
+        me: {
+          plain: makeDraft({ text: 'Do feed' }),
+          [`quote:${QUOTE_ID}`]: makeDraft({ text: 'Da citação', quotedPostId: QUOTE_ID }),
+        },
       },
     });
     await renderScreen();
@@ -833,7 +903,7 @@ describe('Composer drafts', () => {
 
   it('restores a quote draft only in the composer of that quote', async () => {
     useComposerDrafts.setState({
-      drafts: { [`quote:${QUOTE_ID}`]: makeDraft({ text: 'Da citação', quotedPostId: QUOTE_ID }) },
+      drafts: { me: { [`quote:${QUOTE_ID}`]: makeDraft({ text: 'Da citação', quotedPostId: QUOTE_ID }) } },
     });
     await renderScreen();
     expect(screen.getByLabelText(FIELD).props.value).toBe('');
@@ -853,7 +923,7 @@ describe('Composer drafts', () => {
     mockPrelinkGame({ data: makeGame() });
     const celeste = makeGame({ id: 'g2', igdbId: 22, name: 'Celeste' });
     useComposerDrafts.setState({
-      drafts: { 'game:11': makeDraft({ text: 'Mudei de jogo', link: { game: celeste } }) },
+      drafts: { me: { 'game:11': makeDraft({ text: 'Mudei de jogo', link: { game: celeste } }) } },
     });
     await renderScreen();
 
@@ -866,7 +936,7 @@ describe('Composer drafts', () => {
     mockParams = { igdbId: '11' };
     mockPrelinkGame({ data: makeGame() });
     useComposerDrafts.setState({
-      drafts: { 'game:11': makeDraft({ text: 'Sem jogo', link: { game: null } }) },
+      drafts: { me: { 'game:11': makeDraft({ text: 'Sem jogo', link: { game: null } }) } },
     });
     await renderScreen();
 
@@ -889,7 +959,7 @@ describe('Composer drafts', () => {
   });
 
   it('clears the draft once the post is published', async () => {
-    useComposerDrafts.setState({ drafts: { plain: makeDraft() } });
+    useComposerDrafts.setState({ drafts: { me: { plain: makeDraft() } } });
     const view = await renderScreen();
 
     await press('Publicar');
@@ -900,8 +970,61 @@ describe('Composer drafts', () => {
     expect(drafts().plain).toBeUndefined();
   });
 
+  it('does not restore the draft of another account', async () => {
+    useComposerDrafts.setState({ drafts: { outra: { plain: makeDraft({ text: 'Da outra conta' }) } } });
+    await renderScreen();
+
+    expect(screen.getByLabelText(FIELD).props.value).toBe('');
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('saves under the id of the signed-in account', async () => {
+    await renderScreen();
+    await typeText('Minha');
+    await act(async () => jest.advanceTimersByTime(500));
+
+    expect(Object.keys(useComposerDrafts.getState().drafts)).toEqual(['me']);
+    expect(drafts().plain?.text).toBe('Minha');
+  });
+
+  it('does not restore a draft older than 7 days', async () => {
+    const eightDays = 8 * 24 * 60 * 60 * 1000;
+    useComposerDrafts.setState({
+      drafts: { me: { plain: makeDraft({ text: 'Velho', savedAt: Date.now() - eightDays }) } },
+    });
+    await renderScreen();
+
+    expect(screen.getByLabelText(FIELD).props.value).toBe('');
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('saves nothing while the screen goes away after a sign-out or an expired session', async () => {
+    const view = await renderScreen();
+    await typeText('Ficou para trás');
+
+    await act(async () => useSession.setState({ status: 'signedOut', user: null }));
+    await act(async () => jest.advanceTimersByTime(500));
+    await view.unmount();
+
+    expect(useComposerDrafts.getState().drafts).toEqual({});
+  });
+
+  it('does not leave the draft of one account to the next one that signs in', async () => {
+    const view = await renderScreen();
+    await typeText('Da primeira conta');
+    await view.unmount();
+    expect(drafts().plain?.text).toBe('Da primeira conta');
+
+    useSession.setState({
+      user: { ...useSession.getState().user!, id: 'outra', username: 'outra' },
+    });
+    await renderScreen();
+
+    expect(screen.getByLabelText(FIELD).props.value).toBe('');
+  });
+
   it('ignores a stored draft with nothing in it', async () => {
-    useComposerDrafts.setState({ drafts: { plain: makeDraft({ text: '   ' }) } });
+    useComposerDrafts.setState({ drafts: { me: { plain: makeDraft({ text: '   ' }) } } });
     await renderScreen();
 
     expect(screen.getByLabelText(FIELD).props.value).toBe('');

@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ChoiceChip, ConfirmDialog, OptionSheet, ToastHost } from '..';
@@ -95,6 +97,35 @@ describe('Toast', () => {
     expect(style.position).toBe('absolute');
     expect(style.bottom).toBe(92);
     expect(host.props.pointerEvents).toBe('none');
+  });
+
+  describe('with the keyboard', () => {
+    const keyboard = useReanimatedKeyboardAnimation();
+    // The types describe the web stub, which takes no argument; jest runs the native helper.
+    const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => {
+      transform?: { translateY: number }[];
+    };
+
+    afterEach(() => {
+      keyboard.height.value = 0;
+      keyboard.progress.value = 0;
+    });
+
+    it('stays where it is while the keyboard is closed', async () => {
+      await render(withInsets(<ToastHost />));
+      await act(() => showToast('Oi'));
+      expect(readAnimatedStyle(screen.getByTestId('toast-host')).transform?.[0].translateY).toBe(0);
+    });
+
+    it('rides above the keyboard, 16 dp over its top edge, instead of hiding under it', async () => {
+      keyboard.height.value = -300;
+      keyboard.progress.value = 1;
+      await render(withInsets(<ToastHost />));
+      await act(() => showToast('Oi'));
+      // bottom = 20 (inset) + 72 (tab bar) = 92 over the window; the keyboard covers the lowest 300.
+      const lift = readAnimatedStyle(screen.getByTestId('toast-host')).transform?.[0].translateY ?? 0;
+      expect(92 - lift).toBe(300 + 16);
+    });
   });
 });
 
