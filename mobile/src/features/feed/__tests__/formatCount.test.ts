@@ -26,4 +26,9 @@ describe('formatCount', () => {
     expect(formatCount(-3)).toBe('0');
     expect(formatCount(4.9)).toBe('4');
   });
+
+  it('shows 0 for a count that is not a number', () => {
+    expect(formatCount(Number.NaN)).toBe('0');
+    expect(formatCount(Number.POSITIVE_INFINITY)).toBe('0');
+  });
 });

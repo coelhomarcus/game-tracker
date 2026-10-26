@@ -7,6 +7,7 @@ import {
   type InfiniteData,
   type QueryClient,
 } from "@tanstack/react-query";
+import { useCallback } from "react";
 
 import { authErrorMessage } from "@/features/auth";
 import { invalidateOwnProfile } from "@/features/profiles/ownProfile";
@@ -18,6 +19,9 @@ import {
   beginToggle,
   runInLane,
   settleToggle,
+  skipToggle,
+  SUPERSEDED,
+  type Superseded,
   toggleLane,
   type ToggleAction,
 } from "./likeLanes";
@@ -25,6 +29,7 @@ import {
   cancelCommentQueries,
   cancelPostQueries,
   findCachedPost,
+  isDeletedPost,
   removePostEverywhere,
   resumeInterrupted,
   updatePostEverywhere,
@@ -78,6 +83,12 @@ export function usePost(id: string) {
   });
 }
 
+/** Tells whether the user deleted a post in this session, e.g. when its page is shown again. */
+export function useDeletedPostCheck(): (postId: string) => boolean {
+  const client = useQueryClient();
+  return useCallback((postId: string) => isDeletedPost(client, postId), [client]);
+}
+
 export function useComments(postId: string) {
   return useQuery({
     queryKey: ["comments", postId],
@@ -123,14 +134,44 @@ function withFlag(flag: PostFlag, counter: PostCounter, on: boolean) {
       : { ...p, [flag]: on, [counter]: Math.max(0, p[counter] + (on ? 1 : -1)) };
 }
 
+type Refresh = (client: QueryClient) => void;
+
+/** The own profile lists the user's reposts and posts. */
+const refreshOwnProfile: Refresh = (client) => {
+  void invalidateOwnProfile(client, { entries: false });
+};
+const refreshBookmarks: Refresh = (client) => {
+  void client.invalidateQueries({ queryKey: ["bookmarks"] });
+};
+
 /**
- * Optimistic everywhere the post is cached. Requests of one post and action run in order; a
- * failure reverts only that post and action, and only once no later tap of it is pending.
- * `afterAll` runs once no toggle of any post is in flight any more.
+ * Refreshes that wait for every toggle to end: a refetch started while a toggle is still in
+ * flight could undo its optimistic write. Whichever toggle ends last runs them, each once.
+ */
+const afterIdle = new Set<Refresh>();
+
+/**
+ * Queues `refresh` (if given) and, once no toggle of any post or comment is in flight, restarts
+ * the fetches the toggles cancelled and runs every queued refresh.
+ */
+function whenIdle(client: QueryClient, refresh?: Refresh): void {
+  if (refresh) afterIdle.add(refresh);
+  if (anyToggleInFlight()) return;
+  resumeInterrupted(client);
+  const queued = [...afterIdle];
+  afterIdle.clear();
+  for (const run of queued) run(client);
+}
+
+/**
+ * Optimistic everywhere the post is cached. Requests of one post and action run in order, and a
+ * tap waiting behind another is dropped when a later tap replaces it; a failure reverts only
+ * that post and action, and only once no later tap of it is pending. `afterAll` runs once no
+ * toggle of any post or comment is in flight any more.
  */
 function usePostToggle(
   action: PostToggleAction,
-  afterAll?: (client: QueryClient) => void,
+  afterAll?: Refresh,
 ) {
   const client = useQueryClient();
   const { flag, counter, request } = POST_TOGGLES[action];
@@ -140,12 +181,9 @@ function usePostToggle(
       updatePostEverywhere(client, post.id, withFlag(flag, counter, to));
       if (error) showToast(authErrorMessage(error));
     }
-    if (!anyToggleInFlight()) {
-      resumeInterrupted(client);
-      afterAll?.(client);
-    }
+    whenIdle(client, afterAll);
   };
-  return useMutation<void, Error, Post>({
+  return useMutation<void | Superseded, Error, Post>({
     mutationFn: (post) =>
       runInLane(toggleLane(action, post.id), () => request(post.id, !post[flag])),
     onMutate: async (post) => {
@@ -153,7 +191,11 @@ function usePostToggle(
       await cancelPostQueries(client, post.id);
       updatePostEverywhere(client, post.id, withFlag(flag, counter, !post[flag]));
     },
-    onSuccess: (_data, post) => settle(post),
+    onSuccess: (result, post) => {
+      if (result !== SUPERSEDED) return settle(post);
+      skipToggle(toggleLane(action, post.id));
+      whenIdle(client, afterAll);
+    },
     onError: (error, post) => settle(post, error),
   });
 }
@@ -165,16 +207,12 @@ export function useTogglePostLike() {
 
 /** Reposts or undoes the repost; the own profile lists it, so it is refreshed afterwards. */
 export function useTogglePostRepost() {
-  return usePostToggle("repost", (client) => {
-    void invalidateOwnProfile(client, { entries: false });
-  });
+  return usePostToggle("repost", refreshOwnProfile);
 }
 
 /** Saves the post or removes it from the saved posts. */
 export function useTogglePostBookmark() {
-  return usePostToggle("bookmark", (client) => {
-    void client.invalidateQueries({ queryKey: ["bookmarks"] });
-  });
+  return usePostToggle("bookmark", refreshBookmarks);
 }
 
 /** Deletes an own post and takes it out of every cached list once the server confirms. */
@@ -184,10 +222,9 @@ export function useDeletePost() {
     mutationFn: (post) => feedApi.deletePost(post.id),
     onSuccess: async (_data, post) => {
       await cancelPostQueries(client, post.id);
-      removePostEverywhere(client, post.id);
-      if (!anyToggleInFlight()) resumeInterrupted(client);
+      removePostEverywhere(client, post);
       showToast("Post apagado");
-      void invalidateOwnProfile(client, { entries: false });
+      whenIdle(client, refreshOwnProfile);
     },
     onError: (error) => showToast(authErrorMessage(error)),
   });
@@ -279,9 +316,9 @@ export function useToggleCommentLike(postId: string) {
       update(comment.id, to);
       if (error) showToast(authErrorMessage(error));
     }
-    if (!anyToggleInFlight()) resumeInterrupted(client);
+    whenIdle(client);
   };
-  return useMutation<void, Error, Comment>({
+  return useMutation<void | Superseded, Error, Comment>({
     mutationFn: (comment) =>
       runInLane(toggleLane("commentLike", comment.id), () =>
         feedApi.setCommentLike(comment.id, !comment.likedByMe),
@@ -291,7 +328,11 @@ export function useToggleCommentLike(postId: string) {
       await cancelCommentQueries(client, postId);
       update(comment.id, !comment.likedByMe);
     },
-    onSuccess: (_data, comment) => settle(comment),
+    onSuccess: (result, comment) => {
+      if (result !== SUPERSEDED) return settle(comment);
+      skipToggle(toggleLane("commentLike", comment.id));
+      whenIdle(client);
+    },
     onError: (error, comment) => settle(comment, error),
   });
 }

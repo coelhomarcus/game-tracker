@@ -15,12 +15,14 @@ jest.mock('../queries', () => ({
   useComments: jest.fn(),
   useAddComment: jest.fn(),
   useToggleCommentLike: jest.fn(),
+  useDeletedPostCheck: () => mockWasDeleted,
   ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
     '@/test-utils/postControlHooks',
   ).postControlHooks(),
   useDeletePost: () => ({ mutate: mockDeletePost }),
 }));
 const mockDeletePost = jest.fn();
+const mockWasDeleted = jest.fn((_postId: string) => false);
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
 const mockPush = jest.fn();
@@ -36,6 +38,8 @@ jest.mock('expo-router', () => ({
     canGoBack: mockCanGoBack,
   }),
   useLocalSearchParams: () => mockParams,
+  // Focus effects run once on mount, as for a page that opens focused.
+  useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
   // The header is rendered in place so the tests can read its title.
   Stack: {
     Screen: ({ options }: { options?: { title?: string } }) => {
@@ -288,13 +292,30 @@ describe('PostDetailScreen post', () => {
   });
 
   it('keeps the post on screen when a refresh fails', async () => {
+    mockedUsePost.mockReturnValue(postResult({ isError: true, error: new NetworkError() }));
+    await renderScreen();
+
+    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
+    expect(screen.queryByText('Post não encontrado')).toBeNull();
+  });
+
+  it('says the post is gone when a refresh finds it deleted, even with a cached copy', async () => {
     mockedUsePost.mockReturnValue(
       postResult({ isError: true, error: new ApiError(404, 'NOT_FOUND', 'x') }),
     );
     await renderScreen();
 
-    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
-    expect(screen.queryByText('Post não encontrado')).toBeNull();
+    expect(screen.getByText('Post não encontrado')).toBeOnTheScreen();
+    expect(screen.queryByText('Zerei de primeira!')).toBeNull();
+  });
+
+  it('says the post is gone when shown again after the user deleted it elsewhere', async () => {
+    mockWasDeleted.mockImplementation((id) => id === POST_ID);
+    await renderScreen();
+
+    expect(mockWasDeleted).toHaveBeenCalledWith(POST_ID);
+    expect(screen.getByText('Post não encontrado')).toBeOnTheScreen();
+    mockWasDeleted.mockImplementation(() => false);
   });
 });
 

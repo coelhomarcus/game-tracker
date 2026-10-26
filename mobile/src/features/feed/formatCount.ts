@@ -9,6 +9,7 @@ const UNITS = [
  * ten of a unit, none from ten on, always truncated: a counter never shows more than it has.
  */
 export function formatCount(n: number): string {
+  if (!Number.isFinite(n)) return '0';
   const count = Math.max(0, Math.trunc(n));
   for (const { value, suffix } of UNITS) {
     if (count < value) continue;

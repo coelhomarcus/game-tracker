@@ -1,5 +1,5 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState, type ReactElement } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,7 +17,13 @@ import { CommentComposer, type ReplyTarget } from './CommentComposer';
 import { CommentItem } from './CommentItem';
 import { flattenComments, type FlatComment } from './flattenComments';
 import { PostFeedItem } from './PostFeedItem';
-import { useAddComment, useComments, usePost, useToggleCommentLike } from './queries';
+import {
+  useAddComment,
+  useComments,
+  useDeletedPostCheck,
+  usePost,
+  useToggleCommentLike,
+} from './queries';
 import { isPostId, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -49,13 +55,25 @@ function PostNotFound() {
 }
 
 function PostLoader({ postId }: { postId: string }) {
+  const wasDeleted = useDeletedPostCheck();
   const post = usePost(postId);
+  // A page left open lower in the stack for a post the user then deleted elsewhere says so when
+  // it is shown again. The page the user deletes from goes back with its post still drawn.
+  const [deleted, setDeleted] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (wasDeleted(postId)) setDeleted(true);
+    }, [wasDeleted, postId]),
+  );
+
+  // The server no longer has it, even if a cached copy is still there.
+  const gone = post.error instanceof ApiError && post.error.status === 404;
+  if (deleted || gone) return <PostNotFound />;
 
   // A failed background refetch keeps the previous data, so the loaded post stays.
   if (post.data) return <PostBody post={post.data} />;
 
   if (post.isError) {
-    if (post.error instanceof ApiError && post.error.status === 404) return <PostNotFound />;
     return (
       <Screen>
         <Stack.Screen options={{ title: 'Post' }} />

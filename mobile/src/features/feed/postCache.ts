@@ -130,12 +130,57 @@ function removeFromPages(data: PostPages, postId: string): PostPages {
   return changed ? { ...data, pages } : data;
 }
 
+/** Posts deleted in this session, per client, so a post page still open for one can say so. */
+const deletedPosts = new WeakMap<QueryClient, Set<string>>();
+
+/** Whether the user deleted the post in this session. */
+export function isDeletedPost(client: QueryClient, postId: string): boolean {
+  return deletedPosts.get(client)?.has(postId) ?? false;
+}
+
+/** Drops the post's detail and comments now, or once the last screen showing them closes. */
+function dropDetail(client: QueryClient, postId: string): void {
+  const drop = () => {
+    client.removeQueries({ queryKey: ['post', postId], exact: true });
+    client.removeQueries({ queryKey: ['comments', postId], exact: true });
+  };
+  const cache = client.getQueryCache();
+  const detail = cache.find({ queryKey: ['post', postId], exact: true });
+  if (detail === undefined || detail.getObserversCount() === 0) {
+    drop();
+    return;
+  }
+  // A page still shows it (the one the user deleted it from, or one lower in the stack): its
+  // data stays until that page goes, so it does not flash empty while it closes.
+  const unsubscribe = cache.subscribe((event) => {
+    if (event.type !== 'observerRemoved' || event.query !== detail) return;
+    if (detail.getObserversCount() > 0) return;
+    unsubscribe();
+    drop();
+  });
+}
+
 /**
  * Takes a deleted post out of every cached feed, game, profile and bookmark list (its reposts
- * too), marks the posts that quote it as quoting a removed post, and drops its own detail and
- * comments once no screen shows them. A detail still on screen keeps its data until it closes.
+ * too), marks the posts that quote it as quoting a removed post, takes its quote off the count
+ * of the post it quoted, and drops its own detail and comments once no screen shows them.
  */
-export function removePostEverywhere(client: QueryClient, postId: string): void {
+export function removePostEverywhere(
+  client: QueryClient,
+  post: Pick<Post, 'id' | 'quotedPostId'>,
+): void {
+  const postId = post.id;
+  const deleted = deletedPosts.get(client) ?? new Set<string>();
+  deleted.add(postId);
+  deletedPosts.set(client, deleted);
+
+  if (post.quotedPostId !== null) {
+    updatePostEverywhere(client, post.quotedPostId, (p) => ({
+      ...p,
+      quoteCount: Math.max(0, p.quoteCount - 1),
+    }));
+  }
+
   for (const key of LIST_KEYS) {
     for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
       if (data === undefined) continue;
@@ -151,8 +196,7 @@ export function removePostEverywhere(client: QueryClient, postId: string): void 
     if (next !== data) client.setQueryData(queryKey, next);
   }
 
-  client.removeQueries({ queryKey: ['post', postId], exact: true, type: 'inactive' });
-  client.removeQueries({ queryKey: ['comments', postId], type: 'inactive' });
+  dropDetail(client, postId);
 }
 
 /**

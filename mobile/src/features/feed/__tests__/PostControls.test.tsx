@@ -35,6 +35,19 @@ jest.mock('react-native-reanimated', () => ({
   useReducedMotion: jest.fn(() => false),
 }));
 
+// The window width decides where "Compartilhar" goes.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: jest.fn(),
+}));
+const mockedWindow = jest.mocked(
+  jest.requireMock<{ default: jest.Mock }>('react-native/Libraries/Utilities/useWindowDimensions')
+    .default,
+);
+function windowWidth(width: number) {
+  mockedWindow.mockReturnValue({ width, height: 800, scale: 2, fontScale: 1 });
+}
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
@@ -91,6 +104,7 @@ beforeEach(() => {
   jest.mocked(Clipboard.setStringAsync).mockResolvedValue(true);
   jest.mocked(useReducedMotion).mockReturnValue(false);
   signIn('someone-else');
+  windowWidth(412);
 });
 
 afterAll(() => {
@@ -137,6 +151,15 @@ describe('PostControls bar', () => {
     expect(screen.getByRole('button', { name: 'Curtir post, 1234 curtidas' })).toBeOnTheScreen();
   });
 
+  it('uses the plural for zero in the labels', async () => {
+    const quiet = post({ commentCount: 0, likeCount: 0, repostCount: 0, quoteCount: 0 });
+    await render(<PostControls post={quiet} onReply={jest.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Comentar, 0 comentários' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Curtir post, 0 curtidas' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Repostar, 0 reposts' })).toBeOnTheScreen();
+  });
+
   it('colors the counts of active controls and sets them semibold', async () => {
     await render(
       <PostControls post={post({ likedByMe: true, likeCount: 4, repostedByMe: true })} />,
@@ -155,11 +178,10 @@ describe('PostControls bar', () => {
   it('gives every control a real 48 dp touch box and keeps the reference layout', async () => {
     await render(<PostControls post={post()} onReply={jest.fn()} />);
 
-    expect(screen.getByTestId('post-controls')).toHaveStyle({
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingTop: 2,
-    });
+    const bar = screen.getByTestId('post-controls');
+    expect(bar).toHaveStyle({ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 2 });
+    // `space-between` parts the groups; a gap would only take room from the left slots.
+    expect(bar).not.toHaveStyle({ gap: 12 });
     for (const button of screen.getAllByRole('button')) {
       expect(button).toHaveStyle({ minHeight: 48, minWidth: 48 });
     }
@@ -378,5 +400,45 @@ describe('PostControls more menu', () => {
     await render(<PostControls post={post({ content: '' })} />);
 
     expect(screen.getByRole('button', { name: 'Mais opções' })).toBeDisabled();
+  });
+});
+
+describe('PostControls on narrow and wide screens', () => {
+  it('keeps Compartilhar on the bar of a 412 dp wide screen', async () => {
+    windowWidth(412);
+    await render(withSafeArea(<PostControls post={post()} />));
+
+    expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+    expect(screen.getAllByRole('button', { name: 'Compartilhar' })).toHaveLength(1);
+  });
+
+  it('moves Compartilhar into the "…" sheet on a 360 dp wide screen', async () => {
+    windowWidth(360);
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction', activityType: undefined });
+    await render(withSafeArea(<PostControls post={post({ content: '' })} />));
+
+    expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
+    // Sharing is always on offer, so the menu is never empty.
+    const more = screen.getByRole('button', { name: 'Mais opções' });
+    expect(more).toBeEnabled();
+    await fireEvent.press(more);
+    await fireEvent.press(screen.getByRole('button', { name: 'Compartilhar' }));
+
+    expect(share).toHaveBeenCalledWith({ message: 'Ana Souza' });
+    share.mockRestore();
+  });
+
+  it('gives each left slot at least 48 dp and keeps long counts inside it', async () => {
+    windowWidth(360);
+    await render(<PostControls post={post({ commentCount: 1234, likeCount: 98_765 })} onReply={jest.fn()} />);
+
+    const comment = screen.getByRole('button', { name: 'Comentar, 1234 comentários' });
+    expect(comment.parent).toHaveStyle({ flex: 1, minWidth: 48 });
+    expect(comment).toHaveStyle({ maxWidth: '100%' });
+    const count = screen.getByText('1,2 mil');
+    expect(count.props.numberOfLines).toBe(1);
+    expect(count).toHaveStyle({ flexShrink: 1 });
+    expect(screen.getAllByRole('button')).toHaveLength(5);
   });
 });

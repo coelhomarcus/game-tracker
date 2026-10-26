@@ -2,7 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Pressable, Share, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  Share,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { ConfirmDialog, OptionSheet, Text } from '@/components';
 import { useSession } from '@/features/auth';
@@ -25,6 +33,11 @@ import { displayName, type Post } from './types';
 const ICON_SIZE = 18;
 /** A real 48 dp touch box: Android ignores hit slop beyond the parent's bounds. */
 const TOUCH = 48;
+/**
+ * Below this window width three 48 dp buttons on the right would leave the left slots under
+ * 48 dp, so "Compartilhar" moves into the "…" sheet.
+ */
+export const NARROW_WINDOW = 380;
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
@@ -36,7 +49,7 @@ export function quoteHref(post: Pick<Post, 'id'>): Href {
 }
 
 type RepostChoice = 'repost' | 'quote' | 'cancel';
-type MoreChoice = 'copy' | 'delete';
+type MoreChoice = 'share' | 'copy' | 'delete';
 
 export type PostControlsProps = {
   /** The post as the parent read it from the cache, so a toggle never works on a stale copy. */
@@ -53,6 +66,7 @@ export type PostControlsProps = {
  */
 export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
   const router = useRouter();
+  const narrow = useWindowDimensions().width < NARROW_WINDOW;
   const isMine = useSession((state) => state.user?.id === post.author.id);
   const toggleLike = useTogglePostLike();
   const toggleRepost = useTogglePostRepost();
@@ -100,6 +114,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
   };
 
   const moreOptions: { value: MoreChoice; label: string; icon: IoniconName }[] = [];
+  if (narrow) moreOptions.push({ value: 'share', label: 'Compartilhar', icon: 'share-outline' });
   if (post.content) moreOptions.push({ value: 'copy', label: 'Copiar texto', icon: 'copy-outline' });
   if (isMine) moreOptions.push({ value: 'delete', label: 'Apagar post', icon: 'trash-outline' });
 
@@ -111,7 +126,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             <ControlButton
               label={`Comentar, ${comments}`}
               onPress={onReply}
-              style={styles.replyButton}
+              style={[styles.slotButton, styles.replyButton]}
             >
               <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
               <Count count={post.commentCount} />
@@ -120,7 +135,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             <View
               accessible
               accessibilityLabel={comments}
-              style={[styles.button, styles.replyButton]}
+              style={[styles.button, styles.slotButton, styles.replyButton]}
             >
               <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
               <Count count={post.commentCount} />
@@ -133,6 +148,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             label={`${reposted ? 'Desfazer repost' : 'Repostar'}, ${reposts}`}
             onPress={() => openSheet('repost')}
             onLongPress={quote}
+            style={styles.slotButton}
           >
             <Ionicons
               name="repeat"
@@ -150,6 +166,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
               setLikeToggled(true);
               toggleLike.mutate(post);
             }}
+            style={styles.slotButton}
           >
             <LikeIcon liked={liked} size={ICON_SIZE} hasBeenToggled={likeToggled} />
             <CountWheel
@@ -178,9 +195,11 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             color={bookmarked ? colors.primary : colors.textMedium}
           />
         </ControlButton>
-        <ControlButton label="Compartilhar" onPress={() => void share()} style={styles.iconButton}>
-          <Ionicons name="share-outline" size={ICON_SIZE} color={colors.textMedium} />
-        </ControlButton>
+        {narrow ? null : (
+          <ControlButton label="Compartilhar" onPress={() => void share()} style={styles.iconButton}>
+            <Ionicons name="share-outline" size={ICON_SIZE} color={colors.textMedium} />
+          </ControlButton>
+        )}
         <ControlButton
           label="Mais opções"
           disabled={moreOptions.length === 0}
@@ -221,7 +240,8 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             title="Opções do post"
             options={moreOptions}
             onSelect={(choice) => {
-              if (choice === 'copy') void copy();
+              if (choice === 'share') void share();
+              else if (choice === 'copy') void copy();
               else setConfirmDelete(true);
             }}
             onClose={() => setSheet(null)}
@@ -310,15 +330,17 @@ function Count({ count, color, active = false }: CountProps) {
 }
 
 const styles = StyleSheet.create({
+  // No gap: `space-between` already parts the groups, and narrow screens need every dp.
   bar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: space.md,
     paddingTop: space._2xs,
   },
   primary: { flexDirection: 'row', flex: 1, maxWidth: 320 },
-  slot: { flex: 1, alignItems: 'flex-start' },
+  slot: { flex: 1, minWidth: TOUCH, alignItems: 'flex-start' },
+  // A long count is cut inside its slot instead of running under the next icon.
+  slotButton: { maxWidth: '100%' },
   // The design reference pulls the comment button 6 dp left so its icon lines up with the text;
   // here the button drops its left padding instead, which keeps the touch box inside the column.
   replyButton: { paddingLeft: 0 },
@@ -333,5 +355,5 @@ const styles = StyleSheet.create({
   },
   iconButton: { justifyContent: 'center', width: TOUCH, paddingHorizontal: 0 },
   pressed: { opacity: 0.6 },
-  count: { includeFontPadding: false, textAlignVertical: 'center' },
+  count: { flexShrink: 1, includeFontPadding: false, textAlignVertical: 'center' },
 });

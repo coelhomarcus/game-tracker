@@ -190,6 +190,33 @@ describe('PostFeedItem row press', () => {
     expect(screen.getByRole('button', { name: 'Post de Ana Souza, há 5 min, 2 imagens' })).toBeOnTheScreen();
   });
 
+  it('lays the summary of a post without text over its meta line, so TalkBack reaches it', async () => {
+    const onPress = jest.fn();
+    const imageOnly = post({ content: '', images: images(1), game: null });
+    await render(withSafeArea(<PostFeedItem post={imageOnly} onPress={onPress} />));
+
+    const summary = screen.getByTestId('post-summary');
+    expect(summary).toHaveAccessibleName('Post de Ana Souza, há 5 min, 1 imagem');
+    // A real area: it covers the meta line instead of being an empty, zero-height body.
+    expect(summary).toHaveStyle({ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 });
+    expect(summary.props.pointerEvents).toBe('none');
+    expect(screen.getAllByLabelText(/^Post de Ana Souza/)).toHaveLength(1);
+
+    await fireEvent(summary, 'accessibilityAction', { nativeEvent: { actionName: 'activate' } });
+    expect(onPress).toHaveBeenCalledTimes(1);
+    // Touches still reach the name link under it.
+    await fireEvent.press(screen.getByRole('button', { name: 'Perfil de Ana Souza' }));
+    expect(mockPush).toHaveBeenCalledWith('/users/u1');
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the summary on the body when the post has text', async () => {
+    await render(<PostFeedItem post={post()} onPress={jest.fn()} />);
+
+    expect(screen.queryByTestId('post-summary')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Post de Ana Souza, há 5 min: / })).toBeOnTheScreen();
+  });
+
   it('opens nothing without onPress, e.g. on the post page', async () => {
     await render(<PostFeedItem post={post()} />);
 

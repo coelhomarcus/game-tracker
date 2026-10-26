@@ -108,6 +108,6 @@ export function CountWheel({ count, toggled, hasBeenToggled, renderCount }: Coun
 }
 
 const styles = StyleSheet.create({
-  wheel: { justifyContent: 'center' },
+  wheel: { justifyContent: 'center', flexShrink: 1 },
   previous: { position: 'absolute', left: 0, opacity: 0 },
 });

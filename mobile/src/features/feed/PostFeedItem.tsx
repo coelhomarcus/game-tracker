@@ -83,6 +83,9 @@ export function PostFeedItem({
   const hasEmbeds =
     post.images.length > 0 || post.quotedPost !== null || post.quotedPostRemoved || game !== null;
   const clamp = useTextClamp();
+  const summary = bodyLabel(post, name, time);
+  // The body holds the text and an activity's status; without either it has nothing to show.
+  const hasBody = post.content !== '' || status !== null;
 
   return (
     <Pressable
@@ -130,31 +133,59 @@ export function PostFeedItem({
           </ProfileLink>
         </View>
         <View testID="post-content" style={styles.content}>
-          <PostMeta author={post.author} createdAt={post.createdAt} />
-          <Pressable
-            accessibilityRole={onPress ? 'button' : undefined}
-            accessibilityLabel={bodyLabel(post, name, time)}
-            onPress={onPress}
-            style={styles.body}
-          >
-            {post.content ? (
-              <Text
-                testID="post-text"
-                numberOfLines={clamp.numberOfLines}
-                onTextLayout={clamp.onTextLayout}
-              >
-                {post.content}
-              </Text>
-            ) : null}
-            {status ? (
-              <View testID="activity-status" style={styles.status}>
-                <StatusIcon status={status} />
-                <Text size="sm" style={{ color: colors.status[status] }}>
-                  {statusLabel[status]}
+          {hasBody ? (
+            <PostMeta author={post.author} createdAt={post.createdAt} />
+          ) : (
+            <View>
+              <PostMeta author={post.author} createdAt={post.createdAt} />
+              {/*
+               * Without text the body would have no area, and TalkBack skips what has none: the
+               * summary lies over the meta line instead. Touches pass through to the name link.
+               */}
+              <View
+                testID="post-summary"
+                accessible
+                pointerEvents="none"
+                accessibilityRole={onPress ? 'button' : undefined}
+                accessibilityLabel={summary}
+                accessibilityActions={onPress ? [{ name: 'activate' }] : undefined}
+                onAccessibilityAction={
+                  onPress
+                    ? (event) => {
+                        if (event.nativeEvent.actionName === 'activate') onPress();
+                      }
+                    : undefined
+                }
+                style={StyleSheet.absoluteFill}
+              />
+            </View>
+          )}
+          {hasBody ? (
+            <Pressable
+              accessibilityRole={onPress ? 'button' : undefined}
+              accessibilityLabel={summary}
+              onPress={onPress}
+              style={styles.body}
+            >
+              {post.content ? (
+                <Text
+                  testID="post-text"
+                  numberOfLines={clamp.numberOfLines}
+                  onTextLayout={clamp.onTextLayout}
+                >
+                  {post.content}
                 </Text>
-              </View>
-            ) : null}
-          </Pressable>
+              ) : null}
+              {status ? (
+                <View testID="activity-status" style={styles.status}>
+                  <StatusIcon status={status} />
+                  <Text size="sm" style={{ color: colors.status[status] }}>
+                    {statusLabel[status]}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          ) : null}
           {clamp.canExpand ? (
             <Pressable
               accessibilityRole="button"
