@@ -73,10 +73,10 @@ function signIn(id: string) {
   });
 }
 
-async function renderAnchor(post: Post = makePost()) {
+async function renderAnchor(post: Post = makePost(), onReply?: () => void) {
   await render(
     <SafeAreaProvider initialMetrics={metrics}>
-      <ThreadAnchor post={post} />
+      <ThreadAnchor post={post} onReply={onReply} />
     </SafeAreaProvider>,
   );
 }
@@ -149,13 +149,22 @@ describe('ThreadAnchor', () => {
     expect(screen.getByTestId('anchor-stat-saves')).toHaveTextContent('1 salvo');
   });
 
-  it('shows the big controls, with the comment counter inert', async () => {
+  it('shows the big controls, with the comment counter inert without onReply', async () => {
     await renderAnchor(makePost({ commentCount: 3 }));
 
     const controls = screen.getByTestId('post-controls');
     expect(within(controls).getByTestId('like-icon-outline')).toHaveStyle({ fontSize: 22 });
     expect(within(controls).getByLabelText('3 comentários')).toBeOnTheScreen();
-    expect(within(controls).queryByRole('button', { name: '3 comentários' })).toBeNull();
+    expect(within(controls).queryByRole('button', { name: /comentário/ })).toBeNull();
+  });
+
+  it('makes the comment counter write a reply to the post when onReply is given', async () => {
+    const onReply = jest.fn();
+    await renderAnchor(makePost({ commentCount: 3 }), onReply);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 3 comentários' }));
+
+    expect(onReply).toHaveBeenCalledTimes(1);
   });
 
   it('shows the status of an activity in the summary', async () => {

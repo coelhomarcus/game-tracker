@@ -1,11 +1,13 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import * as Clipboard from 'expo-clipboard';
 import { HeaderHeightContext } from 'expo-router/react-navigation';
-import { FlatList, StyleSheet } from 'react-native';
+import { FlatList, Keyboard, StyleSheet, TextInput } from 'react-native';
+import { KeyboardEvents } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { authErrorMessage, useSession } from '@/features/auth';
 import { ApiError, NetworkError } from '@/lib/http/errors';
+import { haptic } from '@/lib/haptics';
 import { usePreferences } from '@/lib/preferences';
 import { showToast } from '@/lib/toast';
 
@@ -35,6 +37,7 @@ jest.mock('../queries', () => ({
 const mockDeletePost = jest.fn();
 const mockWasDeleted = jest.fn((_postId: string) => false);
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
+jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn().mockResolvedValue(true) }));
 // The anchor asks whether the user follows the author; here nobody does.
 jest.mock('@/features/profiles/queries', () => ({
@@ -192,7 +195,9 @@ async function renderScreen(headerHeight = 0) {
 function signIn(id: string) {
   useSession.setState({
     status: 'signedIn',
-    user: { id } as ReturnType<typeof useSession.getState>['user'],
+    user: { id, username: id, name: null, avatarUrl: null } as ReturnType<
+      typeof useSession.getState
+    >['user'],
   });
 }
 
@@ -225,7 +230,20 @@ afterEach(async () => {
   await act(async () => useSession.setState({ status: 'signedOut', user: null }));
 });
 
+/** The pill that stands in for the composer until the user asks to write. */
+const prompt = () => screen.getByRole('button', { name: 'Escreva sua resposta' });
+const queryPrompt = () => screen.queryByRole('button', { name: 'Escreva sua resposta' });
+const field = () => screen.getByPlaceholderText(/^Escreva /);
+const queryField = () => screen.queryByPlaceholderText(/^Escreva /);
+const focus = TextInput.prototype.focus as unknown as jest.Mock;
+
+async function openComposer() {
+  await fireEvent.press(prompt());
+}
+
+/** Types into the composer, opening it from the prompt first when it is not open. */
 async function typeComment(text: string) {
+  if (!queryField()) await openComposer();
   await fireEvent.changeText(screen.getByPlaceholderText(/^Escreva /), text);
 }
 
@@ -266,13 +284,30 @@ describe('PostDetailScreen post', () => {
     expect(screen.queryByRole('button', { name: /^Ana Souza zerou/ })).toBeNull();
   });
 
-  it('shows the comment counter of the header post as inert text', async () => {
+  it('writes a comment on the post from the comment counter of the anchor', async () => {
     await renderScreen();
+    expect(queryField()).toBeNull();
 
-    expect(screen.getByLabelText('3 comentários')).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: '3 comentários' })).toBeNull();
-    await fireEvent.press(screen.getByLabelText('3 comentários'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 3 comentários' }));
+
+    expect(field().props.placeholder).toBe('Escreva um comentário');
+    expect(queryPrompt()).toBeNull();
+    expect(focus).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('turns a reply into a comment on the post from the comment counter of the anchor', async () => {
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 3 comentários' }));
+    await typeComment('Oi');
+    await send();
+
+    expect(screen.queryByText('Respondendo a @bia')).toBeNull();
+    expect(mutateAsync).toHaveBeenCalledWith({ content: 'Oi' });
+    expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty('parentCommentId');
   });
 
   it('keeps the composer above the keyboard, offset by the header height', async () => {
@@ -280,11 +315,14 @@ describe('PostDetailScreen post', () => {
 
     expect(screen.getByTestId('post-keyboard-avoider').props.keyboardVerticalOffset).toBe(77);
     expect(screen.getByTestId('post-keyboard-avoider').props.behavior).toBe('padding');
-    expect(
-      within(screen.getByTestId('post-keyboard-avoider')).getByPlaceholderText(
-        'Escreva um comentário',
-      ),
-    ).toBeOnTheScreen();
+    // The prompt sits inside the avoiding layout, and so does the composer that replaces it.
+    const avoider = () => within(screen.getByTestId('post-keyboard-avoider'));
+    expect(avoider().getByTestId('thread-reply-prompt')).toBeOnTheScreen();
+
+    await openComposer();
+
+    expect(avoider().getByPlaceholderText('Escreva um comentário')).toBeOnTheScreen();
+    expect(screen.getByTestId('post-keyboard-avoider').props.keyboardVerticalOffset).toBe(77);
   });
 
   it('shows the post as the thread anchor, above the comments', async () => {
@@ -543,12 +581,15 @@ describe('PostDetailScreen composer', () => {
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     expect(mutateAsync).toHaveBeenCalledWith({ content: 'Boa review!' });
     expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty('parentCommentId');
-    expect(screen.getByPlaceholderText('Escreva um comentário').props.value).toBe('');
+    // The comment is sent: the composer gives way to the prompt again.
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
   });
 
   it('cannot send whitespace only or an empty field', async () => {
     await renderScreen();
+    await openComposer();
     const button = () => screen.getByRole('button', { name: 'Enviar comentário' });
     expect(button()).toBeDisabled();
 
@@ -571,6 +612,7 @@ describe('PostDetailScreen composer', () => {
 
   it('limits the field to 500 characters', async () => {
     await renderScreen();
+    await openComposer();
 
     expect(screen.getByPlaceholderText('Escreva um comentário').props.maxLength).toBe(500);
   });
@@ -587,8 +629,15 @@ describe('PostDetailScreen composer', () => {
     await send();
 
     expect(mutateAsync).toHaveBeenCalledWith({ content: 'Concordo', parentCommentId: 'c2' });
-    expect(screen.getByPlaceholderText('Escreva um comentário').props.value).toBe('');
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Cancelar resposta' })).toBeNull();
+
+    // The next prompt press writes on the post, not on the comment answered before.
+    await typeComment('Outra');
+    await send();
+    expect(mutateAsync).toHaveBeenLastCalledWith({ content: 'Outra' });
+    expect(mutateAsync.mock.calls[1][0]).not.toHaveProperty('parentCommentId');
   });
 
   it('shows the reply bar in addition to the reply prefix of the comment', async () => {
@@ -619,9 +668,11 @@ describe('PostDetailScreen composer', () => {
     await renderScreen();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar resposta' }));
-    expect(screen.getByPlaceholderText('Escreva um comentário')).toBeOnTheScreen();
     await typeComment('Oi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar resposta' }));
+    // A draft keeps the composer open, now for a comment on the post.
+    expect(screen.getByPlaceholderText('Escreva um comentário').props.value).toBe('Oi');
+    expect(screen.queryByRole('button', { name: 'Cancelar resposta' })).toBeNull();
     await send();
 
     expect(mutateAsync).toHaveBeenCalledWith({ content: 'Oi' });
@@ -659,7 +710,157 @@ describe('PostDetailScreen composer', () => {
 
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await act(async () => finish());
-    expect(screen.getByPlaceholderText('Escreva um comentário').props.value).toBe('');
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
+  });
+});
+
+describe('PostDetailScreen reply prompt', () => {
+  /** The keyboard-controller event the composer listens to, as the last subscription got it. */
+  function hideKeyboard() {
+    const calls = jest
+      .mocked(KeyboardEvents.addListener)
+      .mock.calls.filter(([event]) => event === 'keyboardDidHide');
+    return act(async () => calls[calls.length - 1]![1]({} as never));
+  }
+
+  it('shows the prompt instead of the composer, over the thread', async () => {
+    await renderScreen();
+
+    expect(prompt()).toBeOnTheScreen();
+    expect(queryField()).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enviar comentário' })).toBeNull();
+    expect(screen.queryByText(/^Respondendo a @/)).toBeNull();
+  });
+
+  it('swaps the prompt for the focused composer, with a tap haptic', async () => {
+    await renderScreen();
+
+    await openComposer();
+
+    expect(haptic).toHaveBeenCalledWith('tap');
+    expect(queryPrompt()).toBeNull();
+    expect(field().props.placeholder).toBe('Escreva um comentário');
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/^Respondendo a @/)).toBeNull();
+  });
+
+  it('opens the composer for a comment from its Responder button, focused, with the bar', async () => {
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+
+    expect(queryPrompt()).toBeNull();
+    expect(screen.getByText('Respondendo a @caio')).toBeOnTheScreen();
+    expect(field().props.placeholder).toBe('Escreva sua resposta');
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses the open composer again when another comment is answered', async () => {
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+
+    expect(screen.getByText('Respondendo a @caio')).toBeOnTheScreen();
+    expect(focus).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes back to the prompt when the field loses focus with nothing typed', async () => {
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+
+    await fireEvent(field(), 'blur');
+
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
+    expect(screen.queryByText('Respondendo a @bia')).toBeNull();
+  });
+
+  it('goes back to the prompt when the keyboard is hidden with nothing typed', async () => {
+    await renderScreen();
+    await openComposer();
+    await typeComment('   ');
+
+    await hideKeyboard();
+
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
+  });
+
+  it('keeps the composer, and the draft, when the keyboard goes away with text typed', async () => {
+    await renderScreen();
+    await typeComment('Quase pronto');
+
+    await fireEvent(field(), 'blur');
+    await hideKeyboard();
+
+    expect(queryPrompt()).toBeNull();
+    expect(field().props.value).toBe('Quase pronto');
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft when another comment is chosen to answer', async () => {
+    await renderScreen();
+    await typeComment('Meu rascunho');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+
+    expect(field().props.value).toBe('Meu rascunho');
+    expect(screen.getByText('Respondendo a @caio')).toBeOnTheScreen();
+    await send();
+    expect(mutateAsync).toHaveBeenCalledWith({ content: 'Meu rascunho', parentCommentId: 'c3' });
+  });
+
+  it('focuses a composer that holds a draft again from the comment counter of the anchor', async () => {
+    await renderScreen();
+    await typeComment('Rascunho');
+    await fireEvent(field(), 'blur');
+    focus.mockClear();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 3 comentários' }));
+
+    expect(field().props.value).toBe('Rascunho');
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes back to the prompt when the reply is cancelled with nothing typed', async () => {
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar resposta' }));
+
+    expect(queryField()).toBeNull();
+    expect(prompt()).toBeOnTheScreen();
+  });
+
+  it('hides the keyboard once the comment is sent', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    await renderScreen();
+    await typeComment('Oi');
+
+    await send();
+
+    expect(dismiss).toHaveBeenCalled();
+    expect(prompt()).toBeOnTheScreen();
+    dismiss.mockRestore();
+  });
+
+  it('keeps the composer, and the reply target, when sending fails', async () => {
+    mutateAsync.mockRejectedValueOnce(new NetworkError());
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+    await typeComment('Oi');
+    await send();
+
+    expect(queryPrompt()).toBeNull();
+    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
+  });
+
+  it('keeps the keyboard offset with the composer open', async () => {
+    await renderScreen(52);
+    await openComposer();
+
+    expect(screen.getByTestId('post-keyboard-avoider').props.keyboardVerticalOffset).toBe(52);
   });
 });
 
@@ -954,10 +1155,7 @@ describe('PostDetailScreen view and order', () => {
 
 describe('PostDetailScreen deleting the post', () => {
   async function deleteFromTheMenu() {
-    useSession.setState({
-      status: 'signedIn',
-      user: { id: 'u1' } as ReturnType<typeof useSession.getState>['user'],
-    });
+    signIn('u1');
     await renderScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Apagar post' }));

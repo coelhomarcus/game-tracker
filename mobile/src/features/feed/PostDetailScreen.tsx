@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Keyboard, StyleSheet, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { EmptyState, Screen } from '@/components';
@@ -24,6 +24,7 @@ import { ThreadItemLinear } from './thread/ThreadItemLinear';
 import { ThreadItemTree } from './thread/ThreadItemTree';
 import { ThreadMenu } from './thread/ThreadMenu';
 import { ThreadReadMore } from './thread/ThreadReadMore';
+import { ThreadReplyPrompt } from './thread/ThreadReplyPrompt';
 import { isPostId, type Comment, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -132,6 +133,10 @@ function PostBody({ post }: { post: Post }) {
   const toggleLike = useToggleCommentLike(post.id);
   const deleteComment = useDeleteComment(post.id);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  // The reply prompt stands in for the composer until the user asks to write; the composer then
+  // stays while it holds a draft. `focusRequest` makes an open composer take focus again.
+  const [composing, setComposing] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const listRef = useRef<FlatList<PageItem>>(null);
 
@@ -150,10 +155,22 @@ function PostBody({ post }: { post: Post }) {
 
   const { mutate: like } = toggleLike;
   const { mutate: remove } = deleteComment;
+  const openComposer = useCallback((target: ReplyTarget | null) => {
+    setReplyTo(target);
+    setComposing(true);
+    setFocusRequest((count) => count + 1);
+  }, []);
+  const closeComposer = useCallback(() => {
+    Keyboard.dismiss();
+    setComposing(false);
+    setReplyTo(null);
+  }, []);
   const onReply = useCallback(
-    (comment: Comment) => setReplyTo({ commentId: comment.id, username: comment.author.username }),
-    [],
+    (comment: Comment) =>
+      openComposer({ commentId: comment.id, username: comment.author.username }),
+    [openComposer],
   );
+  const onReplyToPost = useCallback(() => openComposer(null), [openComposer]);
   const onToggleLike = useCallback((comment: Comment) => like(comment), [like]);
   const onDelete = useCallback(
     (comment: Comment) =>
@@ -190,7 +207,7 @@ function PostBody({ post }: { post: Post }) {
       content,
       ...(replyTo ? { parentCommentId: replyTo.commentId } : {}),
     });
-    setReplyTo(null);
+    closeComposer();
   }
 
   let status: ReactElement;
@@ -219,6 +236,7 @@ function PostBody({ post }: { post: Post }) {
   const anchor = (
     <ThreadAnchor
       post={post}
+      onReply={onReplyToPost}
       onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
     />
   );
@@ -245,11 +263,17 @@ function PostBody({ post }: { post: Post }) {
           maintainVisibleContentPosition={MAINTAIN_ANCHOR}
           style={styles.fill}
         />
-        <CommentComposer
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onSubmit={submit}
-        />
+        {composing ? (
+          <CommentComposer
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            focusRequest={focusRequest}
+            onDismiss={closeComposer}
+            onSubmit={submit}
+          />
+        ) : (
+          <ThreadReplyPrompt onPress={onReplyToPost} />
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );

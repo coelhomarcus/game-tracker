@@ -28,6 +28,8 @@ const OUTER_SPACE = space.lg;
 export type ThreadAnchorProps = {
   /** The post as the page read it from the cache. */
   post: Post;
+  /** The comment counter's action: write a comment on the post. Without it the counter is plain. */
+  onReply?: () => void;
   /** Runs once the user deleted the post from its controls. */
   onDeleted?: () => void;
 };
@@ -37,7 +39,7 @@ export type ThreadAnchorProps = {
  * follow button, the text in a larger size, the embeds, the full date, the counters spelled out
  * and the big controls.
  */
-export function ThreadAnchor({ post, onDeleted }: ThreadAnchorProps) {
+export function ThreadAnchor({ post, onReply, onDeleted }: ThreadAnchorProps) {
   const name = displayName(post.author);
   const status = post.type === 'activity' ? post.activityStatus : null;
   const hasBody = post.content !== '' || status !== null;
@@ -108,7 +110,7 @@ export function ThreadAnchor({ post, onDeleted }: ThreadAnchorProps) {
         </View>
         <AnchorStats post={post} />
         <View style={styles.controls}>
-          <PostControls big post={post} onDeleted={onDeleted} />
+          <PostControls big post={post} onReply={onReply} onDeleted={onDeleted} />
         </View>
       </View>
     </View>
