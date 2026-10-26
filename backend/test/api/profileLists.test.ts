@@ -121,6 +121,22 @@ describe('followers and following lists', () => {
     assert.deepEqual(following.flat().map((i) => i.id), [f3.user.id, f1.user.id]);
   });
 
+  it('pages follows with the very same created_at exactly once each', async () => {
+    const popular = await registerUser(api.http, 'ftp');
+    const fans = [await registerUser(api.http, 'ft1'), await registerUser(api.http, 'ft2'), await registerUser(api.http, 'ft3')];
+    const sameInstant = '2026-03-05T10:00:00.123456Z';
+    for (const fan of fans) {
+      await follow(fan, popular, sameInstant);
+      await follow(popular, fan, sameInstant);
+    }
+    const expected = fans.map((fan) => fan.user.id).sort();
+    for (const kind of ['followers', 'following']) {
+      const result = await pages(viewer, `/users/${popular.user.id}/${kind}`, 1);
+      assert.equal(result.length, 3);
+      assert.deepEqual(result.flat().map((i) => i.id).sort(), expected);
+    }
+  });
+
   it('returns an empty page for someone without followers and 404 for an unknown user', async () => {
     const lonely = await registerUser(api.http, 'fll');
     assert.deepEqual((await send('GET', `/users/${lonely.user.id}/followers`, viewer)).body, { items: [], nextCursor: null });
@@ -257,6 +273,23 @@ describe('my likes', () => {
         assert.ok(field in item, `campo ${field} sumiu`);
       }
     }
+  });
+
+  it('pages likes with the very same created_at exactly once each', async () => {
+    const fan = await registerUser(api.http, 'lkt');
+    const liked: string[] = [];
+    for (const text of ['a', 'b', 'c']) {
+      const id = await createPost(author, { content: text });
+      assert.equal((await send('POST', `/posts/${id}/like`, fan)).status, 204);
+      liked.push(id);
+    }
+    await db
+      .update(likes)
+      .set({ createdAt: sql`${'2026-03-05T10:00:00.123456Z'}::timestamptz` })
+      .where(eq(likes.userId, fan.user.id));
+    const result = await pages(fan, '/users/me/likes', 1);
+    assert.equal(result.length, 3);
+    assert.deepEqual(result.flat().map((p) => p.id).sort(), [...liked].sort());
   });
 
   it('is private: someone with no likes gets an empty list', async () => {
