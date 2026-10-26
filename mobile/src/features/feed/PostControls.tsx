@@ -31,6 +31,8 @@ import {
 import { displayName, type Post } from './types';
 
 const ICON_SIZE = 18;
+/** The icons of the big variant, under the post on its own page. */
+const BIG_ICON_SIZE = 22;
 /** A real 48 dp touch box: Android ignores hit slop beyond the parent's bounds. */
 const TOUCH = 48;
 /**
@@ -58,13 +60,17 @@ export type PostControlsProps = {
   onReply?: () => void;
   /** Runs once the post is deleted, e.g. to leave the post's own page. */
   onDeleted?: () => void;
+  /** Larger icons and counts, for the post on its own page. */
+  big?: boolean;
 };
 
 /**
  * The action bar of a post: comment, repost (or quote), like on the left; save, share and more on
  * the right. Toggles are optimistic in every cached copy of the post.
  */
-export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
+export function PostControls({ post, onReply, onDeleted, big = false }: PostControlsProps) {
+  const iconSize = big ? BIG_ICON_SIZE : ICON_SIZE;
+  const countSize = big ? 'md' : 'sm';
   const router = useRouter();
   const narrow = useWindowDimensions().width < NARROW_WINDOW;
   const isMine = useSession((state) => state.user?.id === post.author.id);
@@ -119,26 +125,31 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
   if (isMine) moreOptions.push({ value: 'delete', label: 'Apagar post', icon: 'trash-outline' });
 
   return (
-    <View testID="post-controls" style={styles.bar}>
+    <View testID="post-controls" style={[styles.bar, big && styles.bigBar]}>
       <View style={styles.primary}>
         <View style={styles.slot}>
           {onReply ? (
             <ControlButton
               label={`Comentar, ${comments}`}
               onPress={onReply}
-              style={[styles.slotButton, styles.replyButton]}
+              style={[styles.slotButton, styles.replyButton, big && styles.bigReplyButton]}
             >
-              <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
-              <Count count={post.commentCount} />
+              <Ionicons name="chatbubble-outline" size={iconSize} color={colors.textMedium} />
+              <Count count={post.commentCount} size={countSize} />
             </ControlButton>
           ) : (
             <View
               accessible
               accessibilityLabel={comments}
-              style={[styles.button, styles.slotButton, styles.replyButton]}
+              style={[
+                styles.button,
+                styles.slotButton,
+                styles.replyButton,
+                big && styles.bigReplyButton,
+              ]}
             >
-              <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
-              <Count count={post.commentCount} />
+              <Ionicons name="chatbubble-outline" size={iconSize} color={colors.textMedium} />
+              <Count count={post.commentCount} size={countSize} />
             </View>
           )}
         </View>
@@ -152,10 +163,15 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
           >
             <Ionicons
               name="repeat"
-              size={ICON_SIZE}
+              size={iconSize}
               color={reposted ? colors.repost : colors.textMedium}
             />
-            <Count count={repostCount} color={reposted ? colors.repost : undefined} active={reposted} />
+            <Count
+              count={repostCount}
+              size={countSize}
+              color={reposted ? colors.repost : undefined}
+              active={reposted}
+            />
           </ControlButton>
         </View>
         <View style={styles.slot}>
@@ -168,13 +184,18 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
             }}
             style={styles.slotButton}
           >
-            <LikeIcon liked={liked} size={ICON_SIZE} hasBeenToggled={likeToggled} />
+            <LikeIcon liked={liked} size={iconSize} hasBeenToggled={likeToggled} />
             <CountWheel
               count={post.likeCount}
               toggled={liked}
               hasBeenToggled={likeToggled}
               renderCount={(count) => (
-                <Count count={count} color={liked ? colors.like : undefined} active={liked} />
+                <Count
+                  count={count}
+                  size={countSize}
+                  color={liked ? colors.like : undefined}
+                  active={liked}
+                />
               )}
             />
           </ControlButton>
@@ -191,13 +212,13 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
         >
           <Ionicons
             name={bookmarked ? 'bookmark' : 'bookmark-outline'}
-            size={ICON_SIZE}
+            size={iconSize}
             color={bookmarked ? colors.primary : colors.textMedium}
           />
         </ControlButton>
         {narrow ? null : (
           <ControlButton label="Compartilhar" onPress={() => void share()} style={styles.iconButton}>
-            <Ionicons name="share-outline" size={ICON_SIZE} color={colors.textMedium} />
+            <Ionicons name="share-outline" size={iconSize} color={colors.textMedium} />
           </ControlButton>
         )}
         <ControlButton
@@ -206,7 +227,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
           onPress={() => openSheet('more')}
           style={styles.iconButton}
         >
-          <Ionicons name="ellipsis-horizontal" size={ICON_SIZE} color={colors.textMedium} />
+          <Ionicons name="ellipsis-horizontal" size={iconSize} color={colors.textMedium} />
         </ControlButton>
       </View>
 
@@ -265,7 +286,7 @@ export function PostControls({ post, onReply, onDeleted }: PostControlsProps) {
   );
 }
 
-type ControlButtonProps = {
+export type ControlButtonProps = {
   label: string;
   onPress: () => void;
   onLongPress?: () => void;
@@ -276,7 +297,7 @@ type ControlButtonProps = {
 };
 
 /** One control: a 48 dp tall touch box with a light tap haptic (a heavier one on long press). */
-function ControlButton({
+export function ControlButton({
   label,
   onPress,
   onLongPress,
@@ -311,14 +332,19 @@ function ControlButton({
   );
 }
 
-type CountProps = { count: number; color?: string; active?: boolean };
+export type CountProps = {
+  count: number;
+  color?: string;
+  active?: boolean;
+  size?: 'sm' | 'md';
+};
 
 /** The counter beside an icon: hidden at 0, compact, semibold while the control is active. */
-function Count({ count, color, active = false }: CountProps) {
+export function Count({ count, color, active = false, size = 'sm' }: CountProps) {
   if (count <= 0) return null;
   return (
     <Text
-      size="sm"
+      size={size}
       tone="medium"
       weight={active ? 'semibold' : 'normal'}
       numberOfLines={1}
@@ -344,6 +370,10 @@ const styles = StyleSheet.create({
   // The design reference pulls the comment button 6 dp left so its icon lines up with the text;
   // here the button drops its left padding instead, which keeps the touch box inside the column.
   replyButton: { paddingLeft: 0 },
+  // Big, the design reference pulls the bar 5 dp left and the comment button 2 dp: the page pulls
+  // the bar, and the button keeps 3 dp of its padding so its icon lands where the reference's does.
+  bigReplyButton: { paddingLeft: 3 },
+  bigBar: { paddingTop: 0 },
   secondary: { flexDirection: 'row', justifyContent: 'flex-end' },
   button: {
     flexDirection: 'row',

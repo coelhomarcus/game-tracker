@@ -28,13 +28,16 @@ import {
 import {
   cancelCommentQueries,
   cancelPostQueries,
+  countWithReplies,
   findCachedPost,
   isDeletedPost,
+  removeCommentEverywhere,
   removePostEverywhere,
   resumeInterrupted,
+  updateCommentEverywhere,
   updatePostEverywhere,
 } from "./postCache";
-import type { Comment, FeedScope, Post, PostPage } from "./types";
+import type { Comment, CommentSort, FeedScope, Post, PostPage } from "./types";
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
@@ -89,10 +92,11 @@ export function useDeletedPostCheck(): (postId: string) => boolean {
   return useCallback((postId: string) => isDeletedPost(client, postId), [client]);
 }
 
-export function useComments(postId: string) {
+/** The comment tree in `sort` order; each order is its own cache entry. */
+export function useComments(postId: string, sort: CommentSort) {
   return useQuery({
-    queryKey: ["comments", postId],
-    queryFn: () => feedApi.comments(postId),
+    queryKey: ["comments", postId, sort],
+    queryFn: () => feedApi.comments(postId, sort),
   });
 }
 
@@ -255,7 +259,7 @@ export function useCreatePost() {
   });
 }
 
-/** The caller trims `content`. */
+/** The caller trims `content`. Every sort order of the comments is refetched. */
 export function useAddComment(postId: string) {
   const client = useQueryClient();
   return useMutation({
@@ -276,22 +280,6 @@ export function useAddComment(postId: string) {
   });
 }
 
-function mapComment(
-  comments: Comment[],
-  id: string,
-  update: (c: Comment) => Comment,
-): Comment[] {
-  let changed = false;
-  const mapped = comments.map((comment) => {
-    const replies = mapComment(comment.replies, id, update);
-    let next = replies === comment.replies ? comment : { ...comment, replies };
-    if (next.id === id) next = update(next);
-    if (next !== comment) changed = true;
-    return next;
-  });
-  return changed ? mapped : comments;
-}
-
 function withCommentLike(liked: boolean) {
   return (c: Comment): Comment =>
     c.likedByMe === liked
@@ -303,13 +291,11 @@ function withCommentLike(liked: boolean) {
         };
 }
 
+/** Optimistic in every cached sort order of the post's comments, with the post toggles' lanes. */
 export function useToggleCommentLike(postId: string) {
   const client = useQueryClient();
-  const queryKey = ["comments", postId];
   const update = (id: string, liked: boolean) =>
-    client.setQueryData<Comment[]>(queryKey, (tree) =>
-      tree ? mapComment(tree, id, withCommentLike(liked)) : tree,
-    );
+    updateCommentEverywhere(client, postId, id, withCommentLike(liked));
   const settle = (comment: Comment, error?: Error) => {
     const to = settleToggle(toggleLane("commentLike", comment.id), !comment.likedByMe, !error);
     if (to !== undefined) {
@@ -334,5 +320,29 @@ export function useToggleCommentLike(postId: string) {
       whenIdle(client);
     },
     onError: (error, comment) => settle(comment, error),
+  });
+}
+
+/**
+ * Deletes an own comment once the server confirms: it leaves every cached sort order with its
+ * replies (the server deletes them too), and the post's comment count drops by as many
+ * everywhere.
+ */
+export function useDeleteComment(postId: string) {
+  const client = useQueryClient();
+  return useMutation<void, Error, Comment>({
+    mutationFn: (comment) => feedApi.deleteComment(comment.id),
+    onSuccess: async (_data, comment) => {
+      await cancelCommentQueries(client, postId);
+      const removed =
+        removeCommentEverywhere(client, postId, comment.id) || countWithReplies(comment);
+      updatePostEverywhere(client, postId, (p) => ({
+        ...p,
+        commentCount: Math.max(0, p.commentCount - removed),
+      }));
+      showToast("Comentário apagado");
+      whenIdle(client);
+    },
+    onError: (error) => showToast(authErrorMessage(error)),
   });
 }

@@ -6,7 +6,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query';
 
-import type { Post, PostPage } from './types';
+import type { Comment, Post, PostPage } from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
@@ -38,8 +38,86 @@ export function cancelPostQueries(client: QueryClient, postId: string): Promise<
   return cancelAndRemember(client, [...LIST_KEYS, ['post', postId]]);
 }
 
+/** Every cached comment tree of the post: one per sort order, `['comments', postId, sort]`. */
+function commentsKey(postId: string): QueryKey {
+  return ['comments', postId];
+}
+
+/** Stops the in-flight fetches of the post's comments, in every sort order. */
 export function cancelCommentQueries(client: QueryClient, postId: string): Promise<void> {
-  return cancelAndRemember(client, [['comments', postId]]);
+  return cancelAndRemember(client, [commentsKey(postId)]);
+}
+
+function mapComment(comments: Comment[], id: string, update: (c: Comment) => Comment): Comment[] {
+  let changed = false;
+  const mapped = comments.map((comment) => {
+    const replies = mapComment(comment.replies, id, update);
+    let next = replies === comment.replies ? comment : { ...comment, replies };
+    if (next.id === id) next = update(next);
+    if (next !== comment) changed = true;
+    return next;
+  });
+  return changed ? mapped : comments;
+}
+
+/**
+ * Applies `update` to the comment in every cached comment tree of the post (each sort order),
+ * immutably. Only trees that hold the comment are written.
+ */
+export function updateCommentEverywhere(
+  client: QueryClient,
+  postId: string,
+  commentId: string,
+  update: (c: Comment) => Comment,
+): void {
+  for (const [queryKey, tree] of client.getQueriesData<Comment[]>({ queryKey: commentsKey(postId) })) {
+    if (tree === undefined) continue;
+    const next = mapComment(tree, commentId, update);
+    if (next !== tree) client.setQueryData(queryKey, next);
+  }
+}
+
+/** The comment and every reply below it. */
+export function countWithReplies(comment: Comment): number {
+  return comment.replies.reduce((sum, reply) => sum + countWithReplies(reply), 1);
+}
+
+type Removal = { tree: Comment[]; removed: Comment | null };
+
+function withoutComment(comments: Comment[], id: string): Removal {
+  let removed: Comment | null = null;
+  const kept: Comment[] = [];
+  for (const comment of comments) {
+    if (comment.id === id) {
+      removed = comment;
+      continue;
+    }
+    const inner: Removal | null = removed === null ? withoutComment(comment.replies, id) : null;
+    if (inner?.removed) {
+      removed = inner.removed;
+      kept.push({ ...comment, replies: inner.tree });
+    } else {
+      kept.push(comment);
+    }
+  }
+  return removed === null ? { tree: comments, removed: null } : { tree: kept, removed };
+}
+
+/**
+ * Takes the comment and its replies out of every cached comment tree of the post (each sort
+ * order). Returns how many comments went with it (itself included), as the largest cached copy
+ * held them, or 0 when no tree held it.
+ */
+export function removeCommentEverywhere(client: QueryClient, postId: string, commentId: string): number {
+  let count = 0;
+  for (const [queryKey, tree] of client.getQueriesData<Comment[]>({ queryKey: commentsKey(postId) })) {
+    if (tree === undefined) continue;
+    const { tree: next, removed } = withoutComment(tree, commentId);
+    if (removed === null) continue;
+    count = Math.max(count, countWithReplies(removed));
+    client.setQueryData(queryKey, next);
+  }
+  return count;
 }
 
 /**
@@ -142,7 +220,7 @@ export function isDeletedPost(client: QueryClient, postId: string): boolean {
 function dropDetail(client: QueryClient, postId: string): void {
   const drop = () => {
     client.removeQueries({ queryKey: ['post', postId], exact: true });
-    client.removeQueries({ queryKey: ['comments', postId], exact: true });
+    client.removeQueries({ queryKey: commentsKey(postId) });
   };
   const cache = client.getQueryCache();
   const detail = cache.find({ queryKey: ['post', postId], exact: true });

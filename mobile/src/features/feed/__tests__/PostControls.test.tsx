@@ -442,3 +442,24 @@ describe('PostControls on narrow and wide screens', () => {
     expect(screen.getAllByRole('button')).toHaveLength(5);
   });
 });
+
+describe('PostControls big variant', () => {
+  it('draws 22 dp icons and medium counts for the post on its own page', async () => {
+    await render(<PostControls big post={post()} onReply={jest.fn()} />);
+
+    expect(screen.getByTestId('like-icon-outline')).toHaveStyle({ fontSize: 22 });
+    // The repost (1 + 2 quotes) and like counters both read 3.
+    expect(screen.getAllByText('3')).toHaveLength(2);
+    for (const count of screen.getAllByText('3')) expect(count).toHaveStyle({ fontSize: 15 });
+    expect(screen.getByRole('button', { name: 'Curtir post, 3 curtidas' })).toHaveStyle({
+      minHeight: 48,
+    });
+  });
+
+  it('keeps 18 dp icons and small counts by default', async () => {
+    await render(<PostControls post={post()} onReply={jest.fn()} />);
+
+    expect(screen.getByTestId('like-icon-outline')).toHaveStyle({ fontSize: 18 });
+    for (const count of screen.getAllByText('3')) expect(count).toHaveStyle({ fontSize: 13.1 });
+  });
+});

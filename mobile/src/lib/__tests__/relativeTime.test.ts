@@ -1,4 +1,4 @@
-import { formatRelativeTime } from '../relativeTime';
+import { formatFullDate, formatRelativeTime } from '../relativeTime';
 
 // Local-time constructors keep the calendar-day rules independent of the machine time zone.
 const now = new Date(2026, 9, 20, 12, 0, 0);
@@ -51,5 +51,16 @@ describe('formatRelativeTime', () => {
 
   it('defaults now to the current time', () => {
     expect(formatRelativeTime(new Date())).toBe('agora');
+  });
+});
+
+describe('formatFullDate', () => {
+  it('writes the local day, short month, year and time', () => {
+    expect(formatFullDate(new Date(2026, 9, 26, 14, 5))).toBe('26 de out de 2026 às 14:05');
+  });
+
+  it('pads the time but not the day', () => {
+    expect(formatFullDate(new Date(2027, 0, 3, 9, 0))).toBe('3 de jan de 2027 às 09:00');
+    expect(formatFullDate(new Date(2026, 11, 31, 0, 59))).toBe('31 de dez de 2026 às 00:59');
   });
 });

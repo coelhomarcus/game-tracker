@@ -1,4 +1,7 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import * as Clipboard from 'expo-clipboard';
+import { HeaderHeightContext } from 'expo-router/react-navigation';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { authErrorMessage, useSession } from '@/features/auth';
@@ -6,7 +9,13 @@ import { ApiError, NetworkError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
 import { PostDetailScreen } from '../PostDetailScreen';
-import { useAddComment, useComments, usePost, useToggleCommentLike } from '../queries';
+import {
+  useAddComment,
+  useComments,
+  useDeleteComment,
+  usePost,
+  useToggleCommentLike,
+} from '../queries';
 import type { Comment, Post } from '../types';
 import { socialDefaults } from '@/test-utils/postDefaults';
 
@@ -15,6 +24,7 @@ jest.mock('../queries', () => ({
   useComments: jest.fn(),
   useAddComment: jest.fn(),
   useToggleCommentLike: jest.fn(),
+  useDeleteComment: jest.fn(),
   useDeletedPostCheck: () => mockWasDeleted,
   ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
     '@/test-utils/postControlHooks',
@@ -24,6 +34,12 @@ jest.mock('../queries', () => ({
 const mockDeletePost = jest.fn();
 const mockWasDeleted = jest.fn((_postId: string) => false);
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
+jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn().mockResolvedValue(true) }));
+// The anchor asks whether the user follows the author; here nobody does.
+jest.mock('@/features/profiles/queries', () => ({
+  useProfile: (id?: string) => ({ data: id === undefined ? undefined : { isFollowedByMe: false } }),
+  useToggleFollow: () => ({ mutate: jest.fn() }),
+}));
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -53,6 +69,7 @@ const mockedUsePost = jest.mocked(usePost);
 const mockedUseComments = jest.mocked(useComments);
 const mockedUseAddComment = jest.mocked(useAddComment);
 const mockedUseToggleCommentLike = jest.mocked(useToggleCommentLike);
+const mockedUseDeleteComment = jest.mocked(useDeleteComment);
 
 const metrics = {
   frame: { x: 0, y: 0, width: 358, height: 800 },
@@ -107,6 +124,15 @@ function makeComment(
   };
 }
 
+const dani = { id: 'u4', username: 'dani', name: 'Dani', avatarUrl: null };
+
+/** The chain of `makeTree` plus c4 (Dani), a second reply to c1 that the linear view collapses. */
+function makeWideTree(): Comment[] {
+  const tree = makeTree();
+  tree[0]!.replies.push(makeComment('c4', dani, { parentCommentId: 'c1' }));
+  return tree;
+}
+
 /** c1 (Ana) <- c2 (bia) <- c3 (Caio): c3 answers a reply. */
 function makeTree(): Comment[] {
   const c3 = makeComment('c3', caio, { parentCommentId: 'c2' });
@@ -141,13 +167,23 @@ function commentsResult(overrides: Record<string, unknown> = {}): CommentsResult
 
 const mutateAsync = jest.fn();
 const toggleLike = jest.fn();
+const deleteComment = jest.fn();
 
-async function renderScreen() {
+async function renderScreen(headerHeight = 0) {
   await render(
     <SafeAreaProvider initialMetrics={metrics}>
-      <PostDetailScreen />
+      <HeaderHeightContext.Provider value={headerHeight}>
+        <PostDetailScreen />
+      </HeaderHeightContext.Provider>
     </SafeAreaProvider>,
   );
+}
+
+function signIn(id: string) {
+  useSession.setState({
+    status: 'signedIn',
+    user: { id } as ReturnType<typeof useSession.getState>['user'],
+  });
 }
 
 beforeEach(() => {
@@ -167,10 +203,15 @@ beforeEach(() => {
   mockedUseToggleCommentLike.mockReturnValue({ mutate: toggleLike } as unknown as ReturnType<
     typeof useToggleCommentLike
   >);
+  mockedUseDeleteComment.mockReturnValue({ mutate: deleteComment } as unknown as ReturnType<
+    typeof useDeleteComment
+  >);
 });
 
-afterEach(() => {
+afterEach(async () => {
   jest.useRealTimers();
+  // Still mounted here: the screen follows the session, so the sign-out renders inside act.
+  await act(async () => useSession.setState({ status: 'signedOut', user: null }));
 });
 
 async function typeComment(text: string) {
@@ -186,9 +227,10 @@ describe('PostDetailScreen post', () => {
     await renderScreen();
 
     expect(mockedUsePost).toHaveBeenCalledWith(POST_ID);
-    expect(mockedUseComments).toHaveBeenCalledWith(POST_ID);
+    expect(mockedUseComments).toHaveBeenCalledWith(POST_ID, 'oldest');
     expect(mockedUseAddComment).toHaveBeenCalledWith(POST_ID);
     expect(mockedUseToggleCommentLike).toHaveBeenCalledWith(POST_ID);
+    expect(mockedUseDeleteComment).toHaveBeenCalledWith(POST_ID);
   });
 
   it('titles the header Post for a written post and shows it without being pressable', async () => {
@@ -222,10 +264,25 @@ describe('PostDetailScreen post', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('shows the comment count under the post', async () => {
+  it('keeps the composer above the keyboard, offset by the header height', async () => {
+    await renderScreen(77);
+
+    expect(screen.getByTestId('post-keyboard-avoider').props.keyboardVerticalOffset).toBe(77);
+    expect(screen.getByTestId('post-keyboard-avoider').props.behavior).toBe('padding');
+    expect(
+      within(screen.getByTestId('post-keyboard-avoider')).getByPlaceholderText(
+        'Escreva um comentário',
+      ),
+    ).toBeOnTheScreen();
+  });
+
+  it('shows the post as the thread anchor, above the comments', async () => {
     await renderScreen();
 
-    expect(screen.getByText('Comentários (3)')).toBeOnTheScreen();
+    const anchor = screen.getByTestId('thread-anchor');
+    expect(within(anchor).getByText('Zerei de primeira!')).toBeOnTheScreen();
+    expect(within(anchor).queryByText('texto c1')).toBeNull();
+    expect(screen.queryByText(/^Comentários \(/)).toBeNull();
   });
 
   it('shows a spinner and the Post title while the post loads', async () => {
@@ -320,34 +377,73 @@ describe('PostDetailScreen post', () => {
 });
 
 describe('PostDetailScreen comments', () => {
-  it('shows each comment with author, content and the reply target of replies', async () => {
+  it('shows a reply chain in order, each comment with its author and one summary label', async () => {
     await renderScreen();
 
-    expect(screen.getByText('texto c1')).toBeOnTheScreen();
-    expect(screen.getByText('texto c2')).toBeOnTheScreen();
-    expect(screen.getByText('texto c3')).toBeOnTheScreen();
-    // c1 is a root; c2 answers Ana; c3 answers a reply, so it names bia.
-    expect(screen.getAllByText(/^Respondendo a @/)).toHaveLength(2);
-    expect(screen.getByText('Respondendo a @ana')).toBeOnTheScreen();
-    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
+    const texts = screen.getAllByTestId('comment-text').map((node) => node.props.children);
+    expect(texts).toEqual(['texto c1', 'texto c2', 'texto c3']);
     expect(screen.getByText('bia')).toBeOnTheScreen();
     expect(screen.getByText('Caio')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Comentário de bia, há 2 min: texto c2')).toBeOnTheScreen();
+    // Each reply sits right under the comment it answers, so none names who it answers.
+    expect(screen.queryByText(/^Respondendo a @/)).toBeNull();
+  });
+
+  it('connects the chain with lines and starts the branch with a hairline', async () => {
+    await renderScreen();
+
+    const rows = screen.getAllByTestId('thread-item-linear');
+    expect(rows).toHaveLength(3);
+    const has = (line: string) => rows.map((row) => within(row).queryByTestId(line) !== null);
+    expect(has('thread-parent-line')).toEqual([false, true, true]);
+    expect(has('thread-child-line')).toEqual([true, true, false]);
+    expect(rows[0]).toHaveStyle({ borderTopWidth: StyleSheet.hairlineWidth });
+    expect(rows[1]).not.toHaveStyle({ borderTopWidth: StyleSheet.hairlineWidth });
+    // Nothing follows the last row, so it keeps 8 dp below.
+    expect(rows[2]).toHaveStyle({ paddingBottom: 8 });
+  });
+
+  it('collapses the other replies of a branch and shows them on "Ler mais"', async () => {
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeWideTree() }));
+    await renderScreen();
+
+    expect(screen.queryByText('texto c4')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ler mais 1 resposta' }));
+
+    const texts = screen.getAllByTestId('comment-text').map((node) => node.props.children);
+    expect(texts).toEqual(['texto c1', 'texto c2', 'texto c3', 'texto c4']);
+    expect(screen.queryByRole('button', { name: /^Ler mais/ })).toBeNull();
+    // c4 answers c1, which is not the row above it.
+    expect(screen.getByText('Respondendo a @ana')).toBeOnTheScreen();
+    expect(screen.getAllByText(/^Respondendo a @/)).toHaveLength(1);
+  });
+
+  it('counts every hidden reply in "Ler mais"', async () => {
+    const tree = makeWideTree();
+    tree[0]!.replies[1]!.replies = [makeComment('c5', bia, { parentCommentId: 'c4' })];
+    mockedUseComments.mockReturnValue(commentsResult({ data: tree }));
+    await renderScreen();
+
+    expect(screen.getByRole('button', { name: 'Ler mais 2 respostas' })).toBeOnTheScreen();
   });
 
   it('shows the empty message when there are no comments', async () => {
     mockedUseComments.mockReturnValue(commentsResult({ data: [] }));
     await renderScreen();
 
-    expect(screen.getByText('Ainda não há comentários. Seja o primeiro.')).toBeOnTheScreen();
+    expect(screen.getByText('Nenhum comentário ainda')).toBeOnTheScreen();
+    expect(screen.getByText('Seja a primeira pessoa a comentar.')).toBeOnTheScreen();
+    // The anchor stays above it.
+    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
   });
 
-  it('shows a spinner under the title while comments load, not the empty message', async () => {
+  it('shows a spinner under the post while comments load, not the empty message', async () => {
     mockedUseComments.mockReturnValue(commentsResult({ data: undefined, isPending: true }));
     await renderScreen();
 
-    expect(screen.getByText('Comentários (3)')).toBeOnTheScreen();
+    expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
     expect(screen.getByTestId('comments-loading')).toBeOnTheScreen();
-    expect(screen.queryByText('Ainda não há comentários. Seja o primeiro.')).toBeNull();
+    expect(screen.queryByText('Nenhum comentário ainda')).toBeNull();
   });
 
   it('offers a retry when the comments fail to load', async () => {
@@ -358,7 +454,7 @@ describe('PostDetailScreen comments', () => {
     await renderScreen();
 
     expect(screen.getByText('Não foi possível carregar os comentários')).toBeOnTheScreen();
-    expect(screen.queryByText('Ainda não há comentários. Seja o primeiro.')).toBeNull();
+    expect(screen.queryByText('Nenhum comentário ainda')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
 
     expect(refetch).toHaveBeenCalledTimes(1);
@@ -411,14 +507,13 @@ describe('PostDetailScreen comments', () => {
   it('opens the author profile from the avatar and the name of a comment', async () => {
     await renderScreen();
 
-    // One exposed link per comment (the name, a full 48 dp tall); the avatar link is touch-only.
-    const caioLink = screen.getByRole('button', { name: 'Perfil de Caio' });
-    expect(caioLink).toHaveStyle({ minHeight: 48 });
-    await fireEvent.press(caioLink);
+    // One exposed link per comment (the name, an inline text link); the avatar link is touch-only.
+    await fireEvent.press(screen.getByRole('button', { name: 'Perfil de Caio' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Perfil de bia' }));
-    // The post header and the three comments each have a touch-only avatar link.
+    // The anchor and the three comments each have a touch-only avatar link, a real 48 dp box.
     const avatars = screen.getAllByTestId('author-avatar-link', HIDDEN);
     expect(avatars).toHaveLength(4);
+    for (const avatar of avatars) expect(avatar).toHaveStyle({ width: 48, height: 48 });
     await fireEvent.press(avatars[3]);
 
     expect(mockPush).toHaveBeenNthCalledWith(1, '/users/u3');
@@ -473,8 +568,8 @@ describe('PostDetailScreen composer', () => {
     await renderScreen();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
-    // c3 already says it answers bia; the bar above the field is the second one.
-    expect(screen.getAllByText('Respondendo a @bia')).toHaveLength(2);
+    // The bar above the field names who the reply answers.
+    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
     expect(screen.getByPlaceholderText('Escreva sua resposta')).toBeOnTheScreen();
 
     await typeComment('Concordo');
@@ -486,13 +581,27 @@ describe('PostDetailScreen composer', () => {
   });
 
   it('shows the reply bar in addition to the reply prefix of the comment', async () => {
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeWideTree() }));
     await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ler mais 1 resposta' }));
 
     await fireEvent.press(screen.getByRole('button', { name: 'Responder a Ana Souza' }));
 
-    // c2's own prefix is also "Respondendo a @ana", and so is the bar.
+    // c4's own prefix is also "Respondendo a @ana", and so is the bar.
     expect(screen.getAllByText('Respondendo a @ana')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Cancelar resposta' })).toBeOnTheScreen();
+  });
+
+  it('replies to a comment shown on "Ler mais" with that comment as the parent', async () => {
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeWideTree() }));
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ler mais 1 resposta' }));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Dani' }));
+    await typeComment('Também');
+    await send();
+
+    expect(mutateAsync).toHaveBeenCalledWith({ content: 'Também', parentCommentId: 'c4' });
   });
 
   it('drops the reply target when the reply is cancelled', async () => {
@@ -543,11 +652,112 @@ describe('PostDetailScreen composer', () => {
   });
 });
 
-describe('PostDetailScreen deleting the post', () => {
-  afterEach(() => {
-    useSession.setState({ status: 'signedOut', user: null });
+describe('PostDetailScreen comment actions', () => {
+  const moreButtons = () => screen.getAllByRole('button', { name: 'Mais opções do comentário' });
+
+  it('copies the text of a comment from its menu', async () => {
+    await renderScreen();
+
+    await fireEvent.press(moreButtons()[1]!);
+    expect(screen.queryByRole('button', { name: 'Apagar comentário' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Copiar texto' }));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('texto c2');
+    expect(showToast).toHaveBeenCalledWith('Texto copiado');
   });
 
+  it('deletes the own comment after confirming, with the comment from the cached tree', async () => {
+    const tree = makeTree();
+    mockedUseComments.mockReturnValue(commentsResult({ data: tree }));
+    signIn('u2');
+    await renderScreen();
+
+    await fireEvent.press(moreButtons()[1]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    expect(screen.getByText('Apagar comentário?')).toBeOnTheScreen();
+    expect(deleteComment).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    expect(deleteComment).toHaveBeenCalledTimes(1);
+    expect(deleteComment).toHaveBeenCalledWith(tree[0]!.replies[0], expect.any(Object));
+  });
+
+  it('keeps the comment when the deletion is cancelled', async () => {
+    signIn('u2');
+    await renderScreen();
+
+    await fireEvent.press(moreButtons()[1]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(deleteComment).not.toHaveBeenCalled();
+  });
+
+  it('offers deleting only on the own comments', async () => {
+    signIn('u2');
+    await renderScreen();
+
+    await fireEvent.press(moreButtons()[0]!);
+
+    expect(screen.getByRole('button', { name: 'Copiar texto' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Apagar comentário' })).toBeNull();
+  });
+
+  it('drops the reply target once the comment it answers, or an ancestor, is deleted', async () => {
+    signIn('u2');
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+    expect(screen.getByText('Respondendo a @caio')).toBeOnTheScreen();
+    await fireEvent.press(moreButtons()[1]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+    // c3 answers c2, so deleting c2 takes c3 and the reply to it away.
+    await act(async () => deleteComment.mock.calls[0][1].onSuccess());
+
+    expect(screen.queryByRole('button', { name: 'Cancelar resposta' })).toBeNull();
+    expect(screen.getByPlaceholderText('Escreva um comentário')).toBeOnTheScreen();
+  });
+
+  it('keeps the reply target when another branch is deleted', async () => {
+    const other = makeComment('c9', bia);
+    mockedUseComments.mockReturnValue(commentsResult({ data: [...makeTree(), other] }));
+    signIn('u2');
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+    await fireEvent.press(moreButtons()[3]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+    expect(deleteComment).toHaveBeenCalledWith(other, expect.any(Object));
+    await act(async () => deleteComment.mock.calls[0][1].onSuccess());
+
+    expect(screen.getByRole('button', { name: 'Cancelar resposta' })).toBeOnTheScreen();
+  });
+
+  it('shows the comments again without the deleted one once the cache drops it', async () => {
+    const tree = makeTree();
+    mockedUseComments.mockReturnValue(commentsResult({ data: tree }));
+    await renderScreen();
+    expect(screen.getByText('texto c3')).toBeOnTheScreen();
+
+    // The delete mutation takes c2 and its reply c3 out of the cached tree.
+    mockedUseComments.mockReturnValue(
+      commentsResult({ data: [{ ...tree[0]!, replies: [] }] }),
+    );
+    await screen.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <PostDetailScreen />
+      </SafeAreaProvider>,
+    );
+
+    expect(screen.getByText('texto c1')).toBeOnTheScreen();
+    expect(screen.queryByText('texto c2')).toBeNull();
+    expect(screen.queryByText('texto c3')).toBeNull();
+  });
+});
+
+describe('PostDetailScreen deleting the post', () => {
   async function deleteFromTheMenu() {
     useSession.setState({
       status: 'signedIn',

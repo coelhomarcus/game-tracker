@@ -1,30 +1,27 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import { EmptyState, Screen, Text } from '@/components';
+import { EmptyState, Screen } from '@/components';
 import { ApiError } from '@/lib/http/errors';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, space } from '@/theme/tokens';
 
 import { CommentComposer, type ReplyTarget } from './CommentComposer';
-import { CommentItem } from './CommentItem';
-import { flattenComments, type FlatComment } from './flattenComments';
-import { PostFeedItem } from './PostFeedItem';
 import {
   useAddComment,
   useComments,
+  useDeleteComment,
   useDeletedPostCheck,
   usePost,
   useToggleCommentLike,
 } from './queries';
-import { isPostId, type Post } from './types';
+import { buildThread, type ThreadRow } from './thread/buildThread';
+import { ThreadAnchor } from './thread/ThreadAnchor';
+import { ThreadItemLinear } from './thread/ThreadItemLinear';
+import { ThreadReadMore } from './thread/ThreadReadMore';
+import { isPostId, type Comment, type CommentSort, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -96,29 +93,67 @@ function PostLoader({ postId }: { postId: string }) {
   );
 }
 
-const keyExtractor = (item: FlatComment) => item.comment.id;
+/** Until the thread menu lets the user choose, replies come oldest first, as the server sends. */
+const COMMENT_SORT: CommentSort = 'oldest';
 
-function Separator() {
-  return <View style={styles.separator} />;
+const keyExtractor = (row: ThreadRow) => row.key;
+
+/** Whether `id` is the comment or one of the replies below it. */
+function holds(comment: Comment, id: string): boolean {
+  return comment.id === id || comment.replies.some((reply) => holds(reply, id));
 }
 
+/**
+ * The thread: the post as its anchor, then the comments in the linear view, with the composer
+ * pinned under them above the keyboard.
+ */
 function PostBody({ post }: { post: Post }) {
   const router = useRouter();
   const headerHeight = useHeaderHeight();
-  const comments = useComments(post.id);
+  const comments = useComments(post.id, COMMENT_SORT);
   const addComment = useAddComment(post.id);
   const toggleLike = useToggleCommentLike(post.id);
+  const deleteComment = useDeleteComment(post.id);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
-  const rows = useMemo(() => flattenComments(comments.data ?? []), [comments.data]);
-
-  const renderItem = ({ item }: { item: FlatComment }) => (
-    <CommentItem
-      item={item}
-      onToggleLike={(comment) => toggleLike.mutate(comment)}
-      onReply={(comment) => setReplyTo({ commentId: comment.id, username: comment.author.username })}
-    />
+  const rows = useMemo(
+    () => buildThread(comments.data ?? [], { mode: 'linear', expanded }),
+    [comments.data, expanded],
   );
+
+  const { mutate: like } = toggleLike;
+  const { mutate: remove } = deleteComment;
+  const onReply = useCallback(
+    (comment: Comment) => setReplyTo({ commentId: comment.id, username: comment.author.username }),
+    [],
+  );
+  const onToggleLike = useCallback((comment: Comment) => like(comment), [like]);
+  const onDelete = useCallback(
+    (comment: Comment) =>
+      remove(comment, {
+        // A reply to the deleted comment, or to one of its replies, has nothing left to answer.
+        onSuccess: () =>
+          setReplyTo((target) => (target && holds(comment, target.commentId) ? null : target)),
+      }),
+    [remove],
+  );
+  const onExpand = useCallback(
+    (branchId: string) => setExpanded((current) => new Set(current).add(branchId)),
+    [],
+  );
+
+  const renderItem = ({ item }: { item: ThreadRow }) =>
+    item.type === 'comment' ? (
+      <ThreadItemLinear
+        row={item}
+        onReply={onReply}
+        onToggleLike={onToggleLike}
+        onDelete={onDelete}
+      />
+    ) : (
+      <ThreadReadMore row={item} onExpand={onExpand} />
+    );
 
   async function submit(content: string) {
     await addComment.mutateAsync({
@@ -131,9 +166,7 @@ function PostBody({ post }: { post: Post }) {
   let empty: ReactElement;
   if (comments.data) {
     empty = (
-      <Text tone="medium" style={styles.empty}>
-        Ainda não há comentários. Seja o primeiro.
-      </Text>
+      <EmptyState title="Nenhum comentário ainda" message="Seja a primeira pessoa a comentar." />
     );
   } else if (comments.isError) {
     empty = (
@@ -148,30 +181,23 @@ function PostBody({ post }: { post: Post }) {
         testID="comments-loading"
         accessibilityLabel="Carregando comentários"
         color={colors.textMedium}
+        style={styles.loading}
       />
     );
   }
 
   const header = (
-    <View style={styles.header}>
-      {/* Full width, past the list's padding, until the thread gets its own anchor post. */}
-      <View style={styles.post}>
-        <PostFeedItem
-          post={post}
-          hideTopBorder
-          onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-        />
-      </View>
-      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
-        {`Comentários (${post.commentCount})`}
-      </Text>
-    </View>
+    <ThreadAnchor
+      post={post}
+      onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+    />
   );
 
   return (
     <Screen>
       <Stack.Screen options={{ title: post.type === 'activity' ? 'Atividade' : 'Post' }} />
       <KeyboardAvoidingView
+        testID="post-keyboard-avoider"
         behavior="padding"
         keyboardVerticalOffset={headerHeight}
         style={styles.fill}
@@ -181,7 +207,6 @@ function PostBody({ post }: { post: Post }) {
           data={rows}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          ItemSeparatorComponent={Separator}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
           contentContainerStyle={styles.content}
@@ -201,9 +226,6 @@ function PostBody({ post }: { post: Post }) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  content: { padding: space.lg, flexGrow: 1 },
-  header: { gap: space.lg, paddingBottom: space.lg },
-  post: { marginHorizontal: -space.lg, marginTop: -space.lg },
-  separator: { height: space.md },
-  empty: { textAlign: 'center', padding: space._2xl },
+  content: { flexGrow: 1, paddingBottom: space.lg },
+  loading: { padding: space._2xl },
 });

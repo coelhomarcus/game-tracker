@@ -22,6 +22,7 @@ import {
   useFeed,
   useGamePosts,
   usePost,
+  useDeleteComment,
   useDeletePost,
   useToggleCommentLike,
   useTogglePostBookmark,
@@ -46,6 +47,7 @@ jest.mock("@/features/feed/api", () => ({
     comments: jest.fn(),
     addComment: jest.fn(),
     setCommentLike: jest.fn(),
+    deleteComment: jest.fn(),
   },
 }));
 
@@ -552,11 +554,11 @@ describe("useCreatePost", () => {
 describe("comments", () => {
   it("useComments loads the comment tree", async () => {
     mocked.comments.mockResolvedValue([comment("a", [comment("b")])]);
-    const { result } = await renderHook(() => useComments("p1"), {
+    const { result } = await renderHook(() => useComments("p1", "oldest"), {
       wrapper: wrapperFor(freshClient()),
     });
     await waitFor(() => expect(result.current.data).toHaveLength(1));
-    expect(mocked.comments).toHaveBeenCalledWith("p1");
+    expect(mocked.comments).toHaveBeenCalledWith("p1", "oldest");
   });
 
   it("useAddComment invalidates the comments and bumps the comment count everywhere", async () => {
@@ -603,7 +605,7 @@ describe("comments", () => {
     const client = freshClient();
     const reply = comment("r2", [], { likeCount: 1 });
     const tree = [comment("c1", [comment("r1", [reply])]), comment("c2")];
-    client.setQueryData(["comments", "p1"], tree);
+    client.setQueryData(["comments", "p1", "oldest"], tree);
     const { result } = await renderHook(() => useToggleCommentLike("p1"), {
       wrapper: wrapperFor(client),
     });
@@ -613,7 +615,7 @@ describe("comments", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    const next = client.getQueryData<Comment[]>(["comments", "p1"])!;
+    const next = client.getQueryData<Comment[]>(["comments", "p1", "oldest"])!;
     expect(next[0].replies[0].replies[0]).toMatchObject({
       likedByMe: true,
       likeCount: 2,
@@ -629,7 +631,7 @@ describe("comments", () => {
     const client = freshClient();
     const reply = comment("r1");
     const tree = [comment("c1", [reply])];
-    client.setQueryData(["comments", "p1"], tree);
+    client.setQueryData(["comments", "p1", "oldest"], tree);
     const { result } = await renderHook(() => useToggleCommentLike("p1"), {
       wrapper: wrapperFor(client),
     });
@@ -639,12 +641,116 @@ describe("comments", () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(client.getQueryData(["comments", "p1"])).toEqual(tree);
+    expect(client.getQueryData(["comments", "p1", "oldest"])).toEqual(tree);
     expect(
-      client.getQueryData<Comment[]>(["comments", "p1"])![0].replies[0]
+      client.getQueryData<Comment[]>(["comments", "p1", "oldest"])![0].replies[0]
         .likedByMe,
     ).toBe(false);
     expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
+  });
+
+  it("useComments asks for the sort order and caches each order apart", async () => {
+    mocked.comments.mockImplementation(async (_postId, sort) => [comment(`by-${sort}`)]);
+    const client = freshClient();
+    const { result } = await renderHook(
+      () => ({ oldest: useComments("p1", "oldest"), top: useComments("p1", "top") }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.top.data).toHaveLength(1));
+    expect(mocked.comments).toHaveBeenCalledWith("p1", "oldest");
+    expect(mocked.comments).toHaveBeenCalledWith("p1", "top");
+    expect(client.getQueryData<Comment[]>(["comments", "p1", "oldest"])![0].id).toBe("by-oldest");
+    expect(client.getQueryData<Comment[]>(["comments", "p1", "top"])![0].id).toBe("by-top");
+  });
+
+  it("useToggleCommentLike updates the comment in every cached sort order", async () => {
+    mocked.setCommentLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const reply = comment("r1");
+    client.setQueryData(["comments", "p1", "oldest"], [comment("c1", [reply]), comment("c2")]);
+    client.setQueryData(["comments", "p1", "newest"], [comment("c2"), comment("c1", [reply])]);
+    client.setQueryData(["comments", "p2", "oldest"], [comment("r1")]);
+    const { result } = await renderHook(() => useToggleCommentLike("p1"), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(reply);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const liked = { likedByMe: true, likeCount: 1 };
+    expect(client.getQueryData<Comment[]>(["comments", "p1", "oldest"])![0].replies[0]).toMatchObject(liked);
+    expect(client.getQueryData<Comment[]>(["comments", "p1", "newest"])![1].replies[0]).toMatchObject(liked);
+    // Another post's comments are left alone.
+    expect(client.getQueryData<Comment[]>(["comments", "p2", "oldest"])![0].likedByMe).toBe(false);
+  });
+
+  it("useDeleteComment takes the comment and its replies out of every sort order", async () => {
+    mocked.deleteComment.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedEverywhere(client, post("p1", { commentCount: 5 }));
+    const target = comment("c1", [comment("r1", [comment("r2")])]);
+    const other = comment("c2");
+    client.setQueryData(["comments", "p1", "oldest"], [target, other]);
+    client.setQueryData(["comments", "p1", "top"], [other, target]);
+    const { result } = await renderHook(() => useDeleteComment("p1"), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(target);
+    });
+
+    expect(mocked.deleteComment).toHaveBeenCalledWith("c1");
+    expect(client.getQueryData(["comments", "p1", "oldest"])).toEqual([other]);
+    expect(client.getQueryData(["comments", "p1", "top"])).toEqual([other]);
+    // Three comments went: c1 and the two replies below it.
+    expect(client.getQueryData<Post>(["post", "p1"])!.commentCount).toBe(2);
+    expect(cachedPost(client, ["feed", "general"], 1).commentCount).toBe(2);
+    expect(cachedPost(client, ["gamePosts", "g1"]).commentCount).toBe(2);
+    expect(showToast).toHaveBeenCalledWith("Comentário apagado");
+  });
+
+  it("useDeleteComment takes a nested reply out and keeps its siblings", async () => {
+    mocked.deleteComment.mockResolvedValue(undefined);
+    const client = freshClient();
+    client.setQueryData(["post", "p1"], post("p1", { commentCount: 4 }));
+    const sibling = comment("r2");
+    const tree = [comment("c1", [comment("r1", [comment("r1a")]), sibling])];
+    client.setQueryData(["comments", "p1", "oldest"], tree);
+    const { result } = await renderHook(() => useDeleteComment("p1"), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(tree[0].replies[0]);
+    });
+
+    const next = client.getQueryData<Comment[]>(["comments", "p1", "oldest"])!;
+    expect(next[0].replies).toEqual([sibling]);
+    expect(client.getQueryData<Post>(["post", "p1"])!.commentCount).toBe(2);
+  });
+
+  it("useDeleteComment keeps the comments and says so when the deletion fails", async () => {
+    mocked.deleteComment.mockRejectedValue(new Error("offline"));
+    const client = freshClient();
+    client.setQueryData(["post", "p1"], post("p1", { commentCount: 1 }));
+    const tree = [comment("c1")];
+    client.setQueryData(["comments", "p1", "oldest"], tree);
+    const { result } = await renderHook(() => useDeleteComment("p1"), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate(tree[0]);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(client.getQueryData(["comments", "p1", "oldest"])).toBe(tree);
+    expect(client.getQueryData<Post>(["post", "p1"])!.commentCount).toBe(1);
     expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
   });
 });
@@ -760,7 +866,7 @@ describe("likes while a fetch is in flight", () => {
     const client = freshClient();
     const { result } = await renderHook(
       () => {
-        const comments = useComments("p1");
+        const comments = useComments("p1", "oldest");
         return { comments, like: useToggleCommentLike("p1"), fetching: comments.isFetching };
       },
       { wrapper: wrapperFor(client) },
@@ -963,7 +1069,7 @@ describe("rapid and concurrent likes", () => {
     );
     const client = freshClient();
     client.setQueryData(
-      ["comments", "p1"],
+      ["comments", "p1", "oldest"],
       [comment("c1"), comment("c2", [comment("r1")])],
     );
     const { result } = await renderHook(() => useToggleCommentLike("p1"), {
@@ -980,10 +1086,10 @@ describe("rapid and concurrent likes", () => {
     });
 
     await waitFor(() => {
-      const tree = client.getQueryData<Comment[]>(["comments", "p1"])!;
+      const tree = client.getQueryData<Comment[]>(["comments", "p1", "oldest"])!;
       expect(tree[0]).toMatchObject({ likedByMe: false, likeCount: 0 });
     });
-    const tree = client.getQueryData<Comment[]>(["comments", "p1"])!;
+    const tree = client.getQueryData<Comment[]>(["comments", "p1", "oldest"])!;
     expect(tree[1].replies[0]).toMatchObject({ likedByMe: true, likeCount: 1 });
   });
 
@@ -995,7 +1101,7 @@ describe("rapid and concurrent likes", () => {
       .mockReturnValueOnce(second.promise);
     const client = freshClient();
     const tree = [comment("c1")];
-    client.setQueryData(["comments", "p1"], tree);
+    client.setQueryData(["comments", "p1", "oldest"], tree);
     const { result } = await renderHook(() => useToggleCommentLike("p1"), {
       wrapper: wrapperFor(client),
     });
@@ -1017,7 +1123,7 @@ describe("rapid and concurrent likes", () => {
     await act(async () => second.reject());
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(client.getQueryData(["comments", "p1"])).toEqual(tree);
+    expect(client.getQueryData(["comments", "p1", "oldest"])).toEqual(tree);
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith(authErrorMessage(new Error("offline")));
   });
@@ -1053,7 +1159,7 @@ describe("rapid and concurrent likes", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const client = freshClient();
-    client.setQueryData(["comments", "p1"], [comment("c1")]);
+    client.setQueryData(["comments", "p1", "oldest"], [comment("c1")]);
     const { result } = await renderHook(() => useToggleCommentLike("p1"), {
       wrapper: wrapperFor(client),
     });
@@ -1420,7 +1526,7 @@ describe("useDeletePost", () => {
     mocked.deletePost.mockResolvedValue(undefined);
     const client = freshClient();
     client.setQueryData(["post", "p1"], post("p1"));
-    client.setQueryData(["comments", "p1"], [comment("c1")]);
+    client.setQueryData(["comments", "p1", "oldest"], [comment("c1")]);
     const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
 
     await act(async () => {
@@ -1428,7 +1534,7 @@ describe("useDeletePost", () => {
     });
 
     expect(client.getQueryState(["post", "p1"])).toBeUndefined();
-    expect(client.getQueryState(["comments", "p1"])).toBeUndefined();
+    expect(client.getQueryState(["comments", "p1", "oldest"])).toBeUndefined();
   });
 
   it("keeps every list and says so when the deletion fails", async () => {
@@ -1580,7 +1686,7 @@ describe("final fix wave", () => {
     mocked.post.mockResolvedValue(post("p1"));
     const client = freshClient();
     client.setQueryData(["post", "p1"], post("p1"));
-    client.setQueryData(["comments", "p1"], [comment("c1")]);
+    client.setQueryData(["comments", "p1", "oldest"], [comment("c1")]);
     const page = await renderHook(() => usePost("p1"), { wrapper: wrapperFor(client) });
     const { result } = await renderHook(
       () => ({ remove: useDeletePost(), wasDeleted: useDeletedPostCheck() }),
@@ -1596,6 +1702,6 @@ describe("final fix wave", () => {
 
     await act(async () => page.unmount());
     expect(client.getQueryState(["post", "p1"])).toBeUndefined();
-    expect(client.getQueryState(["comments", "p1"])).toBeUndefined();
+    expect(client.getQueryState(["comments", "p1", "oldest"])).toBeUndefined();
   });
 });

@@ -52,7 +52,7 @@ export type PostFeedItemProps = {
  * The row's one summary for screen readers: author, time and text (and the status of an
  * activity). A post without text says how many images it has instead.
  */
-function bodyLabel(post: Post, name: string, time: string): string {
+export function postSummaryLabel(post: Post, name: string, time: string): string {
   if (post.type !== 'activity') {
     if (post.content) return `Post de ${name}, ${time}: ${post.content}`;
     const count = post.images.length;
@@ -83,7 +83,7 @@ export function PostFeedItem({
   const hasEmbeds =
     post.images.length > 0 || post.quotedPost !== null || post.quotedPostRemoved || game !== null;
   const clamp = useTextClamp();
-  const summary = bodyLabel(post, name, time);
+  const summary = postSummaryLabel(post, name, time);
   // The body holds the text and an activity's status; without either it has nothing to show.
   const hasBody = post.content !== '' || status !== null;
 
