@@ -22,7 +22,10 @@ export type CommentComposerProps = {
    * field takes focus again, even when it is already open.
    */
   focusRequest: number;
-  /** The keyboard went away with nothing typed, so there is nothing to keep the field open for. */
+  /**
+   * The keyboard went away with nothing typed and nobody being answered, so there is nothing to
+   * keep the field open for.
+   */
   onDismiss: () => void;
   /** Receives the trimmed text; a rejection keeps the text in the field. */
   onSubmit: (content: string) => Promise<void>;
@@ -48,14 +51,20 @@ export function CommentComposer({
   const trimmed = text.trim();
   const empty = trimmed.length === 0;
 
+  // Answering someone keeps the field open when the keyboard goes away: a sheet or dialog opened
+  // from the thread hides it too, and the target would be lost.
+  const dismissible = empty && !replyTo;
+
   // Hiding the keyboard (the back gesture) does not always blur the field on Android, so both
-  // are watched.
+  // are watched. A field that stays open is blurred by hand: left with native focus it would
+  // ignore the next focus() and the keyboard would not come back.
   useEffect(() => {
     const subscription = KeyboardEvents.addListener('keyboardDidHide', () => {
-      if (empty) onDismiss();
+      if (dismissible) onDismiss();
+      else input.current?.blur();
     });
     return () => subscription.remove();
-  }, [empty, onDismiss]);
+  }, [dismissible, onDismiss]);
 
   const canSend = !empty && text.length <= MAX_LENGTH && !sending;
   const placeholder = replyTo ? 'Escreva sua resposta' : 'Escreva um comentário';
@@ -105,7 +114,7 @@ export function CommentComposer({
             value={text}
             onChangeText={setText}
             onBlur={() => {
-              if (empty) onDismiss();
+              if (dismissible) onDismiss();
             }}
             onSubmitEditing={() => void send()}
             inputRef={input}

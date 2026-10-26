@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useSession } from '@/features/auth';
 import { colors } from '@/theme/tokens';
 
+import { formatCount } from '../../formatCount';
 import type { Comment } from '../../types';
 import type { ThreadCommentRow, ThreadReadMoreRow } from '../buildThread';
 import { ThreadItemTree } from '../ThreadItemTree';
@@ -170,6 +171,12 @@ describe('ThreadItemTree', () => {
     expect(screen.getByTestId('author-avatar-link', HIDDEN)).toHaveStyle({ top: 3 });
   });
 
+  it('cuts a long like count to one line instead of overlapping the menu button', async () => {
+    await render(item(makeRow({ comment: makeComment({ likeCount: 1234567 }) })));
+
+    expect(screen.getByText(formatCount(1234567))).toHaveProp('numberOfLines', 1);
+  });
+
   it('says who it answers when given, linking to that profile', async () => {
     await render(item(makeRow({ replyingTo: ana })));
 
@@ -192,6 +199,10 @@ describe('ThreadItemTree', () => {
     >[0];
     expect(primary).toHaveStyle({ flexDirection: 'row' });
     expect(primary).not.toHaveStyle({ maxWidth: 214 });
+    // On a narrow column the slots shrink, and a long count is cut, so nothing slides under "…".
+    for (const slot of primary.children as Parameters<typeof within>[0][]) {
+      expect(slot).toHaveStyle({ flexShrink: 1 });
+    }
     await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
     expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: 'c2' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Curtir comentário, 2 curtidas' }));

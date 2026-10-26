@@ -152,7 +152,8 @@ const styles = StyleSheet.create({
   slot: { flex: 1, minWidth: TOUCH, alignItems: 'flex-start' },
   // The 48 dp boxes already keep the icons apart, and a deep row has little room.
   primaryCompact: { flexDirection: 'row', flex: 1 },
-  slotCompact: { minWidth: TOUCH, alignItems: 'flex-start' },
+  // Shrinks with the column so a long count is cut (see `Count`) instead of sliding under "…".
+  slotCompact: { flexShrink: 1, minWidth: TOUCH, alignItems: 'flex-start' },
   slotButton: { maxWidth: '100%' },
   replyButton: { paddingLeft: 0 },
   iconButton: { justifyContent: 'center', width: TOUCH, paddingHorizontal: 0 },

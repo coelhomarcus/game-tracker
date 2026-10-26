@@ -43,7 +43,7 @@ function PostNotFound() {
   const router = useRouter();
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post' }} />
+      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <EmptyState
           title="Post não encontrado"
@@ -77,7 +77,7 @@ function PostLoader({ postId }: { postId: string }) {
   if (post.isError) {
     return (
       <Screen>
-        <Stack.Screen options={{ title: 'Post' }} />
+        <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
         <View style={styles.center}>
           <EmptyState
             title="Não foi possível carregar o post"
@@ -89,7 +89,7 @@ function PostLoader({ postId }: { postId: string }) {
   }
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post' }} />
+      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
@@ -137,6 +137,8 @@ function PostBody({ post }: { post: Post }) {
   // stays while it holds a draft. `focusRequest` makes an open composer take focus again.
   const [composing, setComposing] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
+  // The comments being deleted: the row (and its replies) wait dimmed, and cannot be deleted twice.
+  const [deleting, setDeleting] = useState<readonly Comment[]>([]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const listRef = useRef<FlatList<PageItem>>(null);
 
@@ -173,19 +175,24 @@ function PostBody({ post }: { post: Post }) {
   const onReplyToPost = useCallback(() => openComposer(null), [openComposer]);
   const onToggleLike = useCallback((comment: Comment) => like(comment), [like]);
   const onDelete = useCallback(
-    (comment: Comment) =>
+    (comment: Comment) => {
+      if (deleting.some((pending) => pending.id === comment.id)) return;
+      setDeleting((current) => [...current, comment]);
       remove(comment, {
         // A reply to the deleted comment, or to one of its replies, has nothing left to answer.
         onSuccess: () =>
           setReplyTo((target) => (target && holds(comment, target.commentId) ? null : target)),
-      }),
-    [remove],
+        onSettled: () => setDeleting((current) => current.filter((c) => c.id !== comment.id)),
+      });
+    },
+    [remove, deleting],
   );
   const onExpand = useCallback(
     (branchId: string) => setExpanded((current) => new Set(current).add(branchId)),
     [],
   );
 
+  const waiting = (id: string) => deleting.some((pending) => holds(pending, id));
   const Item = view === 'tree' ? ThreadItemTree : ThreadItemLinear;
   const renderItem = ({ item }: { item: PageItem }) => {
     switch (item.type) {
@@ -195,7 +202,14 @@ function PostBody({ post }: { post: Post }) {
         return status;
       case 'comment':
         return (
-          <Item row={item} onReply={onReply} onToggleLike={onToggleLike} onDelete={onDelete} />
+          // Always wrapped, so a row keeps its state when its delete starts or ends.
+          <View
+            testID={waiting(item.comment.id) ? 'comment-row-deleting' : undefined}
+            pointerEvents={waiting(item.comment.id) ? 'none' : 'auto'}
+            style={waiting(item.comment.id) ? styles.deleting : undefined}
+          >
+            <Item row={item} onReply={onReply} onToggleLike={onToggleLike} onDelete={onDelete} />
+          </View>
         );
       case 'readMore':
         return <ThreadReadMore row={item} onExpand={onExpand} mode={view} />;
@@ -284,4 +298,5 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   content: { flexGrow: 1, paddingBottom: space.lg },
   loading: { padding: space._2xl },
+  deleting: { opacity: 0.5 },
 });

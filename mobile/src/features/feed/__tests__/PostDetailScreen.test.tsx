@@ -45,6 +45,7 @@ jest.mock('@/features/profiles/queries', () => ({
   useToggleFollow: () => ({ mutate: jest.fn() }),
 }));
 
+const mockScreenOptions = jest.fn();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
@@ -68,6 +69,7 @@ jest.mock('expo-router', () => ({
       options?: { title?: string; headerRight?: (props: { canGoBack: boolean }) => unknown };
     }) => {
       const { Text, View } = jest.requireActual('react-native');
+      mockScreenOptions(options);
       return (
         <View>
           <Text testID="header-title">{options?.title}</Text>
@@ -767,13 +769,61 @@ describe('PostDetailScreen reply prompt', () => {
 
   it('goes back to the prompt when the field loses focus with nothing typed', async () => {
     await renderScreen();
-    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+    await openComposer();
 
     await fireEvent(field(), 'blur');
 
     expect(queryField()).toBeNull();
     expect(prompt()).toBeOnTheScreen();
-    expect(screen.queryByText('Respondendo a @bia')).toBeNull();
+  });
+
+  it('keeps the composer, and the reply target, when the keyboard goes away while answering', async () => {
+    // A sheet or dialog opened from the thread hides the keyboard too.
+    const blur = TextInput.prototype.blur as unknown as jest.Mock;
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+
+    await fireEvent(field(), 'blur');
+    await hideKeyboard();
+
+    expect(queryPrompt()).toBeNull();
+    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
+    expect(blur).toHaveBeenCalled();
+    await typeComment('Depois');
+    await send();
+    expect(mutateAsync).toHaveBeenCalledWith({ content: 'Depois', parentCommentId: 'c2' });
+  });
+
+  it('keeps the reply target while the menu of a comment is used with an empty field', async () => {
+    await renderScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a bia' }));
+
+    // Opening the sheet takes the keyboard down.
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Mais opções do comentário' })[2]!);
+    await fireEvent(field(), 'blur');
+    await hideKeyboard();
+
+    expect(screen.getByText('Respondendo a @bia')).toBeOnTheScreen();
+  });
+
+  it('blurs the field when the keyboard goes away with a draft, so asking again brings it back', async () => {
+    const blur = TextInput.prototype.blur as unknown as jest.Mock;
+    await renderScreen();
+    await typeComment('Rascunho');
+    focus.mockClear();
+    blur.mockClear();
+
+    await hideKeyboard();
+
+    // Left with native focus, the field would ignore the next focus() call.
+    expect(blur).toHaveBeenCalledTimes(1);
+    expect(field().props.value).toBe('Rascunho');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+    expect(focus).toHaveBeenCalledTimes(1);
+    await hideKeyboard();
+    await fireEvent.press(screen.getByRole('button', { name: 'Comentar, 3 comentários' }));
+    expect(focus).toHaveBeenCalledTimes(2);
   });
 
   it('goes back to the prompt when the keyboard is hidden with nothing typed', async () => {
@@ -864,6 +914,40 @@ describe('PostDetailScreen reply prompt', () => {
   });
 });
 
+describe('PostDetailScreen header menu', () => {
+  it('drops the thread menu from the header when the post turns out to be gone', async () => {
+    await renderScreen();
+    expect(screen.getByRole('button', { name: 'Opções da conversa' })).toBeOnTheScreen();
+    expect(mockScreenOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ headerRight: expect.any(Function) }),
+    );
+
+    mockedUsePost.mockReturnValue(
+      postResult({ data: undefined, isError: true, error: new ApiError(404, 'NOT_FOUND', 'x') }),
+    );
+    await screen.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <PostDetailScreen />
+      </SafeAreaProvider>,
+    );
+
+    expect(screen.getByText('Post não encontrado')).toBeOnTheScreen();
+    // The header keeps the last options it was given: the button must be unset explicitly.
+    const options = mockScreenOptions.mock.lastCall![0];
+    expect(options).toHaveProperty('headerRight');
+    expect(options.headerRight).toBeUndefined();
+  });
+
+  it('unsets the thread menu while the post loads', async () => {
+    mockedUsePost.mockReturnValue(postResult({ data: undefined, isPending: true }));
+    await renderScreen();
+
+    const options = mockScreenOptions.mock.lastCall![0];
+    expect(options).toHaveProperty('headerRight');
+    expect(options.headerRight).toBeUndefined();
+  });
+});
+
 describe('PostDetailScreen comment actions', () => {
   const moreButtons = () => screen.getAllByRole('button', { name: 'Mais opções do comentário' });
 
@@ -892,6 +976,36 @@ describe('PostDetailScreen comment actions', () => {
 
     expect(deleteComment).toHaveBeenCalledTimes(1);
     expect(deleteComment).toHaveBeenCalledWith(tree[0]!.replies[0], expect.any(Object));
+  });
+
+  it('deletes a comment once: its row waits dimmed and out of reach until the deletion settles', async () => {
+    signIn('u2');
+    await renderScreen();
+    expect(screen.queryByTestId('comment-row-deleting')).toBeNull();
+
+    await fireEvent.press(moreButtons()[1]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+    expect(deleteComment).toHaveBeenCalledTimes(1);
+
+    // c2 and its reply c3 wait; c1 does not.
+    const waiting = screen.getAllByTestId('comment-row-deleting');
+    expect(waiting).toHaveLength(2);
+    expect(waiting[0]).toHaveStyle({ opacity: 0.5 });
+    expect(waiting[0]).toHaveProp('pointerEvents', 'none');
+
+    // The row takes no touch, so its menu cannot be opened for a second delete.
+    await fireEvent.press(moreButtons()[1]!);
+    expect(screen.queryByRole('button', { name: 'Apagar comentário' })).toBeNull();
+    expect(deleteComment).toHaveBeenCalledTimes(1);
+
+    // A failed deletion settles too: the row is back and can be deleted again.
+    await act(async () => deleteComment.mock.calls[0][1].onSettled());
+    expect(screen.queryByTestId('comment-row-deleting')).toBeNull();
+    await fireEvent.press(moreButtons()[1]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar comentário' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+    expect(deleteComment).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the comment when the deletion is cancelled', async () => {
