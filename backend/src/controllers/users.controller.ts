@@ -17,9 +17,29 @@ export async function getPublicProfileHandler(req: Request, res: Response) {
 }
 
 export async function getUserPostsHandler(req: Request, res: Response) {
-  const { cursor, limit, type } = res.locals.query as { cursor?: string; limit: number; type?: 'activity' | 'post' };
-  const result = await postsService.getUserPosts(req.user!.id, req.params.id as string, cursor, limit, type);
+  const { cursor, limit, type, filter } = res.locals.query as {
+    cursor?: string;
+    limit: number;
+    type?: 'activity' | 'post';
+    filter?: 'media';
+  };
+  const result = await postsService.getUserPosts(req.user!.id, req.params.id as string, cursor, limit, type, filter);
   res.json(result);
+}
+
+export async function getFollowersHandler(req: Request, res: Response) {
+  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
+  res.json(await usersService.listFollows(req.user!.id, req.params.id as string, 'followers', cursor, limit));
+}
+
+export async function getFollowingHandler(req: Request, res: Response) {
+  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
+  res.json(await usersService.listFollows(req.user!.id, req.params.id as string, 'following', cursor, limit));
+}
+
+export async function getMyLikesHandler(req: Request, res: Response) {
+  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
+  res.json(await postsService.getLikedPosts(req.user!.id, cursor, limit));
 }
 
 export async function getMyBookmarksHandler(req: Request, res: Response) {
