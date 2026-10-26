@@ -77,7 +77,6 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
     const missing = profile.error instanceof ApiError && profile.error.status === 404;
     return (
       <Screen>
-        {own || missing ? null : <ProfileBackButton />}
         <View style={styles.center}>
           {missing ? (
             <EmptyState
@@ -92,6 +91,8 @@ export function ProfileScreen({ userId, tabRoot = false }: ProfileScreenProps) {
             />
           )}
         </View>
+        {/* After the filling View, so nothing covers it. */}
+        {own || missing ? null : <ProfileBackButton />}
       </Screen>
     );
   }

@@ -36,8 +36,13 @@ export function FollowButton({
       icon={showIcon && !following ? 'add' : undefined}
       size={size}
       onPress={() => {
-        toggle.mutate({ id: userId, follow: !following });
-        if (announce && !following) showToast(`Seguindo ${name}`);
+        const variables = { id: userId, follow: !following };
+        // The toast waits for the server: a follow that fails is rolled back without a "Seguindo".
+        if (announce && !following) {
+          toggle.mutate(variables, { onSuccess: () => showToast(`Seguindo ${name}`) });
+        } else {
+          toggle.mutate(variables);
+        }
       }}
     />
   );

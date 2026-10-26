@@ -81,6 +81,8 @@ describe('FollowButton on a profile', () => {
     await render(<FollowButton userId="u2" following={false} name="Bruno Lima" announce />);
 
     await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
+    expect(showToast).not.toHaveBeenCalled();
+    mockMutate.mock.calls[0][1].onSuccess();
 
     expect(showToast).toHaveBeenCalledWith('Seguindo Bruno Lima');
   });

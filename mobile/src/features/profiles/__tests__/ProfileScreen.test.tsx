@@ -273,7 +273,7 @@ describe('Mensagem', () => {
       within(row).getByRole('button', { name: 'Enviar mensagem para Ana Souza' }),
     ).toBeOnTheScreen();
     expect(within(row).getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
-      });
+  });
 
   it('is absent while the profile loads', async () => {
     mockProfile({ data: undefined, isPending: true });
@@ -338,7 +338,7 @@ describe('Mensagem', () => {
 });
 
 describe('loading and errors', () => {
-  it('shows a spinner while the profile loads', async () => {
+  it('shows the header skeleton while the profile loads', async () => {
     mockProfile({ data: undefined, isPending: true });
     await renderProfile();
 
@@ -362,6 +362,19 @@ describe('loading and errors', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws the back button of the error state after the filling message, so it stays on top', async () => {
+    mockProfile({ data: undefined, isError: true, error: new ApiError(500, 'boom', 'x') });
+    await renderProfile();
+
+    const back = screen.getByRole('button', { name: 'Voltar' });
+    const siblings = (back.parent?.children ?? []).filter((child) => typeof child !== 'string');
+    const messageAt = siblings.findIndex(
+      (child) => within(child).queryByText('Não foi possível carregar o perfil') !== null,
+    );
+    expect(messageAt).toBeGreaterThanOrEqual(0);
+    expect(siblings.indexOf(back)).toBeGreaterThan(messageAt);
   });
 
   it('explains a missing account and goes back', async () => {

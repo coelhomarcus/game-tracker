@@ -38,7 +38,10 @@ export function ProfileBackButton() {
       accessibilityRole="button"
       accessibilityLabel="Voltar"
       onPress={() => router.back()}
-      style={[styles.back, { top: insets.top + BACK_TOP - edge, left: BACK_LEFT - edge }]}
+      style={[
+        styles.back,
+        { top: Math.max(0, insets.top + BACK_TOP - edge), left: Math.max(0, BACK_LEFT - edge) },
+      ]}
     >
       <View style={styles.backCircle}>
         <Ionicons name="arrow-back" size={20} color={colors.onPrimary} />
@@ -50,14 +53,16 @@ export function ProfileBackButton() {
 /** What the header looks like while the profile loads. */
 export function ProfileHeaderSkeleton({ showBack }: { showBack: boolean }) {
   return (
-    <View accessible accessibilityLabel="Carregando" testID="profile-skeleton">
-      <Skeleton height={BANNER_HEIGHT} radius={0} />
-      <View style={[styles.avatarRing, styles.skeletonAvatar]}>
-        <Skeleton.Circle size={AVATAR_SIZE} />
-      </View>
-      <View style={styles.body}>
-        <View style={styles.buttons}>
-          <Skeleton width={140} height={34} radius={17} />
+    <View>
+      <View accessible accessibilityLabel="Carregando" testID="profile-skeleton">
+        <Skeleton height={BANNER_HEIGHT} radius={0} />
+        <View style={[styles.avatarRing, styles.skeletonAvatar]}>
+          <Skeleton.Circle size={AVATAR_SIZE} />
+        </View>
+        <View style={styles.body}>
+          <View style={styles.buttons}>
+            <Skeleton width={140} height={34} radius={17} />
+          </View>
         </View>
       </View>
       {showBack ? <ProfileBackButton /> : null}
@@ -113,15 +118,17 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           ) : (
             <>
               <MessageButton userId={profile.id} name={name} />
-              <FollowButton
-                userId={profile.id}
-                following={profile.isFollowedByMe}
-                followsMe={profile.followsMe}
-                name={name}
-                size="small"
-                showIcon
-                announce
-              />
+              <View style={styles.followSlot}>
+                <FollowButton
+                  userId={profile.id}
+                  following={profile.isFollowedByMe}
+                  followsMe={profile.followsMe}
+                  name={name}
+                  size="small"
+                  showIcon
+                  announce
+                />
+              </View>
             </>
           )}
           <ProfileMenu username={profile.username} />
@@ -175,7 +182,12 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
       )}
       {own ? null : <ProfileBackButton />}
       {viewing ? (
-        <ImageViewer images={[viewing]} initialIndex={0} onClose={() => setViewing(null)} />
+        <ImageViewer
+          images={[viewing]}
+          initialIndex={0}
+          label={(image) => image.alt ?? ''}
+          onClose={() => setViewing(null)}
+        />
       ) : null}
     </View>
   );
@@ -237,7 +249,9 @@ const styles = StyleSheet.create({
   },
   skeletonAvatar: { top: 110 },
   body: {
-    paddingTop: space.md,
+    // The buttons row is 48 dp tall (real hit boxes) and its 34 dp buttons are centred, so the
+    // buttons sit 12 dp under the banner once the 7 dp of the row's own padding is counted.
+    paddingTop: 5,
     paddingHorizontal: space.lg,
     paddingBottom: space.sm,
     gap: space.sm,
@@ -248,8 +262,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.xs,
     paddingLeft: BUTTONS_INDENT,
-    minHeight: 34,
+    minHeight: 48,
   },
+  // The follow label shrinks and truncates instead of running under the avatar.
+  followSlot: { flexShrink: 1, minWidth: 0 },
   identity: { gap: space._2xs },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
   followsYou: {

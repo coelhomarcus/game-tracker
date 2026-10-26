@@ -25,6 +25,8 @@ export type ImageViewerProps = {
   /** The image shown first: the one that was tapped. */
   initialIndex: number;
   onClose: () => void;
+  /** Spoken name of an image; posts' by default ("Imagem 2 de 4"). */
+  label?: (image: PostImage, index: number, count: number) => string;
 };
 
 export function imageLabel(image: PostImage, index: number, count: number): string {
@@ -33,7 +35,7 @@ export function imageLabel(image: PostImage, index: number, count: number): stri
 }
 
 /** Fullscreen images of a post, swiped sideways; Android back and the close button leave it. */
-export function ImageViewer({ images, initialIndex, onClose }: ImageViewerProps) {
+export function ImageViewer({ images, initialIndex, onClose, label = imageLabel }: ImageViewerProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -72,7 +74,7 @@ export function ImageViewer({ images, initialIndex, onClose }: ImageViewerProps)
           onMomentumScrollEnd={settle}
           renderItem={({ item, index: at }) => (
             <Image
-              accessibilityLabel={imageLabel(item, at, images.length)}
+              accessibilityLabel={label(item, at, images.length)}
               source={{ uri: resolveImageUrl(item.url) ?? undefined }}
               resizeMode="contain"
               style={{ width, height }}

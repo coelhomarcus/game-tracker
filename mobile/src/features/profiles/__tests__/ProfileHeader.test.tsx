@@ -160,13 +160,28 @@ describe('actions', () => {
     expect(screen.queryByRole('button', { name: 'Editar perfil' })).toBeNull();
   });
 
-  it('follows and confirms with a toast', async () => {
+  it('follows and confirms with a toast only once the follow succeeded', async () => {
     await renderHeader();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Seguir Ana Souza' }));
 
-    expect(mockMutate).toHaveBeenCalledWith({ id: 'u1', follow: true });
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u1', follow: true }, expect.any(Object));
+    expect(showToast).not.toHaveBeenCalled();
+    mockMutate.mock.calls[0][1].onSuccess();
     expect(showToast).toHaveBeenCalledWith('Seguindo Ana Souza');
+  });
+
+  it('keeps the row of buttons 48 dp tall so each button has a real hit box', async () => {
+    await renderHeader();
+
+    expect(screen.getByTestId('profile-actions')).toHaveStyle({ minHeight: 48 });
+  });
+
+  it('lets the follow label shrink instead of running under the avatar', async () => {
+    await renderHeader({ followsMe: true });
+
+    const label = screen.getByText('Seguir de volta');
+    expect(label.props.numberOfLines).toBe(1);
   });
 
   it('says "Seguir de volta" when she follows the viewer', async () => {
@@ -289,7 +304,8 @@ describe('images', () => {
 
     await fireEvent.press(screen.getByLabelText('Capa de Ana Souza'));
     expect(screen.getByTestId('image-viewer')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Imagem do post: Capa de Ana Souza')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('image-viewer')).getByLabelText('Capa de Ana Souza')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/Imagem do post/)).toBeNull();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Fechar' }));
     expect(screen.queryByTestId('image-viewer')).toBeNull();
@@ -301,7 +317,8 @@ describe('images', () => {
     await fireEvent.press(screen.getByLabelText('Foto de Ana Souza'));
 
     expect(screen.getByTestId('image-viewer')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Imagem do post: Foto de Ana Souza')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('image-viewer')).getByLabelText('Foto de Ana Souza')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/Imagem do post/)).toBeNull();
   });
 });
 
@@ -316,6 +333,18 @@ describe('ProfileHeaderSkeleton', () => {
     expect(screen.getByTestId('profile-skeleton')).toBeOnTheScreen();
     expect(screen.getByLabelText('Carregando')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Voltar' })).toBeOnTheScreen();
+  });
+
+  it('keeps the back button outside the labelled skeleton group', async () => {
+    await render(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ProfileHeaderSkeleton showBack />
+      </SafeAreaProvider>,
+    );
+
+    expect(
+      within(screen.getByTestId('profile-skeleton')).queryByRole('button', { name: 'Voltar' }),
+    ).toBeNull();
   });
 
   it('has no back button on the own profile', async () => {
