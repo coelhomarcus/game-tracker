@@ -20,7 +20,12 @@ export { Fab, FAB_BOTTOM, FAB_SIZE, type FabProps } from './Fab';
 export { GameCover, type GameCoverProps } from './GameCover';
 export { HeaderBell } from './HeaderBell';
 export * as Layout from './Layout';
-export { OptionSheet, type OptionSheetProps } from './OptionSheet';
+export {
+  OptionSheet,
+  type OptionSheetOption,
+  type OptionSheetProps,
+  type OptionSheetSection,
+} from './OptionSheet';
 export { PressableScale, type PressableScaleProps } from './PressableScale';
 export { Pill, type PillProps } from './Pill';
 export { RatingStars, type RatingStarsProps } from './RatingStars';

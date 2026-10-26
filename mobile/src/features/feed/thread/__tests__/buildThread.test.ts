@@ -4,6 +4,7 @@ import type { Comment } from '../../types';
 import {
   buildThread,
   LINEAR_CHAIN_DEPTH,
+  TREE_LEVELS,
   type ThreadCommentRow,
   type ThreadRow,
 } from '../buildThread';
@@ -109,7 +110,7 @@ describe('buildThread linear', () => {
 
     expect(shape(rows)).toEqual(['a', 'b', 'c', '+4', 'z']);
     const readMore = rows[3]!;
-    expect(readMore).toEqual({ type: 'readMore', key: 'readMore:a', branchId: 'a', moreReplies: 4 });
+    expect(readMore).toEqual({ type: 'readMore', key: 'readMore:a', branchId: 'a', moreReplies: 4, rails: [] });
     // The last shown reply's line runs on into the "Ler mais" elbow.
     expect(commentRow(rows, 'c').hasChildLine).toBe(true);
     expect(commentRow(rows, 'z').branchStart).toBe(true);
@@ -174,6 +175,147 @@ describe('buildThread linear', () => {
 
   it('gives every row a unique key', () => {
     const rows = linear([comment('a', ana, [comment('b'), comment('c')]), comment('d')]);
+    const keys = rows.map((row) => row.key);
+
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+const tree = (roots: Comment[], expanded: string[] = []) =>
+  buildThread(roots, { mode: 'tree', expanded: new Set(expanded) });
+
+/**
+ * a ─┬─ b ─┬─ c
+ *    │     └─ d
+ *    └─ e
+ * f
+ */
+function sampleTree(): Comment[] {
+  return [
+    comment('a', ana, [comment('b', bia, [comment('c', caio), comment('d')]), comment('e', bia)]),
+    comment('f', caio),
+  ];
+}
+
+/** root ─ r1 ─ r2 ─ … ─ r`length`: one reply per level. */
+function deepChain(length: number): Comment[] {
+  return [chain('root', length)];
+}
+
+describe('buildThread tree', () => {
+  it('nests every reply under its parent, depth first', () => {
+    const rows = tree(sampleTree());
+
+    expect(shape(rows)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    expect(rows.map((row) => (row.type === 'comment' ? row.depth : -1))).toEqual([
+      0, 1, 2, 2, 1, 0,
+    ]);
+  });
+
+  it('runs a rail down every level whose comment still has a later sibling', () => {
+    const rows = tree(sampleTree());
+
+    expect(commentRow(rows, 'a').rails).toEqual([]);
+    // b has e after it; c has d after it.
+    expect(commentRow(rows, 'b').rails).toEqual([true]);
+    expect(commentRow(rows, 'c').rails).toEqual([true, true]);
+    // d is b's last reply, but b's rail still runs on to e.
+    expect(commentRow(rows, 'd').rails).toEqual([true, false]);
+    expect(commentRow(rows, 'e').rails).toEqual([false]);
+    expect(commentRow(rows, 'f').rails).toEqual([]);
+  });
+
+  it('gives nested rows an elbow and top-level rows a hairline', () => {
+    const rows = tree(sampleTree());
+
+    for (const id of ['a', 'f']) {
+      expect(commentRow(rows, id)).toMatchObject({
+        branchStart: true,
+        hasParentLine: false,
+        branchId: id,
+      });
+    }
+    for (const id of ['b', 'c', 'd', 'e']) {
+      expect(commentRow(rows, id)).toMatchObject({
+        branchStart: false,
+        hasParentLine: true,
+        branchId: 'a',
+        replyingTo: null,
+      });
+    }
+  });
+
+  it('marks the rows no reply of their own follows, and draws a line down from the others', () => {
+    const rows = tree(sampleTree());
+    const flags = (id: string) => {
+      const row = commentRow(rows, id);
+      return [row.isLastChild, row.hasChildLine];
+    };
+
+    expect(flags('a')).toEqual([false, true]);
+    expect(flags('b')).toEqual([false, true]);
+    expect(flags('c')).toEqual([true, false]);
+    expect(flags('d')).toEqual([true, false]);
+    expect(flags('e')).toEqual([true, false]);
+    expect(flags('f')).toEqual([true, false]);
+  });
+
+  it(`nests ${TREE_LEVELS} levels and stands for the deeper replies with one Ler mais row`, () => {
+    const rows = tree(deepChain(6));
+
+    expect(shape(rows)).toEqual(['root', 'r1', 'r2', 'r3', '+3']);
+    expect(rows[4]).toMatchObject({
+      type: 'readMore',
+      branchId: 'r3',
+      moreReplies: 3,
+      rails: [false, false, false],
+    });
+    // The last level's line runs down into the Ler mais elbow.
+    expect(commentRow(rows, 'r3')).toMatchObject({ depth: 3, hasChildLine: true, isLastChild: true });
+  });
+
+  it('keeps the rail of a collapsed comment that has a later sibling through its Ler mais', () => {
+    const r3 = comment('r3', ana, [comment('r4')]);
+    const r3b = comment('r3b', bia);
+    const roots = [comment('root', caio, [comment('r1', bia, [comment('r2', caio, [r3, r3b])])])];
+    const rows = tree(roots);
+
+    expect(shape(rows)).toEqual(['root', 'r1', 'r2', 'r3', '+1', 'r3b']);
+    expect(rows[4]).toMatchObject({ type: 'readMore', branchId: 'r3', rails: [false, false, true] });
+    expect(commentRow(rows, 'r3b').rails).toEqual([false, false, false]);
+  });
+
+  it('shows the expanded replies one level further in, naming who each answers', () => {
+    const rows = tree(deepChain(6), ['r3']);
+
+    expect(shape(rows)).toEqual(['root', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6']);
+    const level = (id: string) => commentRow(rows, id);
+    for (const id of ['r4', 'r5', 'r6']) expect(level(id).depth).toBe(TREE_LEVELS);
+    expect(level('r4')).toMatchObject({ rails: [false, false, false, true], replyingTo: null });
+    expect(level('r5')).toMatchObject({ rails: [false, false, false, true], replyingTo: ana });
+    expect(level('r6')).toMatchObject({ rails: [false, false, false, false], replyingTo: bia });
+    for (const id of ['r4', 'r5', 'r6']) {
+      expect(level(id)).toMatchObject({ hasParentLine: true, hasChildLine: false, isLastChild: true });
+    }
+    expect(level('r3')).toMatchObject({ hasChildLine: true, isLastChild: false });
+  });
+
+  it('never draws a row deeper than one level past the last', () => {
+    const rows = tree(deepChain(30), ['r3']);
+    const depths = rows.map((row) => (row.type === 'comment' ? row.depth : 0));
+
+    expect(Math.max(...depths)).toBe(TREE_LEVELS);
+    expect(rows).toHaveLength(31);
+  });
+
+  it('expands nothing from a linear branch id that is not on the last level', () => {
+    const rows = tree(deepChain(5), ['root']);
+
+    expect(shape(rows)).toEqual(['root', 'r1', 'r2', 'r3', '+2']);
+  });
+
+  it('gives every row a unique key', () => {
+    const rows = tree([...sampleTree(), ...deepChain(6)]);
     const keys = rows.map((row) => row.key);
 
     expect(new Set(keys).size).toBe(keys.length);

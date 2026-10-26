@@ -1,10 +1,11 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { EmptyState, Screen } from '@/components';
 import { ApiError } from '@/lib/http/errors';
+import { usePreferences } from '@/lib/preferences';
 import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, space } from '@/theme/tokens';
 
@@ -20,8 +21,10 @@ import {
 import { buildThread, type ThreadRow } from './thread/buildThread';
 import { ThreadAnchor } from './thread/ThreadAnchor';
 import { ThreadItemLinear } from './thread/ThreadItemLinear';
+import { ThreadItemTree } from './thread/ThreadItemTree';
+import { ThreadMenu } from './thread/ThreadMenu';
 import { ThreadReadMore } from './thread/ThreadReadMore';
-import { isPostId, type Comment, type CommentSort, type Post } from './types';
+import { isPostId, type Comment, type Post } from './types';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -93,10 +96,22 @@ function PostLoader({ postId }: { postId: string }) {
   );
 }
 
-/** Until the thread menu lets the user choose, replies come oldest first, as the server sends. */
-const COMMENT_SORT: CommentSort = 'oldest';
+/**
+ * The page's list: the anchor post first, then the comment rows, or the state of the comments
+ * (loading, failed, none) while there are none to show.
+ */
+type PageItem = { type: 'anchor'; key: string } | { type: 'status'; key: string } | ThreadRow;
 
-const keyExtractor = (row: ThreadRow) => row.key;
+const ANCHOR_ITEM: PageItem = { type: 'anchor', key: 'anchor' };
+const STATUS_ITEM: PageItem = { type: 'status', key: 'comments-status' };
+
+const keyExtractor = (item: PageItem) => item.key;
+
+/**
+ * The anchor post is the list's first item (an item, not a list header: the list counts its
+ * header outside the indexes), so it keeps its place while the rows below it change.
+ */
+const MAINTAIN_ANCHOR = { minIndexForVisible: 0 };
 
 /** Whether `id` is the comment or one of the replies below it. */
 function holds(comment: Comment, id: string): boolean {
@@ -104,23 +119,34 @@ function holds(comment: Comment, id: string): boolean {
 }
 
 /**
- * The thread: the post as its anchor, then the comments in the linear view, with the composer
- * pinned under them above the keyboard.
+ * The thread: the post as its anchor, then the comments in the view and order chosen in the
+ * header's menu, with the composer pinned under them above the keyboard.
  */
 function PostBody({ post }: { post: Post }) {
   const router = useRouter();
   const headerHeight = useHeaderHeight();
-  const comments = useComments(post.id, COMMENT_SORT);
+  const view = usePreferences((state) => state.threadView);
+  const sort = usePreferences((state) => state.threadSort);
+  const comments = useComments(post.id, sort);
   const addComment = useAddComment(post.id);
   const toggleLike = useToggleCommentLike(post.id);
   const deleteComment = useDeleteComment(post.id);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const listRef = useRef<FlatList<PageItem>>(null);
 
-  const rows = useMemo(
-    () => buildThread(comments.data ?? [], { mode: 'linear', expanded }),
-    [comments.data, expanded],
+  const items = useMemo(() => {
+    const rows = buildThread(comments.data ?? [], { mode: view, expanded });
+    return [ANCHOR_ITEM, ...(rows.length > 0 ? rows : [STATUS_ITEM])];
+  }, [comments.data, view, expanded]);
+
+  // Another view or order brings the post back to the top, where it then stays while the
+  // replies change under it (`maintainVisibleContentPosition` on the list).
+  const pinAnchor = useCallback(
+    () => listRef.current?.scrollToOffset({ offset: 0, animated: false }),
+    [],
   );
+  const headerRight = useCallback(() => <ThreadMenu onChange={pinAnchor} />, [pinAnchor]);
 
   const { mutate: like } = toggleLike;
   const { mutate: remove } = deleteComment;
@@ -143,17 +169,21 @@ function PostBody({ post }: { post: Post }) {
     [],
   );
 
-  const renderItem = ({ item }: { item: ThreadRow }) =>
-    item.type === 'comment' ? (
-      <ThreadItemLinear
-        row={item}
-        onReply={onReply}
-        onToggleLike={onToggleLike}
-        onDelete={onDelete}
-      />
-    ) : (
-      <ThreadReadMore row={item} onExpand={onExpand} />
-    );
+  const Item = view === 'tree' ? ThreadItemTree : ThreadItemLinear;
+  const renderItem = ({ item }: { item: PageItem }) => {
+    switch (item.type) {
+      case 'anchor':
+        return anchor;
+      case 'status':
+        return status;
+      case 'comment':
+        return (
+          <Item row={item} onReply={onReply} onToggleLike={onToggleLike} onDelete={onDelete} />
+        );
+      case 'readMore':
+        return <ThreadReadMore row={item} onExpand={onExpand} mode={view} />;
+    }
+  };
 
   async function submit(content: string) {
     await addComment.mutateAsync({
@@ -163,20 +193,20 @@ function PostBody({ post }: { post: Post }) {
     setReplyTo(null);
   }
 
-  let empty: ReactElement;
+  let status: ReactElement;
   if (comments.data) {
-    empty = (
+    status = (
       <EmptyState title="Nenhum comentário ainda" message="Seja a primeira pessoa a comentar." />
     );
   } else if (comments.isError) {
-    empty = (
+    status = (
       <EmptyState
         title="Não foi possível carregar os comentários"
         action={{ label: 'Tentar de novo', onPress: () => void comments.refetch() }}
       />
     );
   } else {
-    empty = (
+    status = (
       <ActivityIndicator
         testID="comments-loading"
         accessibilityLabel="Carregando comentários"
@@ -186,7 +216,7 @@ function PostBody({ post }: { post: Post }) {
     );
   }
 
-  const header = (
+  const anchor = (
     <ThreadAnchor
       post={post}
       onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
@@ -195,7 +225,9 @@ function PostBody({ post }: { post: Post }) {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: post.type === 'activity' ? 'Atividade' : 'Post' }} />
+      <Stack.Screen
+        options={{ title: post.type === 'activity' ? 'Atividade' : 'Post', headerRight }}
+      />
       <KeyboardAvoidingView
         testID="post-keyboard-avoider"
         behavior="padding"
@@ -203,14 +235,14 @@ function PostBody({ post }: { post: Post }) {
         style={styles.fill}
       >
         <FlatList
+          ref={listRef}
           testID="comment-list"
-          data={rows}
+          data={items}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          ListHeaderComponent={header}
-          ListEmptyComponent={empty}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          maintainVisibleContentPosition={MAINTAIN_ANCHOR}
           style={styles.fill}
         />
         <CommentComposer

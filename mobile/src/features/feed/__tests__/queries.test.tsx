@@ -688,6 +688,68 @@ describe("comments", () => {
     expect(client.getQueryData<Comment[]>(["comments", "p2", "oldest"])![0].likedByMe).toBe(false);
   });
 
+  it("useToggleCommentLike gives the like to a sort order first loaded while it was on its way", async () => {
+    const request = deferred();
+    mocked.setCommentLike.mockReturnValue(request.promise);
+    // The server answers the new order before it holds the like.
+    mocked.comments.mockResolvedValue([comment("c1")]);
+    const client = freshClient();
+    const mine = comment("c1");
+    client.setQueryData(["comments", "p1", "oldest"], [mine]);
+    const { result: like } = await renderHook(() => useToggleCommentLike("p1"), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      like.current.mutate(mine);
+    });
+
+    // The user switches to the most liked first while the like is on its way.
+    const { result: top } = await renderHook(() => useComments("p1", "top"), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(top.current.data).toHaveLength(1));
+    expect(top.current.data![0].likedByMe).toBe(false);
+
+    await act(async () => request.resolve());
+    await waitFor(() => expect(like.current.isSuccess).toBe(true));
+
+    const liked = { likedByMe: true, likeCount: 1 };
+    expect(top.current.data![0]).toMatchObject(liked);
+    expect(client.getQueryData<Comment[]>(["comments", "p1", "oldest"])![0]).toMatchObject(liked);
+  });
+
+  it("useToggleCommentLike fetches again a sort order still loading when the like lands", async () => {
+    const request = deferred();
+    mocked.setCommentLike.mockReturnValue(request.promise);
+    let answerStale!: (comments: Comment[]) => void;
+    mocked.comments
+      .mockReturnValueOnce(new Promise<Comment[]>((resolve) => (answerStale = resolve)))
+      .mockResolvedValueOnce([comment("c1", [], { likedByMe: true, likeCount: 1 })]);
+    const client = freshClient();
+    const mine = comment("c1");
+    client.setQueryData(["comments", "p1", "oldest"], [mine]);
+    const { result: like } = await renderHook(() => useToggleCommentLike("p1"), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      like.current.mutate(mine);
+    });
+    const { result: top } = await renderHook(() => useComments("p1", "top"), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(mocked.comments).toHaveBeenCalledTimes(1));
+
+    await act(async () => request.resolve());
+    await waitFor(() => expect(like.current.isSuccess).toBe(true));
+    // The answer sent before the server held the like arrives last, and is not used.
+    await act(async () => answerStale([comment("c1")]));
+
+    await waitFor(() => expect(top.current.data).toHaveLength(1));
+    expect(top.current.data![0]).toMatchObject({ likedByMe: true, likeCount: 1 });
+    expect(mocked.comments).toHaveBeenCalledTimes(2);
+    expect(mocked.comments).toHaveBeenLastCalledWith("p1", "top");
+  });
+
   it("useDeleteComment takes the comment and its replies out of every sort order", async () => {
     mocked.deleteComment.mockResolvedValue(undefined);
     const client = freshClient();

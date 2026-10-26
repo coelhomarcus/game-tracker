@@ -133,6 +133,8 @@ export const beginToggle = toggles.begin;
 export const runInLane = toggles.runLatest;
 export const settleToggle = toggles.settle;
 export const skipToggle = toggles.skip;
+/** Whether the lane (one action on one item) still has a request in flight. */
+export const toggleInFlight = toggles.has;
 /**
  * Whether any toggle request, of any post or comment, is still in flight. Until none is, a fetch
  * the toggles cancelled stays stopped: its response could undo an optimistic write.

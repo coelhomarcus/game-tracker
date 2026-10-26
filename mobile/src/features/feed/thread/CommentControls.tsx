@@ -26,13 +26,24 @@ export type CommentControlsProps = {
   onToggleLike: (comment: Comment) => void;
   /** Runs once the user confirmed deleting their own comment. */
   onDelete: (comment: Comment) => void;
+  /**
+   * Tree rows: reply and like sit side by side at the left instead of lining up with a post's
+   * controls, which a nested row has no room for.
+   */
+  compact?: boolean;
 };
 
 /**
  * The action bar of a comment: reply and like on the left (the like animates as on posts), and
  * "…" on the right with "Copiar texto" and, on the user's own comment, "Apagar comentário".
  */
-export function CommentControls({ comment, onReply, onToggleLike, onDelete }: CommentControlsProps) {
+export function CommentControls({
+  comment,
+  onReply,
+  onToggleLike,
+  onDelete,
+  compact = false,
+}: CommentControlsProps) {
   const isMine = useSession((state) => state.user?.id === comment.author.id);
   const [likeToggled, setLikeToggled] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -58,8 +69,8 @@ export function CommentControls({ comment, onReply, onToggleLike, onDelete }: Co
 
   return (
     <View testID="comment-controls" style={styles.bar}>
-      <View style={styles.primary}>
-        <View style={styles.slot}>
+      <View style={compact ? styles.primaryCompact : styles.primary}>
+        <View style={compact ? styles.slotCompact : styles.slot}>
           <ControlButton
             label={`Responder a ${displayName(comment.author)}`}
             onPress={() => onReply(comment)}
@@ -68,7 +79,7 @@ export function CommentControls({ comment, onReply, onToggleLike, onDelete }: Co
             <Ionicons name="chatbubble-outline" size={ICON_SIZE} color={colors.textMedium} />
           </ControlButton>
         </View>
-        <View style={styles.slot}>
+        <View style={compact ? styles.slotCompact : styles.slot}>
           <ControlButton
             testID="comment-like-button"
             label={`${liked ? 'Descurtir' : 'Curtir'} comentário, ${likes}`}
@@ -139,6 +150,9 @@ const styles = StyleSheet.create({
   // post's comment and repost buttons.
   primary: { flexDirection: 'row', flex: 1, maxWidth: 214 },
   slot: { flex: 1, minWidth: TOUCH, alignItems: 'flex-start' },
+  // The 48 dp boxes already keep the icons apart, and a deep row has little room.
+  primaryCompact: { flexDirection: 'row', flex: 1 },
+  slotCompact: { minWidth: TOUCH, alignItems: 'flex-start' },
   slotButton: { maxWidth: '100%' },
   replyButton: { paddingLeft: 0 },
   iconButton: { justifyContent: 'center', width: TOUCH, paddingHorizontal: 0 },

@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Avatar, Text } from '@/components';
 import type { UserSummary } from '@/features/games/types';
@@ -21,6 +21,7 @@ export type PostMetaProps = {
   linked?: boolean;
   /** Shows a small avatar before the name, as in a quoted post. */
   avatarSize?: number;
+  style?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -28,7 +29,7 @@ export type PostMetaProps = {
  * Linked, the name and handle are one inline profile link, as in the design reference: the
  * avatar beside it is the large target for the same profile.
  */
-export function PostMeta({ author, createdAt, linked = true, avatarSize }: PostMetaProps) {
+export function PostMeta({ author, createdAt, linked = true, avatarSize, style }: PostMetaProps) {
   const name = displayName(author);
   const who = (
     <>
@@ -55,7 +56,7 @@ export function PostMeta({ author, createdAt, linked = true, avatarSize }: PostM
   );
 
   return (
-    <View testID="post-meta" style={styles.row}>
+    <View testID="post-meta" style={[styles.row, style]}>
       {avatarSize ? (
         <View style={styles.avatar}>
           <Avatar uri={resolveImageUrl(author.avatarUrl)} name={name} size={avatarSize} />

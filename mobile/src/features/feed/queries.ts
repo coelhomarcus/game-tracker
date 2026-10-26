@@ -21,6 +21,7 @@ import {
   settleToggle,
   skipToggle,
   SUPERSEDED,
+  toggleInFlight,
   type Superseded,
   toggleLane,
   type ToggleAction,
@@ -296,11 +297,18 @@ export function useToggleCommentLike(postId: string) {
   const client = useQueryClient();
   const update = (id: string, liked: boolean) =>
     updateCommentEverywhere(client, postId, id, withCommentLike(liked));
-  const settle = (comment: Comment, error?: Error) => {
-    const to = settleToggle(toggleLane("commentLike", comment.id), !comment.likedByMe, !error);
+  const settle = async (comment: Comment, error?: Error) => {
+    const lane = toggleLane("commentLike", comment.id);
+    const to = settleToggle(lane, !comment.likedByMe, !error);
     if (to !== undefined) {
       update(comment.id, to);
       if (error) showToast(authErrorMessage(error));
+    } else if (!error && !toggleInFlight(lane)) {
+      // A sort order first loaded while the like was on its way (the user switched orders) may
+      // not hold it. One still loading is stopped (and fetched again once the server holds every
+      // toggle) before every cached order gets the final state: a cancel reverts its query.
+      await cancelCommentQueries(client, postId);
+      update(comment.id, !comment.likedByMe);
     }
     whenIdle(client);
   };

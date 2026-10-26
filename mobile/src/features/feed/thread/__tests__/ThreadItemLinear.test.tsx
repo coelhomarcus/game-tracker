@@ -59,6 +59,8 @@ function makeRow(overrides: Partial<ThreadCommentRow> = {}): ThreadCommentRow {
     hasParentLine: true,
     hasChildLine: false,
     replyingTo: null,
+    rails: [],
+    isLastChild: true,
     ...overrides,
   };
 }
@@ -285,6 +287,7 @@ describe('ThreadReadMore', () => {
     key: 'readMore:c1',
     branchId: 'c1',
     moreReplies: 3,
+    rails: [],
   };
 
   it('says how many replies are hidden and expands the branch', async () => {

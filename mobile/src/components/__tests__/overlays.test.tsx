@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -195,6 +195,46 @@ describe('OptionSheet', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
     expect(iconCount('checkmark')).toBe(0);
+  });
+
+  it('shows titled sections, each with its own selected option', async () => {
+    const onSelect = jest.fn();
+    const onClose = jest.fn();
+    await render(withInsets(
+      <OptionSheet<string>
+        visible
+        title="Opções"
+        sections={[
+          {
+            title: 'Mostrar como',
+            options: [{ value: 'list', label: 'Lista' }, { value: 'grid', label: 'Grade' }],
+            selected: 'grid',
+          },
+          {
+            title: 'Ordenar',
+            options: [{ value: 'new', label: 'Novos' }, { value: 'old', label: 'Antigos' }],
+            selected: 'new',
+          },
+        ]}
+        onSelect={onSelect}
+        onClose={onClose}
+      />),
+    );
+
+    const [view, sort] = screen.getAllByTestId('sheet-section');
+    expect(within(view!).getByRole('header', { name: 'Mostrar como' })).toBeOnTheScreen();
+    expect(within(view!).getByRole('button', { name: 'Grade' })).toBeSelected();
+    expect(within(view!).getByRole('button', { name: 'Lista' })).not.toBeSelected();
+    expect(within(sort!).getByRole('header', { name: 'Ordenar' })).toBeOnTheScreen();
+    expect(within(sort!).getByRole('button', { name: 'Novos' })).toBeSelected();
+    expect(iconCount('checkmark')).toBe(2);
+    // Only the later section is set apart by a hairline.
+    expect(StyleSheet.flatten(view!.props.style)?.borderTopWidth).toBeUndefined();
+    expect(StyleSheet.flatten(sort!.props.style).borderTopWidth).toBe(StyleSheet.hairlineWidth);
+
+    await fireEvent.press(within(sort!).getByRole('button', { name: 'Antigos' }));
+    expect(onSelect).toHaveBeenCalledWith('old');
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

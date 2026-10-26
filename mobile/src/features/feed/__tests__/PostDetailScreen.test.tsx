@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import * as Clipboard from 'expo-clipboard';
 import { HeaderHeightContext } from 'expo-router/react-navigation';
-import { StyleSheet } from 'react-native';
+import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { authErrorMessage, useSession } from '@/features/auth';
 import { ApiError, NetworkError } from '@/lib/http/errors';
+import { usePreferences } from '@/lib/preferences';
 import { showToast } from '@/lib/toast';
 
 import { PostDetailScreen } from '../PostDetailScreen';
@@ -56,11 +57,20 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   // Focus effects run once on mount, as for a page that opens focused.
   useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
-  // The header is rendered in place so the tests can read its title.
+  // The header is rendered in place so the tests can read its title and use its button.
   Stack: {
-    Screen: ({ options }: { options?: { title?: string } }) => {
-      const { Text } = jest.requireActual('react-native');
-      return <Text testID="header-title">{options?.title}</Text>;
+    Screen: ({
+      options,
+    }: {
+      options?: { title?: string; headerRight?: (props: { canGoBack: boolean }) => unknown };
+    }) => {
+      const { Text, View } = jest.requireActual('react-native');
+      return (
+        <View>
+          <Text testID="header-title">{options?.title}</Text>
+          {options?.headerRight?.({ canGoBack: true })}
+        </View>
+      );
     },
   },
 }));
@@ -194,6 +204,7 @@ beforeEach(() => {
   });
   jest.clearAllMocks();
   mockParams = { postId: POST_ID };
+  usePreferences.setState({ threadView: 'linear', threadSort: 'oldest' });
   mockedUsePost.mockReturnValue(postResult());
   mockedUseComments.mockReturnValue(commentsResult());
   mutateAsync.mockResolvedValue(undefined);
@@ -754,6 +765,190 @@ describe('PostDetailScreen comment actions', () => {
     expect(screen.getByText('texto c1')).toBeOnTheScreen();
     expect(screen.queryByText('texto c2')).toBeNull();
     expect(screen.queryByText('texto c3')).toBeNull();
+  });
+});
+
+/**
+ * c1 (Ana) ─┬─ c2 (bia) ── c3 (Caio) ── c5 (bia) ── c6 (Dani) ── c7 (Ana)
+ *           └─ c4 (Dani)
+ * The tree view nests four levels: c6 and c7 hide under c5's "Ler mais".
+ */
+function makeDeepTree(): Comment[] {
+  const c7 = makeComment('c7', ana, { parentCommentId: 'c6' });
+  const c6 = makeComment('c6', dani, { parentCommentId: 'c5', replies: [c7] });
+  const c5 = makeComment('c5', bia, { parentCommentId: 'c3', replies: [c6] });
+  const c3 = makeComment('c3', caio, { parentCommentId: 'c2', replies: [c5] });
+  const c2 = makeComment('c2', bia, { parentCommentId: 'c1', replies: [c3] });
+  const c4 = makeComment('c4', dani, { parentCommentId: 'c1' });
+  return [makeComment('c1', ana, { replies: [c2, c4] })];
+}
+
+function commentTexts(): string[] {
+  return screen.getAllByTestId('comment-text').map((node) => node.props.children as string);
+}
+
+async function openThreadMenu() {
+  await fireEvent.press(screen.getByRole('button', { name: 'Opções da conversa' }));
+}
+
+describe('PostDetailScreen view and order', () => {
+  let scrollToOffset: jest.SpyInstance;
+  beforeEach(() => {
+    scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset').mockImplementation(() => {});
+  });
+  afterEach(() => scrollToOffset.mockRestore());
+
+  it('asks for the comments in the order kept in the preferences', async () => {
+    usePreferences.setState({ threadSort: 'top' });
+    await renderScreen();
+
+    expect(mockedUseComments).toHaveBeenCalledWith(POST_ID, 'top');
+    expect(mockedUseComments).not.toHaveBeenCalledWith(POST_ID, 'oldest');
+  });
+
+  it('shows the kept view: the tree view when chosen before', async () => {
+    usePreferences.setState({ threadView: 'tree' });
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeDeepTree() }));
+    await renderScreen();
+
+    expect(screen.getAllByTestId('thread-item-tree')).toHaveLength(5);
+    expect(screen.queryByTestId('thread-item-linear')).toBeNull();
+  });
+
+  it('offers the view and the order in the header menu, with the current ones checked', async () => {
+    usePreferences.setState({ threadSort: 'newest' });
+    await renderScreen();
+
+    await openThreadMenu();
+
+    expect(screen.getByRole('header', { name: 'Mostrar respostas como' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Em linha' })).toBeSelected();
+    expect(screen.getByRole('button', { name: 'Em árvore' })).not.toBeSelected();
+    expect(screen.getByRole('header', { name: 'Ordenar respostas' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Mais novas' })).toBeSelected();
+    expect(screen.getByRole('button', { name: 'Mais curtidas' })).not.toBeSelected();
+    expect(screen.getByRole('button', { name: 'Mais antigas' })).not.toBeSelected();
+  });
+
+  it('asks for the new order once chosen, keeps it and brings the post back to the top', async () => {
+    await renderScreen();
+    expect(mockedUseComments).toHaveBeenLastCalledWith(POST_ID, 'oldest');
+
+    await openThreadMenu();
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais curtidas' }));
+
+    expect(mockedUseComments).toHaveBeenLastCalledWith(POST_ID, 'top');
+    expect(usePreferences.getState().threadSort).toBe('top');
+    expect(scrollToOffset).toHaveBeenCalledTimes(1);
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: false });
+    // The post stays the list's first item, held in place while the replies change.
+    expect(screen.getByLabelText(POST_LABEL)).toBeOnTheScreen();
+    expect(screen.getByTestId('comment-list').props.maintainVisibleContentPosition).toEqual({
+      minIndexForVisible: 0,
+    });
+  });
+
+  it('shows a spinner under the post while the new order loads', async () => {
+    await renderScreen();
+    mockedUseComments.mockImplementation((_postId, sort) =>
+      sort === 'top' ? commentsResult({ data: undefined, isPending: true }) : commentsResult(),
+    );
+
+    await openThreadMenu();
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais curtidas' }));
+
+    expect(screen.getByLabelText(POST_LABEL)).toBeOnTheScreen();
+    expect(screen.getByTestId('comments-loading')).toBeOnTheScreen();
+    expect(screen.queryByText('texto c1')).toBeNull();
+  });
+
+  it('does not move the list when the current choice is picked again', async () => {
+    await renderScreen();
+
+    await openThreadMenu();
+    await fireEvent.press(screen.getByRole('button', { name: 'Em linha' }));
+
+    expect(scrollToOffset).not.toHaveBeenCalled();
+  });
+
+  it('switches to the tree view from the menu, keeps it and pins the post', async () => {
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeWideTree() }));
+    await renderScreen();
+    // The linear view hides c4 under "Ler mais".
+    expect(screen.queryByText('texto c4')).toBeNull();
+
+    await openThreadMenu();
+    await fireEvent.press(screen.getByRole('button', { name: 'Em árvore' }));
+
+    expect(usePreferences.getState().threadView).toBe('tree');
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: false });
+    // Same order, no new request: the tree shows every reply nested under its parent.
+    expect(mockedUseComments).toHaveBeenLastCalledWith(POST_ID, 'oldest');
+    expect(commentTexts()).toEqual(['texto c1', 'texto c2', 'texto c3', 'texto c4']);
+    expect(screen.queryByTestId('thread-item-linear')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Ler mais/ })).toBeNull();
+    // c2, c3 and c4 come in through an elbow; c1 starts the branch.
+    expect(screen.getAllByTestId('thread-tree-elbow')).toHaveLength(3);
+    // c2's rail runs on to its later sibling c4, past c3.
+    expect(screen.getAllByTestId('thread-tree-rail')).toHaveLength(2);
+  });
+
+  it('collapses the replies below the fourth level into "Ler mais" and shows them on press', async () => {
+    usePreferences.setState({ threadView: 'tree' });
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeDeepTree() }));
+    await renderScreen();
+
+    expect(commentTexts()).toEqual(['texto c1', 'texto c2', 'texto c3', 'texto c5', 'texto c4']);
+    await fireEvent.press(screen.getByRole('button', { name: 'Ler mais 2 respostas' }));
+
+    expect(commentTexts()).toEqual([
+      'texto c1',
+      'texto c2',
+      'texto c3',
+      'texto c5',
+      'texto c6',
+      'texto c7',
+      'texto c4',
+    ]);
+    expect(screen.queryByRole('button', { name: /^Ler mais/ })).toBeNull();
+    // c7 hangs from c5 with c6, so it names the comment it answers.
+    expect(screen.getAllByText(/^Respondendo a @/).map((node) => node.props.children)).toEqual([
+      'Respondendo a @dani',
+    ]);
+  });
+
+  it('replies to a nested comment of the tree with that comment as the parent', async () => {
+    usePreferences.setState({ threadView: 'tree' });
+    mockedUseComments.mockReturnValue(commentsResult({ data: makeDeepTree() }));
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Responder a Caio' }));
+    await typeComment('Boa');
+    await send();
+
+    expect(mutateAsync).toHaveBeenCalledWith({ content: 'Boa', parentCommentId: 'c3' });
+  });
+
+  it('likes a nested comment of the tree with the cached comment', async () => {
+    usePreferences.setState({ threadView: 'tree' });
+    const tree = makeDeepTree();
+    mockedUseComments.mockReturnValue(commentsResult({ data: tree }));
+    await renderScreen();
+
+    await fireEvent.press(
+      within(screen.getAllByTestId('thread-item-tree')[3]!).getByRole('button', {
+        name: 'Curtir comentário, 2 curtidas',
+      }),
+    );
+
+    expect(toggleLike).toHaveBeenCalledWith(tree[0]!.replies[0]!.replies[0]!.replies[0]);
+  });
+
+  it('keeps the composer above the keyboard in the tree view', async () => {
+    usePreferences.setState({ threadView: 'tree' });
+    await renderScreen(64);
+
+    expect(screen.getByTestId('post-keyboard-avoider').props.keyboardVerticalOffset).toBe(64);
   });
 });
 
