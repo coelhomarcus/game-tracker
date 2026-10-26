@@ -102,3 +102,13 @@ export async function uploadBannerHandler(req: Request, res: Response) {
   const bannerUrl = await usersService.updateBanner(req.user!.id, req.file.buffer);
   res.json({ bannerUrl });
 }
+
+export async function removeAvatarHandler(req: Request, res: Response) {
+  await usersService.removeAvatar(req.user!.id);
+  res.status(204).send();
+}
+
+export async function removeBannerHandler(req: Request, res: Response) {
+  await usersService.removeBanner(req.user!.id);
+  res.status(204).send();
+}

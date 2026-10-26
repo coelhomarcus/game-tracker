@@ -10,6 +10,8 @@ import {
   getUserFavoritesHandler,
   getUserGameEntriesHandler,
   getUserPostsHandler,
+  removeAvatarHandler,
+  removeBannerHandler,
   searchHandler,
   unfollowHandler,
   updateProfileHandler,
@@ -35,6 +37,8 @@ usersRouter.use(requireAuth);
 usersRouter.patch('/me', validateBody(updateProfileSchema), updateProfileHandler);
 usersRouter.post('/me/avatar', avatarUpload.single('avatar'), uploadAvatarHandler);
 usersRouter.post('/me/banner', bannerUpload.single('banner'), uploadBannerHandler);
+usersRouter.delete('/me/avatar', removeAvatarHandler);
+usersRouter.delete('/me/banner', removeBannerHandler);
 usersRouter.get('/me/bookmarks', validateQuery(bookmarksQuerySchema), getMyBookmarksHandler);
 usersRouter.get('/me/likes', validateQuery(bookmarksQuerySchema), getMyLikesHandler);
 usersRouter.get('/search', validateQuery(searchUsersQuerySchema), searchHandler);

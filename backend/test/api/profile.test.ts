@@ -218,4 +218,63 @@ describe('profile and uploads', () => {
   it('upload without authentication: 401', async () => {
     assert.equal((await post('/users/me/avatar', null, upload('avatar', png(10, 10), 'image/png'))).status, 401);
   });
+
+  describe('removing the avatar and the banner', () => {
+    const del = (path: string, u: TestUser | null) => api.http('DELETE', path, u?.accessToken ?? null);
+    const settle = () => new Promise((res) => setTimeout(res, 200));
+
+    it('DELETE /users/me/avatar nulls the column, deletes the file and is 204', async () => {
+      const url = (await post('/users/me/avatar', b, upload('avatar', png(40, 40), 'image/png'))).body.avatarUrl as string;
+      assert.equal((await fetch(url)).status, 200);
+      assert.equal((await del('/users/me/avatar', b)).status, 204);
+      assert.equal((await me(b)).avatarUrl ?? null, null);
+      await settle();
+      assert.equal((await fetch(url)).status, 404, 'arquivo removido');
+    });
+
+    it('DELETE /users/me/banner nulls the column, deletes the file and is 204', async () => {
+      const url = (await post('/users/me/banner', b, upload('banner', png(60, 30), 'image/png'))).body.bannerUrl as string;
+      assert.equal((await fetch(url)).status, 200);
+      assert.equal((await del('/users/me/banner', b)).status, 204);
+      assert.equal((await me(b)).bannerUrl ?? null, null);
+      await settle();
+      assert.equal((await fetch(url)).status, 404, 'arquivo removido');
+    });
+
+    it('is idempotent: 204 again when there is nothing to remove', async () => {
+      assert.equal((await del('/users/me/avatar', b)).status, 204);
+      assert.equal((await del('/users/me/banner', b)).status, 204);
+    });
+
+    it('removing one image leaves the other untouched', async () => {
+      await post('/users/me/avatar', b, upload('avatar', png(40, 40), 'image/png'));
+      const banner = (await post('/users/me/banner', b, upload('banner', png(60, 30), 'image/png'))).body.bannerUrl as string;
+      assert.equal((await del('/users/me/avatar', b)).status, 204);
+      const m = await me(b);
+      assert.equal(m.avatarUrl ?? null, null);
+      assert.equal(m.bannerUrl, banner);
+      assert.equal((await del('/users/me/banner', b)).status, 204);
+    });
+
+    it('GET /users/:id shows null after removing both', async () => {
+      await post('/users/me/avatar', b, upload('avatar', png(40, 40), 'image/png'));
+      await post('/users/me/banner', b, upload('banner', png(60, 30), 'image/png'));
+      assert.equal((await del('/users/me/avatar', b)).status, 204);
+      assert.equal((await del('/users/me/banner', b)).status, 204);
+      const profile = (await api.http('GET', `/users/${b.user.id}`, a.accessToken)).body;
+      assert.equal(profile.avatarUrl ?? null, null);
+      assert.equal(profile.bannerUrl ?? null, null);
+    });
+
+    it('only touches the caller', async () => {
+      const url = (await post('/users/me/avatar', a, upload('avatar', png(40, 40), 'image/png'))).body.avatarUrl as string;
+      assert.equal((await del('/users/me/avatar', b)).status, 204);
+      assert.equal((await me()).avatarUrl, url);
+    });
+
+    it('without authentication: 401', async () => {
+      assert.equal((await del('/users/me/avatar', null)).status, 401);
+      assert.equal((await del('/users/me/banner', null)).status, 401);
+    });
+  });
 });
