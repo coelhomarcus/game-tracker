@@ -130,6 +130,15 @@ describe('identity', () => {
 
     expect(screen.queryByText('Segue você')).toBeNull();
   });
+
+  it('lets touches on its plain views through to the list it floats over', async () => {
+    await renderHeader({ followsMe: true });
+
+    expect(screen.getByTestId('profile-header').props.pointerEvents).toBe('box-none');
+    expect(screen.getByTestId('profile-actions').props.pointerEvents).toBe('box-none');
+    expect(screen.getByLabelText('Sem capa').props.pointerEvents).toBe('box-none');
+    expect(screen.getByText('Segue você').parent?.parent?.props.pointerEvents).toBe('box-none');
+  });
 });
 
 describe('actions', () => {

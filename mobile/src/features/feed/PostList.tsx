@@ -36,6 +36,10 @@ export type PostListProps = {
    * starts below it too.
    */
   topInset?: number;
+  /** The content is at least this tall (a pager's lists, so their shared header can collapse). */
+  minContentHeight?: number;
+  /** Where the list starts when it mounts. */
+  initialOffset?: number;
   /** A plain callback or a Reanimated scroll handler (`useAnimatedScrollHandler`). */
   onScroll?: AnimatedListProps['onScroll'];
   onContentSizeChange?: (width: number, height: number) => void;
@@ -55,6 +59,8 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     onPressPost,
     bottomInset,
     topInset = 0,
+    minContentHeight,
+    initialOffset,
     onScroll,
     onContentSizeChange,
   },
@@ -112,8 +118,9 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       styles.content,
       topInset > 0 && { paddingTop: topInset },
       bottomInset !== undefined && { paddingBottom: bottomInset },
+      minContentHeight !== undefined && { minHeight: minContentHeight },
     ],
-    [bottomInset, topInset],
+    [bottomInset, minContentHeight, topInset],
   );
 
   let footer: ReactElement | undefined;
@@ -150,6 +157,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       keyExtractor={keyExtractor}
       renderItem={renderItem}
       contentContainerStyle={contentStyle}
+      contentOffset={initialOffset ? { x: 0, y: initialOffset } : undefined}
       onScroll={onScroll}
       scrollEventThrottle={onScroll ? 16 : undefined}
       onContentSizeChange={onContentSizeChange}

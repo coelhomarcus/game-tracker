@@ -7,7 +7,13 @@ import { Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/env';
 
 import { profilesApi } from '../api';
-import { parseFollowListPage, parsePersonResult, parseUserProfile, type PickedImage } from '../types';
+import {
+  parseFollowListPage,
+  parsePersonResult,
+  parseUserProfile,
+  parseUserReplyPage,
+  type PickedImage,
+} from '../types';
 
 // React Native's FormData type lacks the readers that Node's implementation has.
 type ServerForm = { get(name: string): unknown; has(name: string): boolean };
@@ -130,6 +136,51 @@ describe('parseFollowListPage', () => {
   });
 });
 
+describe('parseUserReplyPage', () => {
+  it('parses each comment with the post it answers and the cursor', () => {
+    const page = parseUserReplyPage({
+      items: [
+        {
+          id: 'c1',
+          postId: 'p1',
+          userId: 'u1',
+          parentCommentId: null,
+          content: 'Também zerei!',
+          createdAt: '2026-10-20T11:55:00.000Z',
+          post: {
+            id: 'p1',
+            userId: 'u2',
+            content: 'Hades é ótimo',
+            user: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
+          },
+        },
+        { id: 'c2', postId: 'p2', parentCommentId: 'c9', content: 'Sim', createdAt: '2026-10-21T00:00:00.000Z' },
+      ],
+      nextCursor: 'next',
+    });
+
+    expect(page.nextCursor).toBe('next');
+    expect(page.items[0]).toEqual({
+      id: 'c1',
+      postId: 'p1',
+      parentCommentId: null,
+      content: 'Também zerei!',
+      createdAt: new Date('2026-10-20T11:55:00.000Z'),
+      post: {
+        id: 'p1',
+        author: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
+        content: 'Hades é ótimo',
+      },
+    });
+    // A row without its post still parses, pointing at the post id.
+    expect(page.items[1]).toMatchObject({ parentCommentId: 'c9', post: { id: 'p2', content: '' } });
+  });
+
+  it('maps a missing cursor to null', () => {
+    expect(parseUserReplyPage({ items: [] })).toEqual({ items: [], nextCursor: null });
+  });
+});
+
 describe('profilesApi', () => {
   it('get fetches and parses a profile', async () => {
     server.use(http.get(`${apiBaseUrl}/users/u1`, () => HttpResponse.json(profileJson)));
@@ -213,6 +264,24 @@ describe('profilesApi', () => {
     expect(seen[0]!.searchParams.has('cursor')).toBe(false);
     expect(seen[1]!.searchParams.get('cursor')).toBe('eyJhIjoxfQ');
     expect(page.items[0]).toMatchObject({ id: 'u1', followsMe: true, isFollowedByMe: false });
+  });
+
+  it('replies pages through the comments of a user', async () => {
+    const seen: URL[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/u1/comments`, ({ request }) => {
+        seen.push(new URL(request.url));
+        return HttpResponse.json({ items: [], nextCursor: 'abc' });
+      }),
+    );
+
+    const first = await profilesApi.replies('u1');
+    await profilesApi.replies('u1', 'abc');
+
+    expect(first).toEqual({ items: [], nextCursor: 'abc' });
+    expect(seen[0]!.searchParams.get('limit')).toBe('20');
+    expect(seen[0]!.searchParams.has('cursor')).toBe(false);
+    expect(seen[1]!.searchParams.get('cursor')).toBe('abc');
   });
 
   it('entries parses the entries of a user', async () => {

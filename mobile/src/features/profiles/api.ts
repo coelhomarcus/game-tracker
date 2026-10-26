@@ -8,11 +8,13 @@ import {
   parseFollowListPage,
   parsePersonResult,
   parseUserProfile,
+  parseUserReplyPage,
   type FollowListPage,
   type ImageKind,
   type PersonResult,
   type PickedImage,
   type UserProfile,
+  type UserReplyPage,
 } from './types';
 
 const PAGE_SIZE = 20;
@@ -60,6 +62,11 @@ export const profilesApi = {
   /** Who `id` follows, newest follow first. The cursor is opaque. */
   async following(id: string, cursor?: string): Promise<FollowListPage> {
     return parseFollowListPage(await api.get<Json>(`/users/${id}/following`, { query: pageQuery(cursor) }));
+  },
+
+  /** The comments `id` wrote, newest first, each with the post it answers. The cursor is opaque. */
+  async replies(id: string, cursor?: string): Promise<UserReplyPage> {
+    return parseUserReplyPage(await api.get<Json>(`/users/${id}/comments`, { query: pageQuery(cursor) }));
   },
 
   async entries(id: string): Promise<GameEntry[]> {

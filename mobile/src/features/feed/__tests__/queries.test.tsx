@@ -1767,3 +1767,53 @@ describe("final fix wave", () => {
     expect(client.getQueryState(["comments", "p1", "oldest"])).toBeUndefined();
   });
 });
+
+describe("own profile tabs", () => {
+  beforeEach(() => {
+    useSession.setState({
+      status: "signedIn",
+      user: { id: "me" } as ReturnType<typeof useSession.getState>["user"],
+    });
+  });
+
+  afterEach(() => {
+    useSession.setState({ status: "signedOut", user: null });
+  });
+
+  it("refreshes the own Curtidas list once a like settles", async () => {
+    mocked.setLike.mockResolvedValue(undefined);
+    const client = freshClient();
+    const spy = jest.spyOn(client, "invalidateQueries");
+    seedEverywhere(client, post("p1"));
+    const { result } = await renderHook(() => useTogglePostLike(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(post("p1"));
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userPosts", "me", "likes"], exact: true });
+  });
+
+  it("refreshes the own Respostas list after a comment is added or deleted", async () => {
+    mocked.addComment.mockResolvedValue(undefined);
+    mocked.deleteComment.mockResolvedValue(undefined);
+    const client = freshClient();
+    const spy = jest.spyOn(client, "invalidateQueries");
+    seedEverywhere(client, post("p1"));
+    const add = await renderHook(() => useAddComment("p1"), { wrapper: wrapperFor(client) });
+    const remove = await renderHook(() => useDeleteComment("p1"), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await add.result.current.mutateAsync({ content: "boa" });
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userReplies", "me"], exact: true });
+
+    spy.mockClear();
+    await act(async () => {
+      await remove.result.current.mutateAsync(comment("c1"));
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userReplies", "me"], exact: true });
+  });
+});

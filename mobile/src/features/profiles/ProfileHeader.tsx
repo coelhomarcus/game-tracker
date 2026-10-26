@@ -76,6 +76,11 @@ export type ProfileHeaderProps = {
   own?: boolean;
 };
 
+/**
+ * The header floats over the profile's lists. Its plain views let touches through
+ * (`pointerEvents="box-none"`), so a drag that starts on them scrolls the list below on Android;
+ * buttons, links and images still take their taps.
+ */
 export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
   const router = useRouter();
   const [viewing, setViewing] = useState<PostImage | null>(null);
@@ -89,7 +94,7 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
     router.push(`/users/${profile.id}/${kind}` as Href);
 
   return (
-    <View>
+    <View testID="profile-header" pointerEvents="box-none">
       {bannerUrl && profile.bannerUrl ? (
         <Pressable
           accessibilityRole="imagebutton"
@@ -103,11 +108,12 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           accessible
           accessibilityRole="image"
           accessibilityLabel="Sem capa"
+          pointerEvents="box-none"
           style={[styles.banner, styles.noBanner]}
         />
       )}
-      <View style={styles.body}>
-        <View testID="profile-actions" style={styles.buttons}>
+      <View pointerEvents="box-none" style={styles.body}>
+        <View testID="profile-actions" pointerEvents="box-none" style={styles.buttons}>
           {own ? (
             <Button
               label="Editar perfil"
@@ -133,20 +139,20 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           )}
           <ProfileMenu username={profile.username} />
         </View>
-        <View style={styles.identity}>
+        <View pointerEvents="box-none" style={styles.identity}>
           <Text size="_3xl" weight="bold" tone="high">
             {name}
           </Text>
-          <View style={styles.handleRow}>
+          <View pointerEvents="box-none" style={styles.handleRow}>
             {profile.followsMe ? (
-              <View style={styles.followsYou}>
+              <View pointerEvents="box-none" style={styles.followsYou}>
                 <Text size="sm">Segue você</Text>
               </View>
             ) : null}
             <Text tone="medium">{`@${profile.username}`}</Text>
           </View>
         </View>
-        <View style={styles.counts}>
+        <View pointerEvents="box-none" style={styles.counts}>
           <Count
             value={profile.followerCount}
             word={plural(profile.followerCount, 'seguidor')}
@@ -175,6 +181,7 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           accessible
           accessibilityRole="image"
           accessibilityLabel="Sem foto"
+          pointerEvents="box-none"
           style={styles.avatarRing}
         >
           <Avatar uri={null} name={name} size={AVATAR_SIZE} />

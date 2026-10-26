@@ -27,6 +27,15 @@ export {
   type OptionSheetSection,
 } from './OptionSheet';
 export { PressableScale, type PressableScaleProps } from './PressableScale';
+export {
+  COMPACT_HEADER_AFTER,
+  PagerWithHeader,
+  type PagerList,
+  type PagerScrollProps,
+  type PagerTab,
+  type PagerWithHeaderHandle,
+  type PagerWithHeaderProps,
+} from './PagerWithHeader';
 export { Pill, type PillProps } from './Pill';
 export { RatingStars, type RatingStarsProps } from './RatingStars';
 export { Screen, type ScreenProps } from './Screen';

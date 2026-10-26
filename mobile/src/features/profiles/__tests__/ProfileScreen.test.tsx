@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { FlatList } from 'react-native';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import UserRoute from '@/app/users/[id]';
@@ -11,14 +13,21 @@ import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
 import { ProfileScreen } from '../ProfileScreen';
-import { useProfile, useUserEntries, useUserFavorites, useUserPosts } from '../queries';
-import type { UserProfile } from '../types';
+import {
+  useProfile,
+  useUserEntries,
+  useUserFavorites,
+  useUserPosts,
+  useUserReplies,
+} from '../queries';
+import type { UserProfile, UserReply } from '../types';
 import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useProfile: jest.fn(),
   useUserPosts: jest.fn(),
+  useUserReplies: jest.fn(),
   useUserEntries: jest.fn(),
   useUserFavorites: jest.fn(),
   useToggleFollow: () => ({ mutate: jest.fn() }),
@@ -30,7 +39,12 @@ jest.mock('@/features/feed/queries', () => ({
   ).postControlHooks(),
 }));
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
+const mockRouter = {
+  push: jest.fn(),
+  replace: jest.fn(),
+  back: jest.fn(),
+  canGoBack: jest.fn(() => true),
+};
 const mockNavigation = { addListener: jest.fn(), isFocused: jest.fn() };
 const mockParams: { id?: string } = {};
 const mockScreenOptions = jest.fn();
@@ -135,6 +149,7 @@ const refetchProfile = jest.fn();
 const refetchEntries = jest.fn();
 const refetchFavorites = jest.fn();
 const refetchPosts = jest.fn();
+const refetchReplies = jest.fn();
 
 function mockProfile(overrides: Record<string, unknown> = {}) {
   jest.mocked(useProfile).mockReturnValue({
@@ -178,6 +193,20 @@ function mockPosts(items: Post[], overrides: Record<string, unknown> = {}) {
   } as unknown as ReturnType<typeof useUserPosts>);
 }
 
+function mockReplies(items: UserReply[], overrides: Record<string, unknown> = {}) {
+  jest.mocked(useUserReplies).mockReturnValue({
+    data: { pages: [{ items, nextCursor: null }], pageParams: [undefined] },
+    isPending: false,
+    isError: false,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    isFetchNextPageError: false,
+    fetchNextPage: jest.fn(),
+    refetch: refetchReplies,
+    ...overrides,
+  } as unknown as ReturnType<typeof useUserReplies>);
+}
+
 function signInAs(id: string) {
   useSession.setState({
     status: 'signedIn',
@@ -185,13 +214,17 @@ function signInAs(id: string) {
   });
 }
 
+/** Set by the suites that run on fake timers. */
+let fakeTimers = false;
+
 async function settleGrid() {
-  const grid = screen.queryByTestId('cover-grid');
+  const grid = screen.queryByTestId('cover-grid', { includeHiddenElements: true });
   if (!grid) return;
   await fireEvent(grid, 'layout', { nativeEvent: { layout: { width: 358, height: 800 } } });
   // FlashList flags itself as loaded from a zero-delay timer; let it settle inside act.
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (fakeTimers) jest.advanceTimersByTime(0);
+    else await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
@@ -202,6 +235,16 @@ async function renderProfile(userId = 'u1', tabRoot = false) {
     </SafeAreaProvider>,
   );
   await settleGrid();
+}
+
+/** Measures the pager's header (the part above the tab bar) and its 48 dp tab bar. */
+async function layOutHeader(height: number) {
+  await fireEvent(screen.getByTestId('pager-header-content'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 358, height } },
+  });
+  await fireEvent(screen.getByTestId('pager-tab-bar'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 358, height: 48 } },
+  });
 }
 
 async function openTab(name: string) {
@@ -227,7 +270,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockNavigation.addListener.mockReturnValue(jest.fn());
   mockNavigation.isFocused.mockReturnValue(true);
-  for (const refetch of [refetchProfile, refetchEntries, refetchFavorites, refetchPosts]) {
+  for (const refetch of [refetchProfile, refetchEntries, refetchFavorites, refetchPosts, refetchReplies]) {
     refetch.mockResolvedValue({ isError: false });
   }
   delete mockParams.id;
@@ -236,6 +279,7 @@ beforeEach(() => {
   mockEntries(ENTRIES);
   mockFavorites([]);
   mockPosts([]);
+  mockReplies([]);
   mockStart();
   startConversation.mockResolvedValue('c9');
 });
@@ -522,32 +566,66 @@ describe('Jogos', () => {
   });
 });
 
-describe('Atividade and Posts', () => {
-  it('requests the activity of the user and shows it', async () => {
-    mockPosts([post({ id: 'a1', type: 'activity', content: 'começou a jogar Hades' })]);
+describe('tabs', () => {
+  it('lists Jogos, Posts, Respostas and Mídia on somebody else', async () => {
     await renderProfile('u1');
-    await openTab('Atividade');
 
-    expect(useUserPosts).toHaveBeenLastCalledWith('u1', 'activity');
-    expect(screen.getByText(/começou a jogar Hades/)).toBeOnTheScreen();
+    const tabs = within(screen.getByTestId('pager-tab-bar'))
+      .getAllByRole('tab')
+      .map((tab) => tab.props.accessibilityLabel);
+    expect(tabs).toEqual(['Jogos', 'Posts', 'Respostas', 'Mídia']);
+    expect(screen.queryByRole('tab', { name: 'Curtidas' })).toBeNull();
   });
 
-  it('requests the written posts of the user and shows them', async () => {
+  it('adds Curtidas on the own profile', async () => {
+    signInAs('u1');
+    await renderProfile('u1');
+
+    const tabs = within(screen.getByTestId('pager-tab-bar'))
+      .getAllByRole('tab')
+      .map((tab) => tab.props.accessibilityLabel);
+    expect(tabs).toEqual(['Jogos', 'Posts', 'Respostas', 'Mídia', 'Curtidas']);
+  });
+
+  it('loads a tab only once it is opened', async () => {
+    await renderProfile('u1');
+    expect(useUserPosts).not.toHaveBeenCalled();
+    expect(useUserReplies).not.toHaveBeenCalled();
+
+    await openTab('Respostas');
+    expect(useUserReplies).toHaveBeenCalledWith('u1');
+    expect(useUserPosts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['own', 'u1'],
+    ['other', 'me'],
+  ])('offers the compose button on the %s profile', async (_kind, signedIn) => {
+    signInAs(signedIn);
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Publicar' }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/posts/new');
+  });
+
+  it('keeps the profile header above every tab', async () => {
+    await renderProfile();
+    await openTab('Respostas');
+
+    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
+  });
+});
+
+describe('Posts', () => {
+  it('requests the posts and reposts of the user and shows them', async () => {
     mockPosts([post()]);
     await renderProfile('u1');
     await openTab('Posts');
 
-    expect(useUserPosts).toHaveBeenLastCalledWith('u1', 'post');
+    expect(useUserPosts).toHaveBeenLastCalledWith('u1', 'posts');
     expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
     expect(screen.getByRole('tab', { name: 'Posts', selected: true })).toBeOnTheScreen();
-  });
-
-  it('keeps the profile header above the list', async () => {
-    await renderProfile();
-    await openTab('Posts');
-
-    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
   });
 
   it('opens a post', async () => {
@@ -559,13 +637,22 @@ describe('Atividade and Posts', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/posts/p1');
   });
 
-  it('has empty copy for each list', async () => {
-    await renderProfile();
-
-    await openTab('Atividade');
-    expect(screen.getByText('Ainda não há atividades')).toBeOnTheScreen();
+  it('says so when there are no posts', async () => {
+    await renderProfile('u1');
     await openTab('Posts');
-    expect(screen.getByText('Ainda não há posts')).toBeOnTheScreen();
+
+    expect(screen.getByText('Nenhum post ainda')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Escrever um post' })).toBeNull();
+  });
+
+  it('invites the owner to write the first post', async () => {
+    signInAs('u1');
+    await renderProfile('u1');
+    await openTab('Posts');
+
+    expect(screen.getByText('Nenhum post ainda')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Escrever um post' }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/posts/new');
   });
 
   it('shows a spinner while the list loads and a retry when it fails', async () => {
@@ -573,11 +660,11 @@ describe('Atividade and Posts', () => {
     await renderProfile();
     await openTab('Posts');
     expect(screen.getByLabelText('Carregando')).toBeOnTheScreen();
-    expect(screen.queryByText('Ainda não há posts')).toBeNull();
+    expect(screen.queryByText('Nenhum post ainda')).toBeNull();
 
     mockPosts([], { data: undefined, isPending: false, isError: true });
-    await openTab('Atividade');
-    expect(screen.getByText('Não foi possível carregar a atividade')).toBeOnTheScreen();
+    await openTab('Mídia');
+    expect(screen.getByText('Não foi possível carregar a mídia')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
     expect(refetchPosts).toHaveBeenCalledTimes(1);
   });
@@ -607,6 +694,235 @@ describe('Atividade and Posts', () => {
     });
 
     expect(showToast).toHaveBeenCalledWith('Não foi possível atualizar o perfil');
+  });
+});
+
+describe('Respostas', () => {
+  const reply: UserReply = {
+    id: 'c1',
+    postId: 'p7',
+    parentCommentId: null,
+    content: 'Também zerei!',
+    createdAt: new Date('2026-10-20T11:55:00.000Z'),
+    post: {
+      id: 'p7',
+      author: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
+      content: 'Hades é o melhor roguelike',
+    },
+  };
+
+  it('shows each comment with the post it answers and opens that post', async () => {
+    mockReplies([reply]);
+    await renderProfile('u1');
+    await openTab('Respostas');
+
+    expect(useUserReplies).toHaveBeenLastCalledWith('u1');
+    const row = screen.getByTestId('profile-reply');
+    expect(within(row).getByText('Também zerei!')).toBeOnTheScreen();
+    expect(within(row).getByText('Respondendo ao post de @bia')).toBeOnTheScreen();
+    expect(within(row).getByText('Hades é o melhor roguelike')).toBeOnTheScreen();
+    expect(within(row).getByText('Ana Souza')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: /^Resposta de Ana Souza/ }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/posts/p7');
+  });
+
+  it('says so when there are no replies', async () => {
+    await renderProfile('u1');
+    await openTab('Respostas');
+
+    expect(screen.getByText('Nenhuma resposta ainda')).toBeOnTheScreen();
+  });
+
+  it('loads more replies at the end of the list', async () => {
+    const fetchNextPage = jest.fn();
+    mockReplies([reply], { hasNextPage: true, fetchNextPage });
+    await renderProfile('u1');
+    await openTab('Respostas');
+
+    await fireEvent(screen.getByTestId('profile-replies'), 'endReached');
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a retry when the replies fail to load', async () => {
+    mockReplies([], { data: undefined, isError: true });
+    await renderProfile('u1');
+    await openTab('Respostas');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(refetchReplies).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Mídia', () => {
+  it('requests the posts with images of the user', async () => {
+    mockPosts([post({ id: 'm1', content: 'Print do chefe final' })]);
+    await renderProfile('u1');
+    await openTab('Mídia');
+
+    expect(useUserPosts).toHaveBeenLastCalledWith('u1', 'media');
+    expect(screen.getByText('Print do chefe final')).toBeOnTheScreen();
+  });
+
+  it('says so when there is no media', async () => {
+    await renderProfile('u1');
+    await openTab('Mídia');
+
+    expect(screen.getByText('Nenhuma mídia ainda')).toBeOnTheScreen();
+  });
+});
+
+describe('Curtidas', () => {
+  it('lists the posts the user liked on the own profile', async () => {
+    signInAs('u1');
+    mockPosts([post({ id: 'l1', content: 'Um post curtido' })]);
+    await renderProfile('u1');
+    await openTab('Curtidas');
+
+    expect(useUserPosts).toHaveBeenLastCalledWith('u1', 'likes');
+    expect(screen.getByText('Um post curtido')).toBeOnTheScreen();
+  });
+
+  it('says so when nothing is liked yet', async () => {
+    signInAs('u1');
+    await renderProfile('u1');
+    await openTab('Curtidas');
+
+    expect(screen.getByText('Nenhuma curtida ainda')).toBeOnTheScreen();
+  });
+});
+
+describe('pull to refresh on every tab', () => {
+  it.each(['Posts', 'Respostas', 'Mídia', 'Curtidas'])(
+    '%s refetches the profile and its list, with the spinner below the header',
+    async (tab) => {
+      signInAs('u1');
+      await renderProfile('u1');
+      await layOutHeader(400);
+      await openTab(tab);
+
+      const list = screen.getByTestId(tab === 'Respostas' ? 'profile-replies' : 'post-list');
+      const control = list.props.refreshControl;
+      expect(control.props.progressViewOffset).toBe(400 + 48);
+      await act(async () => control.props.onRefresh());
+
+      expect(refetchProfile).toHaveBeenCalledTimes(1);
+      expect(tab === 'Respostas' ? refetchReplies : refetchPosts).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('Jogos puts its spinner below the header too', async () => {
+    await renderProfile();
+    await layOutHeader(400);
+    await settleGrid();
+
+    expect(findRefreshControl(screen.toJSON()).props.progressViewOffset).toBe(400 + 48);
+  });
+});
+
+describe('collapsing header', () => {
+  type Style = { opacity?: number; transform?: { translateY: number }[] };
+  // The types describe the web stub, which takes no argument; jest runs the native helper.
+  const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => Style;
+
+  async function scrollPosts(y: number) {
+    await fireEvent.scroll(screen.getByTestId('post-list'), {
+      nativeEvent: { contentOffset: { x: 0, y } },
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(100);
+    });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    fakeTimers = true;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    fakeTimers = false;
+  });
+
+  it('collapses under the compact header of somebody else, which fades in with back, name and follow', async () => {
+    mockPosts([post()]);
+    await renderProfile('u1');
+    await layOutHeader(400);
+    await fireEvent(screen.getByTestId('pager-compact-header', { includeHiddenElements: true }), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 358, height: 48 } },
+    });
+    await openTab('Posts');
+
+    await scrollPosts(600);
+
+    const header = screen.getByTestId('pager-header');
+    expect(readAnimatedStyle(header).transform?.[0].translateY).toBeCloseTo(-(400 - 48));
+    const compact = within(screen.getByTestId('pager-compact-header'));
+    expect(compact.getByRole('header', { name: 'Ana Souza' })).toBeOnTheScreen();
+    expect(compact.getByText('@ana')).toBeOnTheScreen();
+    expect(compact.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
+
+    await fireEvent.press(compact.getByRole('button', { name: 'Voltar' }));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the compact follow out once the user follows them', async () => {
+    mockProfile({ data: { ...profile, isFollowedByMe: true } });
+    mockPosts([post()]);
+    await renderProfile('u1');
+    await openTab('Posts');
+    await scrollPosts(600);
+
+    const compact = within(screen.getByTestId('pager-compact-header'));
+    expect(compact.getByRole('header', { name: 'Ana Souza' })).toBeOnTheScreen();
+    expect(compact.queryByRole('button', { name: /Seguir|Deixar de seguir/ })).toBeNull();
+  });
+
+  it('collapses the own profile under the Perfil header, with no compact header', async () => {
+    signInAs('u1');
+    mockPosts([post()]);
+    await renderProfile('u1', true);
+    await layOutHeader(400);
+    await openTab('Posts');
+    await scrollPosts(600);
+
+    expect(screen.queryByTestId('pager-compact-header', { includeHiddenElements: true })).toBeNull();
+    expect(
+      readAnimatedStyle(screen.getByTestId('pager-header')).transform?.[0].translateY,
+    ).toBeCloseTo(-400);
+  });
+});
+
+describe('Perfil tab', () => {
+  it('scrolls the list on screen back to the top when the Perfil tab is pressed again', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    signInAs('u1');
+    mockPosts([post()]);
+    await renderProfile('u1', true);
+    await openTab('Posts');
+    scrollToOffset.mockClear();
+
+    const [, listener] = mockNavigation.addListener.mock.calls[0];
+    await act(async () => listener());
+
+    expect(scrollToOffset).toHaveBeenCalledTimes(1);
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    scrollToOffset.mockRestore();
+  });
+
+  it('ignores the Perfil tab press while another screen is on top', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    signInAs('u1');
+    await renderProfile('u1', true);
+    await openTab('Posts');
+    scrollToOffset.mockClear();
+    mockNavigation.isFocused.mockReturnValue(false);
+
+    const [, listener] = mockNavigation.addListener.mock.calls[0];
+    await act(async () => listener());
+
+    expect(scrollToOffset).not.toHaveBeenCalled();
+    scrollToOffset.mockRestore();
   });
 });
 

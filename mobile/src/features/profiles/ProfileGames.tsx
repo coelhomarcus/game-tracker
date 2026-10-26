@@ -1,16 +1,17 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useMemo, useState, type ReactElement, type Ref } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { CoverGrid, EmptyState, GameCover, Tabs, Text } from '@/components';
+import { CoverGrid, EmptyState, GameCover, Tabs, Text, type PagerScrollProps } from '@/components';
 import type { Game } from '@/features/games/types';
 import { buildLibraryOverview, type LibraryGroup } from '@/features/library/groups';
 import { LibraryCard } from '@/features/library/LibraryCard';
 import { STATUSES, statusLabel } from '@/features/library/status';
 import { colors, space, type GameStatus } from '@/theme/tokens';
 
-import { refreshAll, ScrollToTopOnTabPress, type Refetch } from './profileList';
+import { refreshAll, type Refetch } from './profileList';
+import { PROFILE_LIST_BOTTOM_INSET } from './ProfilePosts';
 import { useUserEntries, useUserFavorites } from './queries';
 
 const FAVORITE_COVER_WIDTH = 80;
@@ -20,10 +21,8 @@ type StatusTab = GameStatus | 'all';
 export type ProfileGamesProps = {
   userId: string;
   own: boolean;
-  /** Profile header and tabs, shown above the collection. */
-  top: ReactElement;
-  /** Whether this is the Perfil tab itself, so pressing its button scrolls back to the top. */
-  tabRoot: boolean;
+  /** From the profile's pager: the grid floats under its shared header. */
+  scroll: PagerScrollProps;
   refetchProfile: Refetch;
 };
 
@@ -57,13 +56,12 @@ function Favorites({ games, onPress }: FavoritesProps) {
 }
 
 /** The collection of a user: favorites, a tab per status and a grid of covers. */
-export function ProfileGames({ userId, own, top, tabRoot, refetchProfile }: ProfileGamesProps) {
+export function ProfileGames({ userId, own, scroll, refetchProfile }: ProfileGamesProps) {
   const router = useRouter();
   const entries = useUserEntries(userId);
   const favorites = useUserFavorites(userId);
   const [status, setStatus] = useState<GameStatus | null>(null);
   const [pulling, setPulling] = useState(false);
-  const listRef = useRef<FlashListRef<LibraryGroup>>(null);
   const { data, refetch: refetchEntries } = entries;
   const { refetch: refetchFavorites } = favorites;
 
@@ -93,7 +91,6 @@ export function ProfileGames({ userId, own, top, tabRoot, refetchProfile }: Prof
 
   const header = (
     <View style={styles.header}>
-      {top}
       <Favorites games={favorites.data ?? []} onPress={openGame} />
       {hasEntries ? (
         <View style={styles.statusTabs}>
@@ -130,8 +127,7 @@ export function ProfileGames({ userId, own, top, tabRoot, refetchProfile }: Prof
   }
 
   return (
-    <>
-      <CoverGrid<LibraryGroup>
+    <CoverGrid<LibraryGroup>
         data={overview.groups}
         keyExtractor={(group) => group.game.id}
         renderItem={(group, width) => (
@@ -145,20 +141,23 @@ export function ProfileGames({ userId, own, top, tabRoot, refetchProfile }: Prof
           />
         )}
         inset={space.lg}
-        listRef={listRef}
+        listRef={scroll.attachList as Ref<FlashListRef<LibraryGroup>>}
+        onScroll={scroll.onScroll}
+        topInset={scroll.topInset}
+        bottomInset={PROFILE_LIST_BOTTOM_INSET}
+        minContentHeight={scroll.minContentHeight}
+        initialOffset={scroll.initialOffset}
         onRefresh={() => void refresh()}
         refreshing={pulling}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
       />
-      {tabRoot ? <ScrollToTopOnTabPress listRef={listRef} /> : null}
-    </>
   );
 }
 
 const styles = StyleSheet.create({
   // The grid pads its content by `space.lg`; the profile header reaches the screen edges.
-  header: { marginHorizontal: -space.lg, gap: space.md, paddingBottom: space.md },
+  header: { marginHorizontal: -space.lg, gap: space.md, paddingTop: space.md, paddingBottom: space.md },
   favorites: { gap: space.sm },
   sectionTitle: { paddingHorizontal: space.lg },
   favoritesRow: { gap: space.sm, paddingHorizontal: space.lg },

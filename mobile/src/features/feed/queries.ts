@@ -10,7 +10,11 @@ import {
 import { useCallback } from "react";
 
 import { authErrorMessage } from "@/features/auth";
-import { invalidateOwnProfile } from "@/features/profiles/ownProfile";
+import {
+  invalidateOwnLikes,
+  invalidateOwnProfile,
+  invalidateOwnReplies,
+} from "@/features/profiles/ownProfile";
 import { showToast } from "@/lib/toast";
 
 import { feedApi, type CreatePostInput } from "./api";
@@ -148,6 +152,10 @@ const refreshOwnProfile: Refresh = (client) => {
 const refreshBookmarks: Refresh = (client) => {
   void client.invalidateQueries({ queryKey: ["bookmarks"] });
 };
+/** The own profile's Curtidas tab lists what the user liked. */
+const refreshOwnLikes: Refresh = (client) => {
+  void invalidateOwnLikes(client);
+};
 
 /**
  * Refreshes that wait for every toggle to end: a refetch started while a toggle is still in
@@ -205,9 +213,12 @@ function usePostToggle(
   });
 }
 
-/** Likes or unlikes the post the user saw (the cached copy the parent passes). */
+/**
+ * Likes or unlikes the post the user saw (the cached copy the parent passes); the own Curtidas
+ * tab is refreshed afterwards.
+ */
 export function useTogglePostLike() {
-  return usePostToggle("like");
+  return usePostToggle("like", refreshOwnLikes);
 }
 
 /** Reposts or undoes the repost; the own profile lists it, so it is refreshed afterwards. */
@@ -276,6 +287,8 @@ export function useAddComment(postId: string) {
         ...p,
         commentCount: p.commentCount + 1,
       }));
+      // The own profile lists the comment under Respostas.
+      void invalidateOwnReplies(client);
       return client.invalidateQueries({ queryKey: ["comments", postId] });
     },
   });
@@ -349,6 +362,7 @@ export function useDeleteComment(postId: string) {
         commentCount: Math.max(0, p.commentCount - removed),
       }));
       showToast("Comentário apagado");
+      void invalidateOwnReplies(client);
       whenIdle(client);
     },
     onError: (error) => showToast(authErrorMessage(error)),
