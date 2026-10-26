@@ -1,12 +1,13 @@
 import { Stack } from 'expo-router';
 
-import { CreatePostScreen } from '@/features/feed/CreatePostScreen';
+import { Composer } from '@/features/feed/composer/Composer';
+import { COMPOSER_SCREEN_OPTIONS } from '@/features/feed/composer/presentation';
 
 export default function NewPostScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Nova publicação' }} />
-      <CreatePostScreen />
+      <Stack.Screen options={COMPOSER_SCREEN_OPTIONS} />
+      <Composer />
     </>
   );
 }
