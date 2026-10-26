@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/env';
 
 import { profilesApi } from '../api';
-import { parsePersonResult, parseUserProfile, type PickedImage } from '../types';
+import { parseFollowListPage, parsePersonResult, parseUserProfile, type PickedImage } from '../types';
 
 // React Native's FormData type lacks the readers that Node's implementation has.
 type ServerForm = { get(name: string): unknown; has(name: string): boolean };
@@ -30,6 +30,7 @@ const profileJson = {
   followingCount: 5,
   gameEntryCount: 6,
   isFollowedByMe: true,
+  followsMe: true,
 };
 
 const userJson = { id: 'u1', username: 'ana', name: 'Ana', avatarUrl: null };
@@ -55,6 +56,7 @@ describe('parseUserProfile', () => {
       followingCount: 5,
       entryCount: 6,
       isFollowedByMe: true,
+      followsMe: true,
     });
   });
 
@@ -74,6 +76,7 @@ describe('parseUserProfile', () => {
       followingCount: 0,
       entryCount: 0,
       isFollowedByMe: false,
+      followsMe: false,
     });
   });
 });
@@ -96,6 +99,34 @@ describe('parsePersonResult', () => {
       bio: null,
       isFollowedByMe: false,
     });
+  });
+});
+
+describe('parseFollowListPage', () => {
+  it('parses people with both relation flags and the cursor', () => {
+    const page = parseFollowListPage({
+      items: [
+        { ...userJson, bio: 'Oi', isFollowedByMe: true, followsMe: true },
+        { id: 'u2', username: 'bia' },
+      ],
+      nextCursor: 'next',
+    });
+
+    expect(page.nextCursor).toBe('next');
+    expect(page.items[0]).toEqual({
+      id: 'u1',
+      username: 'ana',
+      name: 'Ana',
+      avatarUrl: null,
+      bio: 'Oi',
+      isFollowedByMe: true,
+      followsMe: true,
+    });
+    expect(page.items[1]).toMatchObject({ name: null, bio: null, isFollowedByMe: false, followsMe: false });
+  });
+
+  it('maps a missing cursor to null', () => {
+    expect(parseFollowListPage({ items: [] })).toEqual({ items: [], nextCursor: null });
   });
 });
 
@@ -141,6 +172,47 @@ describe('profilesApi', () => {
     expect(seen[0]!.searchParams.has('cursor')).toBe(false);
     expect(seen[1]!.searchParams.get('type')).toBe('post');
     expect(seen[1]!.searchParams.get('cursor')).toBe('abc');
+  });
+
+  it('userPosts sends the media filter and cursor only when given', async () => {
+    const seen: URL[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/u1/posts`, ({ request }) => {
+        seen.push(new URL(request.url));
+        return HttpResponse.json({ items: [], nextCursor: null });
+      }),
+    );
+
+    await profilesApi.userPosts('u1');
+    await profilesApi.userPosts('u1', { filter: 'media', cursor: 'abc' });
+
+    expect(seen[0]!.searchParams.get('limit')).toBe('20');
+    expect(seen[0]!.searchParams.has('filter')).toBe(false);
+    expect(seen[0]!.searchParams.has('type')).toBe(false);
+    expect(seen[0]!.searchParams.has('cursor')).toBe(false);
+    expect(seen[1]!.searchParams.get('filter')).toBe('media');
+    expect(seen[1]!.searchParams.get('cursor')).toBe('abc');
+  });
+
+  it.each(['followers', 'following'] as const)('%s pages through the opaque cursor', async (kind) => {
+    const seen: URL[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/u1/${kind}`, ({ request }) => {
+        seen.push(new URL(request.url));
+        return HttpResponse.json({
+          items: [{ ...userJson, bio: null, isFollowedByMe: false, followsMe: true }],
+          nextCursor: 'eyJhIjoxfQ',
+        });
+      }),
+    );
+
+    const page = await profilesApi[kind]('u1');
+    await profilesApi[kind]('u1', page.nextCursor ?? undefined);
+
+    expect(seen[0]!.searchParams.get('limit')).toBe('20');
+    expect(seen[0]!.searchParams.has('cursor')).toBe(false);
+    expect(seen[1]!.searchParams.get('cursor')).toBe('eyJhIjoxfQ');
+    expect(page.items[0]).toMatchObject({ id: 'u1', followsMe: true, isFollowedByMe: false });
   });
 
   it('entries parses the entries of a user', async () => {

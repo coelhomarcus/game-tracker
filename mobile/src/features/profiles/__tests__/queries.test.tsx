@@ -57,6 +57,7 @@ function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile 
     followingCount: 2,
     entryCount: 1,
     isFollowedByMe: false,
+    followsMe: false,
     ...overrides,
   };
 }

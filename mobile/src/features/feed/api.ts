@@ -116,6 +116,11 @@ export const feedApi = {
     return parsePostPage(await api.get<Json>('/users/me/bookmarks', { query: pageQuery(cursor) }));
   },
 
+  /** The posts the signed-in user liked, newest like first. The cursor is opaque. */
+  async myLikes(cursor?: string): Promise<PostPage> {
+    return parsePostPage(await api.get<Json>('/users/me/likes', { query: pageQuery(cursor) }));
+  },
+
   /**
    * Posts whose text contains `term`, newest first. The server needs 2 to 100 characters after
    * trimming; the term is trimmed here, the length is the caller's to check.

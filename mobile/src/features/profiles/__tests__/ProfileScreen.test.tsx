@@ -63,6 +63,7 @@ const profile: UserProfile = {
   followingCount: 3,
   entryCount: 4,
   isFollowedByMe: false,
+  followsMe: false,
 };
 
 function game(id: string, igdbId: number, name: string): Game {

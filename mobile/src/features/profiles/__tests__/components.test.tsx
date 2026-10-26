@@ -26,6 +26,7 @@ const profile: UserProfile = {
   followingCount: 3,
   entryCount: 40,
   isFollowedByMe: false,
+  followsMe: false,
 };
 
 const person: PersonResult = {
