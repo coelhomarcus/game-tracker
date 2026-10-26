@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -103,6 +103,8 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const pagerRef = useRef<PagerWithHeaderHandle>(null);
+  // The compact header is up: the overlay back button under it is not read out twice.
+  const [collapsed, setCollapsed] = useState(false);
   const { id, username, name, avatarUrl } = profile;
   const author = useMemo(() => ({ id, username, name, avatarUrl }), [id, username, name, avatarUrl]);
 
@@ -153,13 +155,14 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
     <View style={styles.body}>
       <PagerWithHeader
         ref={pagerRef}
-        header={<ProfileHeader profile={profile} own={own} />}
+        header={<ProfileHeader profile={profile} own={own} backHidden={collapsed} />}
         tabs={tabs}
         initialTab="games"
         // The own profile sits under the Perfil tab's header, which stays; a pushed profile is
         // edge-to-edge and gets the compact header once it scrolls.
         compactHeader={own ? undefined : <ProfileCompactHeader profile={profile} />}
         statusBarHeight={own ? 0 : insets.top}
+        onCompactHeaderChange={setCollapsed}
       />
       <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
       {tabRoot ? <ScrollToTopOnTabPress listRef={pagerRef} /> : null}

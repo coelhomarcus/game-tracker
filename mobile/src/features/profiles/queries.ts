@@ -195,6 +195,17 @@ function refreshProfiles(client: QueryClient, id: string) {
   }
 }
 
+export type FollowVariables = {
+  id: string;
+  follow: boolean;
+  /**
+   * The person's name, to confirm a follow with a toast ("Seguindo <nome>") once the server has
+   * it. The hook shows it, so it appears even when the button that asked unmounts on the
+   * optimistic write (the compact header's Seguir does).
+   */
+  announce?: string;
+};
+
 /**
  * Optimistic everywhere the user is cached. Requests of one user run in order; a failure
  * reverts only that user, and only once no later tap of the same user is pending.
@@ -212,7 +223,7 @@ export function useToggleFollow() {
     // profile's "following" count changes with every follow, so both are refetched once.
     if (!followLanes.has(lane)) refreshProfiles(client, id);
   };
-  return useMutation<void, Error, { id: string; follow: boolean }>({
+  return useMutation<void, Error, FollowVariables>({
     mutationFn: ({ id, follow }) =>
       followLanes.run(followLane(id), () => profilesApi.setFollow(id, follow)),
     onMutate: async ({ id, follow }) => {
@@ -239,8 +250,9 @@ export function useToggleFollow() {
       ]);
       setFollowEverywhere(client, id, follow);
     },
-    onSuccess: (_data, { id, follow }) => {
+    onSuccess: (_data, { id, follow, announce }) => {
       settle(id, follow);
+      if (follow && announce !== undefined) showToast(`Seguindo ${announce}`);
       return client.invalidateQueries({ queryKey: ['feed', 'following'] });
     },
     onError: (error, { id, follow }) => settle(id, follow, error),

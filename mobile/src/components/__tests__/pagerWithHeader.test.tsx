@@ -72,9 +72,11 @@ describe('PagerWithHeader', () => {
     readAnimatedStyle(screen.getByTestId('pager-header')).transform?.[0].translateY ?? 0;
 
   const received: Record<string, PagerScrollProps> = {};
+  const renders: Record<string, number> = {};
 
   function List({ name, scroll }: { name: string; scroll: PagerScrollProps }) {
     received[name] = scroll;
+    renders[name] = (renders[name] ?? 0) + 1;
     const { attachList, onScroll, topInset, minContentHeight, initialOffset } = scroll;
     return (
       <Animated.FlatList
@@ -113,9 +115,15 @@ describe('PagerWithHeader', () => {
   }
 
   async function renderPager(
-    options: { compact?: boolean; statusBarHeight?: number; ref?: React.Ref<PagerWithHeaderHandle> } = {},
+    options: {
+      compact?: boolean;
+      statusBarHeight?: number;
+      ref?: React.Ref<PagerWithHeaderHandle>;
+      onCompactHeaderChange?: (shown: boolean) => void;
+      measure?: boolean;
+    } = {},
   ) {
-    const { compact = true, statusBarHeight = 0, ref } = options;
+    const { compact = true, statusBarHeight = 0, ref, onCompactHeaderChange, measure = true } = options;
     await render(
       <SafeAreaProvider initialMetrics={metrics}>
         <PagerWithHeader
@@ -129,9 +137,11 @@ describe('PagerWithHeader', () => {
           initialTab="a"
           compactHeader={compact ? <Text>Compacto</Text> : undefined}
           statusBarHeight={statusBarHeight}
+          onCompactHeaderChange={onCompactHeaderChange}
         />
       </SafeAreaProvider>,
     );
+    if (!measure) return;
     await layout('pager-header-content', 300);
     await layout('pager-tab-bar', 48);
     if (compact) {
@@ -155,6 +165,7 @@ describe('PagerWithHeader', () => {
     jest.useRealTimers();
     scrollToOffset.mockRestore();
     for (const key of Object.keys(received)) delete received[key];
+    for (const key of Object.keys(renders)) delete renders[key];
   });
 
   it('pads every list by the header and the tab bar and keeps it tall enough to collapse', async () => {
@@ -310,5 +321,73 @@ describe('PagerWithHeader', () => {
     expect(screen.getByText('b 1')).toBeOnTheScreen();
     expect(screen.queryByText('a 1')).toBeNull();
     expect(screen.getByText('a 1', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('keeps the pages invisible until the header is measured', async () => {
+    await renderPager({ measure: false });
+    expect(screen.getByTestId('pager')).toHaveStyle({ opacity: 0 });
+
+    await layout('pager-header-content', 300);
+    expect(screen.getByTestId('pager')).not.toHaveStyle({ opacity: 0 });
+  });
+
+  it('switches pages with a swipe: the neighbour mounts in place and takes the header', async () => {
+    await renderPager();
+    await scroll('a', 600);
+
+    // The drag mounts the neighbour at the collapsed offset before it comes into view.
+    await fireEvent(screen.getByTestId('pager'), 'scrollBeginDrag', {
+      nativeEvent: { contentOffset: { x: 0, y: 0 } },
+    });
+    expect(received.b?.initialOffset).toBe(220);
+    expect(received.b?.isFocused).toBe(false);
+
+    await fireEvent(screen.getByTestId('pager'), 'momentumScrollEnd', {
+      nativeEvent: { contentOffset: { x: 360, y: 0 } },
+    });
+
+    expect(screen.getByRole('tab', { name: 'Segunda', selected: true })).toBeOnTheScreen();
+    expect(received.b?.isFocused).toBe(true);
+    await scroll('b', 120);
+    expect(translateY()).toBeCloseTo(-120);
+    await scroll('a', 900);
+    expect(translateY()).toBeCloseTo(-120);
+  });
+
+  it('syncs the neighbour already mounted when a swipe starts with the header partly open', async () => {
+    await renderPager();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
+    await scroll('b', 900);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Primeira' }));
+    await scroll('a', 40);
+    scrollToOffset.mockClear();
+
+    await fireEvent(screen.getByTestId('pager'), 'scrollBeginDrag', {
+      nativeEvent: { contentOffset: { x: 0, y: 0 } },
+    });
+
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 40, animated: false });
+  });
+
+  it('tells the screen when the compact header shows and hides', async () => {
+    const onCompactHeaderChange = jest.fn();
+    await renderPager({ onCompactHeaderChange });
+    expect(onCompactHeaderChange).not.toHaveBeenCalled();
+
+    await scroll('a', 150);
+    expect(onCompactHeaderChange).toHaveBeenLastCalledWith(true);
+    await scroll('a', 20);
+    expect(onCompactHeaderChange).toHaveBeenLastCalledWith(false);
+    expect(onCompactHeaderChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-render the lists when the compact header shows', async () => {
+    await renderPager();
+    const before = renders.a;
+
+    await scroll('a', 150);
+    await scroll('a', 20);
+
+    expect(renders.a).toBe(before);
   });
 });

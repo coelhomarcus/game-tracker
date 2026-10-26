@@ -501,6 +501,51 @@ describe('useToggleFollow', () => {
   });
 });
 
+describe('useToggleFollow announce', () => {
+  it('confirms an announced follow with a toast once the server has it, with no observer left', async () => {
+    const request = deferred();
+    mocked.setFollow.mockReturnValue(request.promise);
+    const client = freshClient();
+    client.setQueryData(['profile', 'u1'], profile('u1'));
+    const { result, unmount } = await renderHook(() => useToggleFollow(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: 'u1', follow: true, announce: 'Ana' });
+    });
+    // The button that asked is gone (the compact header drops it on the optimistic write).
+    await unmount();
+    expect(showToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      request.resolve();
+    });
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Seguindo Ana'));
+  });
+
+  it('stays silent without announce, on an unfollow and when the follow fails', async () => {
+    mocked.setFollow.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+    const client = freshClient();
+    const { result } = await renderHook(() => useToggleFollow(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u1', follow: true });
+    });
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u2', follow: false, announce: 'Bia' });
+    });
+    expect(showToast).not.toHaveBeenCalled();
+
+    mocked.setFollow.mockRejectedValueOnce(new Error('boom'));
+    client.setQueryData(['profile', 'u3'], profile('u3'));
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'u3', follow: true, announce: 'Caio' }).catch(() => undefined);
+    });
+    expect(showToast).not.toHaveBeenCalledWith('Seguindo Caio');
+  });
+});
+
 describe('useToggleFollow in the follows lists', () => {
   function listPerson(id: string, overrides: Partial<FollowListPerson> = {}): FollowListPerson {
     return { ...person(id), followsMe: false, ...overrides };

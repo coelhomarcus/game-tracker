@@ -1554,6 +1554,20 @@ describe("useDeletePost", () => {
     expect(showToast).toHaveBeenCalledWith("Post apagado");
   });
 
+  it("refreshes every Respostas list, since the post took its comments with it", async () => {
+    mocked.deletePost.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedLists(client);
+    const spy = jest.spyOn(client, "invalidateQueries");
+    const { result } = await renderHook(() => useDeletePost(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync(post("p1"));
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["userReplies"] });
+  });
+
   it("marks the quotes of the post as quoting a removed post, in lists and details", async () => {
     mocked.deletePost.mockResolvedValue(undefined);
     const client = freshClient();

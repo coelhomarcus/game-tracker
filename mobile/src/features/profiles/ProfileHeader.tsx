@@ -29,7 +29,7 @@ const BUTTONS_INDENT = 90;
 const BIO_LINES = 15;
 
 /** The 31 dp scrim circle over the banner, in a real 48 dp box so it is easy to hit. */
-export function ProfileBackButton() {
+export function ProfileBackButton({ hidden = false }: { hidden?: boolean }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const edge = (BACK_TOUCH - BACK_CIRCLE) / 2;
@@ -37,6 +37,9 @@ export function ProfileBackButton() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Voltar"
+      // Scrolled away under the compact header, whose own Voltar is the one to read.
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       onPress={() => router.back()}
       style={[
         styles.back,
@@ -74,6 +77,8 @@ export type ProfileHeaderProps = {
   profile: UserProfile;
   /** The signed-in user's own profile: edit instead of follow and message, and no back button. */
   own?: boolean;
+  /** Hides the overlay back button from screen readers (the compact header shows its own). */
+  backHidden?: boolean;
 };
 
 /**
@@ -81,7 +86,7 @@ export type ProfileHeaderProps = {
  * (`pointerEvents="box-none"`), so a drag that starts on them scrolls the list below on Android;
  * buttons, links and images still take their taps.
  */
-export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
+export function ProfileHeader({ profile, own = false, backHidden = false }: ProfileHeaderProps) {
   const router = useRouter();
   const [viewing, setViewing] = useState<PostImage | null>(null);
   const name = displayName(profile);
@@ -162,7 +167,9 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           <Count value={profile.entryCount} word={plural(profile.entryCount, 'registro')} />
         </View>
         {bio ? (
-          <Text testID="profile-bio" selectable numberOfLines={BIO_LINES}>
+          // Not selectable: on Android selectable text takes the touch, and a drag that starts on
+          // the bio must scroll the list under the header.
+          <Text testID="profile-bio" numberOfLines={BIO_LINES}>
             {bio}
           </Text>
         ) : null}
@@ -187,7 +194,7 @@ export function ProfileHeader({ profile, own = false }: ProfileHeaderProps) {
           <Avatar uri={null} name={name} size={AVATAR_SIZE} />
         </View>
       )}
-      {own ? null : <ProfileBackButton />}
+      {own ? null : <ProfileBackButton hidden={backHidden} />}
       {viewing ? (
         <ImageViewer
           images={[viewing]}

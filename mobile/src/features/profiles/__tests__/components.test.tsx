@@ -77,14 +77,14 @@ describe('FollowButton on a profile', () => {
     expect(screen.queryByText('Seguir de volta')).toBeNull();
   });
 
-  it('announces a follow with a toast', async () => {
+  it('asks the follow hook to announce the follow with a toast', async () => {
     await render(<FollowButton userId="u2" following={false} name="Bruno Lima" announce />);
 
     await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
-    expect(showToast).not.toHaveBeenCalled();
-    mockMutate.mock.calls[0][1].onSuccess();
 
-    expect(showToast).toHaveBeenCalledWith('Seguindo Bruno Lima');
+    // The hook shows "Seguindo Bruno Lima" once the server has the follow (queries.test).
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u2', follow: true, announce: 'Bruno Lima' });
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('stays silent on unfollow', async () => {
@@ -101,6 +101,7 @@ describe('FollowButton on a profile', () => {
 
     await fireEvent.press(screen.getByLabelText('Seguir Bruno Lima'));
 
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u2', follow: true });
     expect(showToast).not.toHaveBeenCalled();
   });
 });

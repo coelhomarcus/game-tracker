@@ -239,6 +239,8 @@ export function useDeletePost() {
     onSuccess: async (_data, post) => {
       await cancelPostQueries(client, post.id);
       removePostEverywhere(client, post);
+      // The post's comments went with it: any Respostas list may hold one of them.
+      void client.invalidateQueries({ queryKey: ["userReplies"] });
       showToast("Post apagado");
       whenIdle(client, refreshOwnProfile);
     },

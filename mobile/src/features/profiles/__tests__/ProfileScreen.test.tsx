@@ -862,8 +862,14 @@ describe('collapsing header', () => {
     expect(compact.getByText('@ana')).toBeOnTheScreen();
     expect(compact.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
 
+    // The overlay back button, scrolled away under the bar, is not read out a second time.
+    expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
     await fireEvent.press(compact.getByRole('button', { name: 'Voltar' }));
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
+
+    await scrollPosts(0);
+    expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+    expect(screen.queryByTestId('pager-compact-header')).toBeNull();
   });
 
   it('leaves the compact follow out once the user follows them', async () => {

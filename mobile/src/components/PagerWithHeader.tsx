@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -109,6 +110,8 @@ export type PagerWithHeaderProps = {
   compactHeader?: ReactElement;
   /** The status bar strip, kept solid (`colors.bg`) once the content scrolls under it. */
   statusBarHeight?: number;
+  /** Told when the compact header shows or hides, e.g. to hide what it covers from screen readers. */
+  onCompactHeaderChange?: (shown: boolean) => void;
   ref?: Ref<PagerWithHeaderHandle>;
 };
 
@@ -127,7 +130,11 @@ type PageProps = {
   register: (key: string, entry: PageEntry | null) => void;
 };
 
-function PagerPage({
+/**
+ * Memoized: the pager re-renders on a tab change and when its header is measured, and a page
+ * (a whole list) must only re-render when its own props change.
+ */
+const PagerPage = memo(function PagerPage({
   tab,
   index,
   width,
@@ -185,6 +192,53 @@ function PagerPage({
       <PageContent render={tab.render} scroll={scroll} />
     </View>
   );
+});
+
+type CompactHeaderProps = {
+  scrollY: SharedValue<number>;
+  onLayout: (event: LayoutChangeEvent) => void;
+  onShownChange?: (shown: boolean) => void;
+  children: ReactElement;
+};
+
+/**
+ * The compact header's fade and touch/screen-reader state. Its own component, so crossing the
+ * threshold re-renders only this bar, never the pages.
+ */
+function CompactHeader({ scrollY, onLayout, onShownChange, children }: CompactHeaderProps) {
+  const [shown, setShown] = useState(false);
+  const opacity = useSharedValue(0);
+
+  const changed = useCallback(
+    (next: boolean) => {
+      setShown(next);
+      onShownChange?.(next);
+    },
+    [onShownChange],
+  );
+
+  useAnimatedReaction(
+    () => compactHeaderShown(scrollY.get()),
+    (next, previous) => {
+      if (next === previous || (previous === null && !next)) return;
+      opacity.set(withTiming(next ? 1 : 0, { duration: COMPACT_HEADER_FADE_MS }));
+      scheduleOnRN(changed, next);
+    },
+  );
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+
+  return (
+    <Animated.View
+      testID="pager-compact-header"
+      onLayout={onLayout}
+      pointerEvents={shown ? 'auto' : 'none'}
+      accessibilityElementsHidden={!shown}
+      importantForAccessibility={shown ? 'auto' : 'no-hide-descendants'}
+      style={[styles.compact, style]}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 function PageContent({ render, scroll }: { render: PagerTab['render']; scroll: PagerScrollProps }) {
@@ -204,6 +258,7 @@ export function PagerWithHeader({
   initialTab,
   compactHeader,
   statusBarHeight = 0,
+  onCompactHeaderChange,
   ref,
 }: PagerWithHeaderProps) {
   const window = useWindowDimensions();
@@ -218,7 +273,9 @@ export function PagerWithHeader({
   const [compactHeight, setCompactHeight] = useState(
     compactHeader ? statusBarHeight + COMPACT_BAR_ESTIMATE : 0,
   );
-  const [compactShown, setCompactShown] = useState(false);
+  // Until the header is measured the lists' top inset is a guess: the pages stay invisible, so
+  // rows never show under the header for a frame and then jump.
+  const [headerMeasured, setHeaderMeasured] = useState(false);
   // Keys of the pages that mounted, with the offset each one starts at.
   const [mounted, setMounted] = useState<Record<string, number>>(() => ({
     [tabs[initialIndex]!.key]: 0,
@@ -345,6 +402,10 @@ export function PagerWithHeader({
     const height = Math.round(event.nativeEvent.layout.height);
     if (height > 0) set(height);
   };
+  const measureHeader = (event: LayoutChangeEvent) => {
+    measure(setHeaderHeight)(event);
+    if (event.nativeEvent.layout.height > 0) setHeaderMeasured(true);
+  };
 
   const translateY = useDerivedValue(() =>
     headerTranslate(scrollY.get(), headerShared.get(), compactShared.get()),
@@ -352,17 +413,6 @@ export function PagerWithHeader({
   const headerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.get() }],
   }));
-
-  const compactOpacity = useSharedValue(0);
-  useAnimatedReaction(
-    () => compactHeaderShown(scrollY.get()),
-    (shown, previous) => {
-      if (shown === previous) return;
-      compactOpacity.set(withTiming(shown ? 1 : 0, { duration: COMPACT_HEADER_FADE_MS }));
-      scheduleOnRN(setCompactShown, shown);
-    },
-  );
-  const compactStyle = useAnimatedStyle(() => ({ opacity: compactOpacity.get() }));
 
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: statusBarHeight > 0 ? Math.min(Math.max(scrollY.get() / statusBarHeight, 0), 1) : 0,
@@ -383,7 +433,7 @@ export function PagerWithHeader({
         contentOffset={{ x: initialIndex * size.width, y: 0 }}
         onScrollBeginDrag={onBeginDrag}
         onMomentumScrollEnd={onPageSettled}
-        style={styles.pager}
+        style={[styles.pager, !headerMeasured && styles.hidden]}
       >
         {tabs.map((tab, index) =>
           tab.key in mounted ? (
@@ -411,7 +461,7 @@ export function PagerWithHeader({
         pointerEvents="box-none"
         style={[styles.header, headerStyle]}
       >
-        <View testID="pager-header-content" pointerEvents="box-none" onLayout={measure(setHeaderHeight)}>
+        <View testID="pager-header-content" pointerEvents="box-none" onLayout={measureHeader}>
           {header}
         </View>
         <View testID="pager-tab-bar" onLayout={measure(setTabBarHeight)}>
@@ -424,16 +474,13 @@ export function PagerWithHeader({
         </View>
       </Animated.View>
       {compactHeader ? (
-        <Animated.View
-          testID="pager-compact-header"
+        <CompactHeader
+          scrollY={scrollY}
           onLayout={measure(setCompactHeight)}
-          pointerEvents={compactShown ? 'auto' : 'none'}
-          accessibilityElementsHidden={!compactShown}
-          importantForAccessibility={compactShown ? 'auto' : 'no-hide-descendants'}
-          style={[styles.compact, compactStyle]}
+          onShownChange={onCompactHeaderChange}
         >
           {compactHeader}
-        </Animated.View>
+        </CompactHeader>
       ) : null}
       {statusBarHeight > 0 ? (
         <Animated.View
@@ -449,6 +496,7 @@ export function PagerWithHeader({
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: 'hidden' },
   pager: { flex: 1 },
+  hidden: { opacity: 0 },
   header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
   compact: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
   // Over the compact header too; the header slides out beneath it.

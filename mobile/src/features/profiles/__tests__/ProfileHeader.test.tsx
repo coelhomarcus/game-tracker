@@ -104,13 +104,25 @@ describe('identity', () => {
     expect(screen.getByLabelText('Capa de ana')).toBeOnTheScreen();
   });
 
-  it('shows a real bio, selectable and capped at 15 lines', async () => {
+  it('shows a real bio capped at 15 lines, not selectable so a drag on it scrolls the profile', async () => {
     await renderHeader();
 
     const bio = screen.getByTestId('profile-bio');
     expect(bio).toHaveTextContent('Jogo de tudo um pouco');
-    expect(bio.props.selectable).toBe(true);
+    expect(bio.props.selectable).toBeFalsy();
     expect(bio.props.numberOfLines).toBe(15);
+  });
+
+  it('hides the overlay back button from screen readers while the compact header shows', async () => {
+    await render(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ProfileHeader profile={profile} backHidden />
+      </SafeAreaProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Voltar' })).toBeNull();
+    const back = screen.getByRole('button', { name: 'Voltar', includeHiddenElements: true });
+    expect(back.props.importantForAccessibility).toBe('no-hide-descendants');
   });
 
   it.each([null, '', '   '])('hides the bio when it is %j', async (bio) => {
@@ -169,15 +181,14 @@ describe('actions', () => {
     expect(screen.queryByRole('button', { name: 'Editar perfil' })).toBeNull();
   });
 
-  it('follows and confirms with a toast only once the follow succeeded', async () => {
+  it('follows and asks the hook to confirm with a toast once the follow succeeded', async () => {
     await renderHeader();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Seguir Ana Souza' }));
 
-    expect(mockMutate).toHaveBeenCalledWith({ id: 'u1', follow: true }, expect.any(Object));
+    // The toast itself is the hook's (see queries.test): it shows only after the server agrees.
+    expect(mockMutate).toHaveBeenCalledWith({ id: 'u1', follow: true, announce: 'Ana Souza' });
     expect(showToast).not.toHaveBeenCalled();
-    mockMutate.mock.calls[0][1].onSuccess();
-    expect(showToast).toHaveBeenCalledWith('Seguindo Ana Souza');
   });
 
   it('keeps the row of buttons 48 dp tall so each button has a real hit box', async () => {

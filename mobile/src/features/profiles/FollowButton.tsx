@@ -1,5 +1,4 @@
 import { Button, type ButtonSize } from '@/components';
-import { showToast } from '@/lib/toast';
 
 import { useToggleFollow } from './queries';
 
@@ -37,12 +36,9 @@ export function FollowButton({
       size={size}
       onPress={() => {
         const variables = { id: userId, follow: !following };
-        // The toast waits for the server: a follow that fails is rolled back without a "Seguindo".
-        if (announce && !following) {
-          toggle.mutate(variables, { onSuccess: () => showToast(`Seguindo ${name}`) });
-        } else {
-          toggle.mutate(variables);
-        }
+        // The toast waits for the server (a follow that fails is rolled back without a
+        // "Seguindo"). The hook shows it, because this button may be gone by then.
+        toggle.mutate(announce && !following ? { ...variables, announce: name } : variables);
       }}
     />
   );
