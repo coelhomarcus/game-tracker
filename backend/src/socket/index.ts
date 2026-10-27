@@ -5,6 +5,7 @@ import { parseCorsOrigins } from '../lib/corsOptions';
 import { createRedisClient } from '../lib/redis';
 import { verifyAccessToken } from '../lib/tokens';
 import { registerChatHandlers } from './chatHandlers';
+import { setRealtimeServer } from './realtime';
 
 export function initSocket(httpServer: HttpServer) {
   const io = new Server(httpServer, { cors: { origin: parseCorsOrigins(process.env.CORS_ORIGINS) } });
@@ -33,6 +34,9 @@ export function initSocket(httpServer: HttpServer) {
   io.on('connection', (socket) => {
     registerChatHandlers(io, socket);
   });
+
+  // As rotas REST (apagar para mim, reações) avisam pelo mesmo servidor.
+  setRealtimeServer(io);
 
   return io;
 }

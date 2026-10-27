@@ -1,11 +1,12 @@
 import { and, count, eq, ilike, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { follows, gameEntries, users } from '../db/schema';
+import { type DmPolicy, follows, gameEntries, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
 import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
 import { isUuid } from '../lib/uuid';
 import { deleteAvatarIfLocal, deleteBannerIfLocal, saveAvatar, saveBanner } from '../lib/uploads';
+import * as conversationsService from './conversations.service';
 import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
 
@@ -56,7 +57,11 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
         }),
   ]);
   // Com bloqueio o perfil continua abrindo (nome, bio e contagens), mas as abas vêm vazias.
-  const flags = await moderationService.relationFlags(viewerId, targetId);
+  const [flags, canMessage] = await Promise.all([
+    moderationService.relationFlags(viewerId, targetId),
+    // Se quem vê pode mandar mensagem para a pessoa agora (bloqueio e política dela). Falso no próprio perfil.
+    conversationsService.canMessage(viewerId, targetId),
+  ]);
 
   return {
     ...user,
@@ -66,6 +71,7 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
     isFollowedByMe: followRow != null,
     followsMe: followsMeRow != null,
     ...flags,
+    canMessage,
   };
 }
 
@@ -172,7 +178,10 @@ export async function unfollow(followerId: string, followingId: string) {
   await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
 }
 
-export async function updateProfile(userId: string, input: { username?: string; name?: string; bio?: string }) {
+export async function updateProfile(
+  userId: string,
+  input: { username?: string; name?: string; bio?: string; dmPolicy?: DmPolicy },
+) {
   if (input.username) {
     const existing = await db.query.users.findFirst({ where: eq(users.username, input.username) });
     if (existing && existing.id !== userId) {

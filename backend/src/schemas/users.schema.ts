@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DM_POLICIES } from '../db/schema';
 import { countCodePoints, countGraphemes } from '../lib/graphemes';
 import { usernameSchema } from './auth.schema';
 
@@ -31,6 +32,8 @@ export const updateProfileSchema = z.object({
     .refine((value) => value.trim().length > 0, { message: 'O nome não pode ser vazio' })
     .optional(),
   bio: profileText(BIO_MAX_GRAPHEMES, BIO_MAX_CODE_POINTS, 'A bio').optional(),
+  // Quem pode mandar mensagem direta.
+  dmPolicy: z.enum(DM_POLICIES, { message: 'Política de mensagens inválida' }).optional(),
 });
 
 export const userPostsQuerySchema = z.object({

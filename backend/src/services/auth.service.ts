@@ -26,6 +26,7 @@ function toPublicUser(user: {
   avatarUrl: string | null;
   bannerUrl: string | null;
   bio: string | null;
+  dmPolicy: string;
 }) {
   return {
     id: user.id,
@@ -35,6 +36,7 @@ function toPublicUser(user: {
     avatarUrl: user.avatarUrl,
     bannerUrl: user.bannerUrl,
     bio: user.bio,
+    dmPolicy: user.dmPolicy,
   };
 }
 
