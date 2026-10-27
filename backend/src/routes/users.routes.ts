@@ -1,19 +1,25 @@
 import { Router } from 'express';
 import {
+  blockHandler,
   followHandler,
   getFollowersHandler,
   getFollowingHandler,
+  getMyBlocksHandler,
   getMyLikesHandler,
+  getMyMutesHandler,
   getPublicProfileHandler,
   getMyBookmarksHandler,
   getUserCommentsHandler,
   getUserFavoritesHandler,
   getUserGameEntriesHandler,
   getUserPostsHandler,
+  muteHandler,
   removeAvatarHandler,
   removeBannerHandler,
   searchHandler,
+  unblockHandler,
   unfollowHandler,
+  unmuteHandler,
   updateProfileHandler,
   uploadAvatarHandler,
   uploadBannerHandler,
@@ -41,6 +47,8 @@ usersRouter.delete('/me/avatar', removeAvatarHandler);
 usersRouter.delete('/me/banner', removeBannerHandler);
 usersRouter.get('/me/bookmarks', validateQuery(bookmarksQuerySchema), getMyBookmarksHandler);
 usersRouter.get('/me/likes', validateQuery(bookmarksQuerySchema), getMyLikesHandler);
+usersRouter.get('/me/mutes', validateQuery(followListQuerySchema), getMyMutesHandler);
+usersRouter.get('/me/blocks', validateQuery(followListQuerySchema), getMyBlocksHandler);
 usersRouter.get('/search', validateQuery(searchUsersQuerySchema), searchHandler);
 usersRouter.get('/:id', getPublicProfileHandler);
 usersRouter.get('/:id/posts', validateQuery(userPostsQuerySchema), getUserPostsHandler);
@@ -51,3 +59,7 @@ usersRouter.get('/:id/game-entries', validateQuery(listGameEntriesQuerySchema), 
 usersRouter.get('/:id/favorites', getUserFavoritesHandler);
 usersRouter.post('/:id/follow', followHandler);
 usersRouter.delete('/:id/follow', unfollowHandler);
+usersRouter.post('/:id/mute', muteHandler);
+usersRouter.delete('/:id/mute', unmuteHandler);
+usersRouter.post('/:id/block', blockHandler);
+usersRouter.delete('/:id/block', unblockHandler);

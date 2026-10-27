@@ -1,4 +1,4 @@
-import { and, count, eq, ilike, ne, or, sql } from 'drizzle-orm';
+import { and, count, eq, ilike, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { follows, gameEntries, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
@@ -6,8 +6,10 @@ import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
 import { isUuid } from '../lib/uuid';
 import { deleteAvatarIfLocal, deleteBannerIfLocal, saveAvatar, saveBanner } from '../lib/uploads';
+import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
 
+/** Pessoas pelo username ou nome. Quem tem bloqueio com quem busca (em qualquer sentido) não aparece. */
 export async function search(viewerId: string, term: string) {
   return db
     .select({
@@ -20,7 +22,13 @@ export async function search(viewerId: string, term: string) {
     })
     .from(users)
     .leftJoin(follows, and(eq(follows.followerId, viewerId), eq(follows.followingId, users.id)))
-    .where(and(or(ilike(users.username, `%${term}%`), ilike(users.name, `%${term}%`)), ne(users.id, viewerId)))
+    .where(
+      and(
+        or(ilike(users.username, `%${term}%`), ilike(users.name, `%${term}%`)),
+        ne(users.id, viewerId),
+        notInArray(users.id, moderationService.blockedEitherWaySql(viewerId)),
+      ),
+    )
     .limit(20);
 }
 
@@ -47,6 +55,8 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
           where: and(eq(follows.followerId, targetId), eq(follows.followingId, viewerId)),
         }),
   ]);
+  // Com bloqueio o perfil continua abrindo (nome, bio e contagens), mas as abas vêm vazias.
+  const flags = await moderationService.relationFlags(viewerId, targetId);
 
   return {
     ...user,
@@ -55,6 +65,7 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
     gameEntryCount: gameEntryCountRows[0]!.value,
     isFollowedByMe: followRow != null,
     followsMe: followsMeRow != null,
+    ...flags,
   };
 }
 
@@ -87,6 +98,8 @@ export async function listFollows(
   if (!isUuid(targetId) || !(await db.query.users.findFirst({ where: eq(users.id, targetId), columns: { id: true } }))) {
     throw new AppError(404, 'not_found', 'Usuário não encontrado');
   }
+  // Com bloqueio entre quem vê e o dono da lista, a lista vem vazia.
+  if (await moderationService.isBlockedEitherWay(viewerId, targetId)) return { items: [], nextCursor: null };
 
   // Seguidores: a pessoa listada é quem segue (follower_id). Seguindo: é quem é seguido (following_id).
   const [ownSide, personSide] =
@@ -104,6 +117,7 @@ export async function listFollows(
     from ${follows}
     join ${users} u on u.id = ${personSide}
     where ${ownSide} = ${targetId} ${cut}
+      and u.id not in ${moderationService.blockedEitherWaySql(viewerId)}
     order by ${follows.createdAt} desc, ${follows.id} desc
     limit ${limit + 1}
   `);
@@ -132,6 +146,9 @@ export async function follow(followerId: string, followingId: string) {
 
   const target = await db.query.users.findFirst({ where: eq(users.id, followingId) });
   if (!target) throw new AppError(404, 'not_found', 'Usuário não encontrado');
+  if (await moderationService.isBlockedEitherWay(followerId, followingId)) {
+    throw new AppError(403, 'blocked', 'Não é possível seguir: há um bloqueio entre vocês');
+  }
 
   // Só notifica quando a relação foi realmente criada; seguir de novo é idempotente.
   const inserted = await db

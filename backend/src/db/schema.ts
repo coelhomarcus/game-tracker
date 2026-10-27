@@ -299,6 +299,50 @@ export const follows = pgTable(
   }),
 );
 
+/**
+ * Silenciar é de um lado só e discreto: quem silencia deixa de ver os posts e reposts da pessoa nos
+ * feeds e de receber as notificações dela; a pessoa silenciada não percebe nada.
+ */
+export const mutes = pgTable(
+  'mutes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    muterId: uuid('muter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    mutedId: uuid('muted_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    muterMutedUnique: unique('mutes_muter_id_muted_id_unique').on(table.muterId, table.mutedId),
+    mutedIdIdx: index('mutes_muted_id_idx').on(table.mutedId),
+  }),
+);
+
+/**
+ * Bloquear vale para os dois lados no conteúdo: nenhum dos dois vê os posts, reposts e comentários
+ * do outro, e os follows entre eles são desfeitos (e recusados enquanto o bloqueio durar).
+ */
+export const blocks = pgTable(
+  'blocks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blockerId: uuid('blocker_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blockedId: uuid('blocked_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    blockerBlockedUnique: unique('blocks_blocker_id_blocked_id_unique').on(table.blockerId, table.blockedId),
+    blockedIdIdx: index('blocks_blocked_id_idx').on(table.blockedId),
+  }),
+);
+
 export const notifications = pgTable(
   'notifications',
   {
