@@ -11,6 +11,8 @@ import { showToast } from '@/lib/toast';
 import { socialDefaults } from '@/test-utils/postDefaults';
 import { colors } from '@/theme/tokens';
 
+import { useSetModeration } from '@/features/profiles/queries';
+
 import { PostControls } from '../PostControls';
 import {
   useDeletePost,
@@ -26,6 +28,7 @@ jest.mock('../queries', () => ({
   useTogglePostBookmark: jest.fn(),
   useDeletePost: jest.fn(),
 }));
+jest.mock('@/features/profiles/queries', () => ({ useSetModeration: jest.fn() }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
@@ -55,6 +58,8 @@ const like = { mutate: jest.fn() };
 const repost = { mutate: jest.fn() };
 const bookmark = { mutate: jest.fn() };
 const remove = { mutate: jest.fn() };
+const mute = { mutate: jest.fn() };
+const block = { mutate: jest.fn() };
 
 const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -101,6 +106,8 @@ beforeEach(() => {
   jest.mocked(useTogglePostRepost).mockReturnValue(repost as never);
   jest.mocked(useTogglePostBookmark).mockReturnValue(bookmark as never);
   jest.mocked(useDeletePost).mockReturnValue(remove as never);
+  jest.mocked(useSetModeration).mockImplementation(((kind: string) =>
+    (kind === 'mutes' ? mute : block)) as never);
   jest.mocked(Clipboard.setStringAsync).mockResolvedValue(true);
   jest.mocked(useReducedMotion).mockReturnValue(false);
   signIn('someone-else');
@@ -396,10 +403,64 @@ describe('PostControls more menu', () => {
     expect(screen.queryByText('Apagar post?')).toBeNull();
   });
 
-  it('has nothing to offer for another person’s post without text', async () => {
-    await render(<PostControls post={post({ content: '' })} />);
+  it('offers only the mute and the block of the author on another person’s post without text', async () => {
+    await render(withSafeArea(<PostControls post={post({ content: '' })} />));
 
-    expect(screen.getByRole('button', { name: 'Mais opções' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+
+    expect(screen.queryByRole('button', { name: 'Copiar texto' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Silenciar @ana' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Bloquear @ana' })).toBeOnTheScreen();
+  });
+
+  it('mutes the author at once with a toast', async () => {
+    await render(withSafeArea(<PostControls post={post()} />));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Silenciar @ana' }));
+
+    expect(mute.mutate).toHaveBeenCalledWith({ person: ana, on: true });
+    expect(showToast).toHaveBeenCalledWith('@ana silenciado');
+    expect(block.mutate).not.toHaveBeenCalled();
+  });
+
+  it('blocks the author only after confirming, then calls onDeleted to leave the page', async () => {
+    const onDeleted = jest.fn();
+    await render(withSafeArea(<PostControls post={post()} onDeleted={onDeleted} />));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear @ana' }));
+
+    expect(screen.getByText('Bloquear @ana?')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Vocês não verão os posts um do outro e @ana não poderá te seguir nem mandar mensagem.'),
+    ).toBeOnTheScreen();
+    expect(block.mutate).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear' }));
+
+    expect(block.mutate).toHaveBeenCalledWith({ person: ana, on: true });
+    expect(onDeleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the author when the block is cancelled', async () => {
+    await render(withSafeArea(<PostControls post={post()} />));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear @ana' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(block.mutate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Bloquear @ana?')).toBeNull();
+  });
+
+  it('offers no mute or block on the user’s own post', async () => {
+    signIn('u1');
+    await render(withSafeArea(<PostControls post={post()} />));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+
+    expect(screen.queryByRole('button', { name: 'Silenciar @ana' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Bloquear @ana' })).toBeNull();
   });
 });
 

@@ -31,6 +31,7 @@ jest.mock('../queries', () => ({
   useUserEntries: jest.fn(),
   useUserFavorites: jest.fn(),
   useToggleFollow: () => ({ mutate: jest.fn() }),
+  useSetModeration: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('@/features/chat/queries', () => ({ useStartConversation: jest.fn() }));
 jest.mock('@/features/feed/queries', () => ({
@@ -309,6 +310,51 @@ describe('actions', () => {
 
     expect(screen.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Editar perfil' })).toBeNull();
+  });
+});
+
+describe('blocked profiles', () => {
+  it('says the user blocked them, with how to undo it, and asks for no list', async () => {
+    mockProfile({ data: { ...profile, isBlockedByMe: true } });
+    await renderProfile('u1');
+
+    expect(screen.getByText('Você bloqueou @ana')).toBeOnTheScreen();
+    expect(screen.getByText('Desbloqueie para ver os posts.')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Desbloquear' })).toBeOnTheScreen();
+    expect(useUserEntries).not.toHaveBeenCalled();
+    expect(useUserPosts).not.toHaveBeenCalled();
+    expect(useUserReplies).not.toHaveBeenCalled();
+  });
+
+  it('says they blocked the user, with no way to follow or message', async () => {
+    mockProfile({ data: { ...profile, blocksMe: true } });
+    await renderProfile('u1');
+
+    expect(screen.getByText('@ana bloqueou você')).toBeOnTheScreen();
+    expect(screen.queryByText('Desbloqueie para ver os posts.')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Seguir|Enviar mensagem|Desbloquear/ })).toBeNull();
+    expect(useUserPosts).not.toHaveBeenCalled();
+  });
+
+  it('keeps the user’s own profile on its tabs whatever the flags say', async () => {
+    signInAs('u1');
+    mockProfile({ data: { ...profile, blocksMe: true } });
+    await renderProfile('u1');
+
+    expect(screen.queryByText('@ana bloqueou você')).toBeNull();
+    expect(useUserEntries).toHaveBeenCalledWith('u1');
+  });
+
+  it('refetches the profile on pull to refresh', async () => {
+    mockProfile({ data: { ...profile, isBlockedByMe: true } });
+    await renderProfile('u1');
+
+    const list = screen.getByTestId('profile-blocked');
+    await act(async () => {
+      await list.props.onRefresh();
+    });
+
+    expect(refetchProfile).toHaveBeenCalledTimes(1);
   });
 });
 

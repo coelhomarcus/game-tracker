@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/http/errors';
 import { ProfileCompactHeader } from './ProfileCompactHeader';
 import { ProfileGames } from './ProfileGames';
 import { ProfileBackButton, ProfileHeader, ProfileHeaderSkeleton } from './ProfileHeader';
+import { ProfileBlockedPage } from './ProfileBlockedPage';
 import { ProfileLikes } from './ProfileLikes';
 import { ProfileMedia } from './ProfileMedia';
 import { ProfilePosts } from './ProfilePosts';
@@ -108,7 +109,26 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
   const { id, username, name, avatarUrl } = profile;
   const author = useMemo(() => ({ id, username, name, avatarUrl }), [id, username, name, avatarUrl]);
 
+  const blocked = !own && (profile.isBlockedByMe || profile.blocksMe);
+  const { isBlockedByMe } = profile;
+
   const tabs = useMemo<PagerTab[]>(() => {
+    // A block between the two: the lists are not asked for, a single page says why.
+    if (blocked) {
+      return [
+        {
+          key: 'blocked',
+          label: 'Posts',
+          render: (scroll: PagerScrollProps) => (
+            <ProfileBlockedPage
+              profile={{ username, isBlockedByMe }}
+              scroll={scroll}
+              refetchProfile={refetchProfile}
+            />
+          ),
+        },
+      ];
+    }
     const list: PagerTab[] = [
       {
         key: 'games',
@@ -149,15 +169,17 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
       });
     }
     return list;
-  }, [author, id, own, refetchProfile]);
+  }, [author, blocked, id, isBlockedByMe, own, refetchProfile, username]);
 
   return (
     <View style={styles.body}>
       <PagerWithHeader
+        // A page mounts when it is first shown: another set of tabs needs a new pager.
+        key={blocked ? 'blocked' : 'open'}
         ref={pagerRef}
         header={<ProfileHeader profile={profile} own={own} backHidden={collapsed} />}
         tabs={tabs}
-        initialTab="games"
+        initialTab={blocked ? 'blocked' : 'games'}
         // The own profile sits under the Perfil tab's header, which stays; a pushed profile is
         // edge-to-edge and gets the compact header once it scrolls.
         compactHeader={own ? undefined : <ProfileCompactHeader profile={profile} />}

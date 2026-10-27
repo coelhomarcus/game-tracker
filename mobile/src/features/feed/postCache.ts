@@ -293,3 +293,33 @@ export function findCachedPost(client: QueryClient, postId: string): Post | unde
   }
   return undefined;
 }
+
+/** Whether the list item is the user's own post or a repost by them. */
+function isFromUser(item: Post, userId: string): boolean {
+  return item.author.id === userId || item.reason?.by.id === userId;
+}
+
+function removeUserFromPages(data: PostPages, userId: string): PostPages {
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    const items = page.items.filter((item) => !isFromUser(item, userId));
+    if (items.length === page.items.length) return page;
+    changed = true;
+    return { ...page, items };
+  });
+  return changed ? { ...data, pages } : data;
+}
+
+/**
+ * Takes the user's posts, and the posts they reposted, out of every cached feed, game, profile
+ * and bookmark list, e.g. right after the signed-in user blocks them.
+ */
+export function removeUserPostsEverywhere(client: QueryClient, userId: string): void {
+  for (const key of LIST_KEYS) {
+    for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
+      if (data === undefined) continue;
+      const next = removeUserFromPages(data, userId);
+      if (next !== data) client.setQueryData(queryKey, next);
+    }
+  }
+}

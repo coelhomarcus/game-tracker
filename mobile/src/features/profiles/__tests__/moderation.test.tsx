@@ -6,6 +6,9 @@ import { showToast } from '@/lib/toast';
 
 import { profilesApi } from '../api';
 import { moderationKey, useSetModeration } from '../queries';
+import type { Post, PostPage } from '@/features/feed/types';
+import { socialDefaults } from '@/test-utils/postDefaults';
+
 import type { ModerationPage, UserProfile } from '../types';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
@@ -102,5 +105,144 @@ describe('useSetModeration', () => {
     // The earlier failure is not rolled back: the later tap decided the outcome.
     expect(flagOf('isMutedByMe')).toBe(false);
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('blocking cleans the caches', () => {
+  // A request left open would hold the person's lane, and the next test's request with it.
+  const open: (() => void)[] = [];
+  const hang = () => {
+    const request = deferred();
+    open.push(request.resolve);
+    return request.promise;
+  };
+  afterEach(async () => {
+    await act(async () => open.splice(0).forEach((resolve) => resolve()));
+  });
+
+  const ana = { id: 'u1', username: 'ana', name: 'Ana', avatarUrl: null };
+
+  function post(id: string, author = bia, by?: typeof ana): Post {
+    return {
+      id,
+      author,
+      content: id,
+      type: 'status',
+      activityStatus: null,
+      createdAt: new Date('2026-10-20T12:00:00.000Z'),
+      game: null,
+      entry: null,
+      imageUrl: null,
+      likeCount: 0,
+      commentCount: 0,
+      likedByMe: false,
+      ...socialDefaults,
+      reason: by ? { type: 'repost', by, at: new Date('2026-10-21T12:00:00.000Z') } : null,
+    };
+  }
+
+  function seedLists() {
+    const pages = (items: Post[]): InfiniteData<PostPage, string | undefined> => ({
+      pages: [{ items, nextCursor: null }],
+      pageParams: [undefined],
+    });
+    // Bia's posts, a repost by Bia of Ana's post, and one that has nothing to do with Bia.
+    const mixed = [post('p1'), post('p2', ana), post('p3', ana, bia), post('p4', ana)];
+    client.setQueryData(['feed', 'all'], pages(mixed));
+    client.setQueryData(['userPosts', 'u2', 'posts'], pages([post('p1'), post('p5')]));
+    client.setQueryData(['gamePosts', 'g1'], pages(mixed));
+    client.setQueryData(['bookmarks'], pages(mixed));
+  }
+
+  const idsOf = (key: readonly unknown[]) =>
+    client
+      .getQueryData<InfiniteData<PostPage>>(key)
+      ?.pages.flatMap((page) => page.items.map((item) => item.id));
+
+  it('takes the blocked user’s posts and reposts out of every loaded list at once', async () => {
+    seedLists();
+    mocked.setBlock.mockReturnValueOnce(hang());
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    expect(idsOf(['feed', 'all'])).toEqual(['p2', 'p4']);
+    expect(idsOf(['gamePosts', 'g1'])).toEqual(['p2', 'p4']);
+    expect(idsOf(['bookmarks'])).toEqual(['p2', 'p4']);
+    expect(idsOf(['userPosts', 'u2', 'posts'])).toEqual([]);
+  });
+
+  it('leaves the lists alone when muting', async () => {
+    seedLists();
+    mocked.setMute.mockReturnValueOnce(hang());
+    const { result } = await renderHook(() => useSetModeration('mutes'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    expect(idsOf(['feed', 'all'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+  });
+
+  it('ends both follows on the profile at once', async () => {
+    client.setQueryData<Partial<UserProfile>>(['profile', 'u2'], {
+      id: 'u2',
+      isMutedByMe: false,
+      isBlockedByMe: false,
+      isFollowedByMe: true,
+      followsMe: true,
+      followerCount: 5,
+    });
+    mocked.setBlock.mockReturnValueOnce(hang());
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    expect(client.getQueryData(['profile', 'u2'])).toMatchObject({
+      isBlockedByMe: true,
+      isFollowedByMe: false,
+      followsMe: false,
+      followerCount: 4,
+    });
+  });
+
+  it('marks the feed, threads, searches, notifications and post lists stale once the block lands', async () => {
+    const keys = [
+      ['feed', 'all'],
+      ['post', 'p1'],
+      ['comments', 'p1', 'top'],
+      ['people', 'bi'],
+      ['gameSearch', 'zel'],
+      ['notifications'],
+      ['userPosts', 'u2', 'posts'],
+      ['userReplies', 'u2'],
+      ['gamePosts', 'g1'],
+      ['bookmarks'],
+    ];
+    const empty = { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] };
+    for (const key of keys) client.setQueryData(key, empty);
+    const request = deferred();
+    mocked.setBlock.mockReturnValueOnce(request.promise);
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+    for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+    await act(async () => request.resolve());
+
+    await waitFor(() => {
+      for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    });
+  });
+
+  it('marks the lists stale again when the block fails, so the rolled back posts come back', async () => {
+    seedLists();
+    client.setQueryData(['notifications'], { items: [] });
+    mocked.setBlock.mockRejectedValueOnce(new Error('boom'));
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    await waitFor(() => expect(flagOf('isBlockedByMe')).toBe(false));
+    expect(showToast).toHaveBeenCalled();
+    expect(client.getQueryState(['feed', 'all'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['notifications'])?.isInvalidated).toBe(true);
   });
 });

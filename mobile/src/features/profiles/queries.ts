@@ -12,6 +12,7 @@ import {
 import { authErrorMessage, useSession } from '@/features/auth';
 import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
+import { removeUserPostsEverywhere } from '@/features/feed/postCache';
 import type { PostPage } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
 import { showToast } from '@/lib/toast';
@@ -393,9 +394,20 @@ function findRow(data: ModerationPages, id: string): Omit<RowPlace, 'person'> | 
  */
 function applyModeration(client: QueryClient, kind: ModerationKind, person: UserSummary, on: boolean) {
   const flag = MODERATION_FLAG[kind];
-  client.setQueryData<UserProfile>(['profile', person.id], (profile) =>
-    profile && profile[flag] !== on ? { ...profile, [flag]: on } : profile,
-  );
+  client.setQueryData<UserProfile>(['profile', person.id], (profile) => {
+    if (!profile || profile[flag] === on) return profile;
+    const next = { ...profile, [flag]: on };
+    // A block ends both follows on the server.
+    if (kind === 'blocks' && on) {
+      if (profile.isFollowedByMe) {
+        next.isFollowedByMe = false;
+        next.followerCount = Math.max(0, profile.followerCount - 1);
+      }
+      next.followsMe = false;
+    }
+    return next;
+  });
+  if (kind === 'blocks' && on) removeUserPostsEverywhere(client, person.id);
   const lane = moderationLane(kind, person.id);
   if (!on) {
     client.setQueryData<ModerationPages>(moderationKey(kind), (data) => {
@@ -429,6 +441,21 @@ function applyModeration(client: QueryClient, kind: ModerationKind, person: User
   });
 }
 
+/** What a block changes: feeds, threads, searches, notifications and the post lists. */
+const BLOCK_KEYS: readonly (readonly string[])[] = [
+  ['feed'],
+  ['post'],
+  ['comments'],
+  ['people'],
+  ['gameSearch'],
+  ['gamePlayers'],
+  ['notifications'],
+  ['userPosts'],
+  ['userReplies'],
+  ['gamePosts'],
+  ['bookmarks'],
+];
+
 /**
  * Once a person's requests are over: what depends on the mute or block is read again. `added`:
  * the last request muted or blocked them.
@@ -439,6 +466,17 @@ function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: s
   // A new mute or block adds a row the optimistic write cannot build. An undo (or a rollback) is
   // not refetched: the row is already right, and a refetch could race another undo on its way.
   if (added) void client.invalidateQueries({ queryKey: moderationKey(kind) });
+  if (kind === 'blocks') {
+    // A block (or its undo) changes what the server shows everywhere: the open lists, threads,
+    // searches and notifications are read again now, the rest on the next visit.
+    for (const key of BLOCK_KEYS) void client.invalidateQueries({ queryKey: key });
+    const me = useSession.getState().user?.id;
+    if (me !== undefined) {
+      void client.invalidateQueries({ queryKey: ['profile', me], exact: true });
+      void client.invalidateQueries({ queryKey: ['follows'], refetchType: 'none' });
+    }
+    return;
+  }
   // The feeds and notifications filter the person in or out; read again on the next visit.
   for (const key of [['feed'], ['notifications']]) {
     void client.invalidateQueries({ queryKey: key, refetchType: 'none' });

@@ -8,11 +8,13 @@ import { Avatar, Button, Skeleton, Text } from '@/components';
 import { ImageViewer } from '@/features/feed/ImageViewer';
 import { displayName, type PostImage } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
+import { showToast } from '@/lib/toast';
 import { colors, radii, space } from '@/theme/tokens';
 
 import { FollowButton } from './FollowButton';
 import { MessageButton } from './MessageButton';
 import { ProfileMenu } from './ProfileMenu';
+import { useSetModeration } from './queries';
 import type { UserProfile } from './types';
 
 const BANNER_HEIGHT = 150;
@@ -77,6 +79,23 @@ export function ProfileHeaderSkeleton({ showBack }: { showBack: boolean }) {
   );
 }
 
+/** Undoes a block at once, with no confirmation: it is the way back from the blocked profile. */
+function UnblockButton({ profile }: { profile: UserProfile }) {
+  const { mutate } = useSetModeration('blocks');
+  const { id, username, avatarUrl } = profile;
+  return (
+    <Button
+      label="Desbloquear"
+      color="secondary"
+      size="small"
+      onPress={() => {
+        mutate({ person: { id, username, name: profile.name, avatarUrl }, on: false });
+        showToast(`@${username} desbloqueado`);
+      }}
+    />
+  );
+}
+
 export type ProfileHeaderProps = {
   profile: UserProfile;
   /** The signed-in user's own profile: edit instead of follow and message, and no back button. */
@@ -130,9 +149,11 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
               size="small"
               onPress={() => router.push('/me/edit' as Href)}
             />
-          ) : (
+          ) : profile.isBlockedByMe ? (
+            <UnblockButton profile={profile} />
+          ) : profile.blocksMe ? null : (
             <>
-              <MessageButton userId={profile.id} name={name} />
+              <MessageButton userId={profile.id} name={name} canMessage={profile.canMessage} />
               <View style={styles.followSlot}>
                 <FollowButton
                   userId={profile.id}
@@ -146,7 +167,7 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
               </View>
             </>
           )}
-          <ProfileMenu username={profile.username} />
+          <ProfileMenu profile={profile} own={own} />
         </View>
         <View pointerEvents="box-none" style={styles.identity}>
           <Text size="_3xl" weight="bold" tone="high" accessibilityRole="header">
@@ -154,11 +175,16 @@ export function ProfileHeader({ profile, own = false, backHidden = false }: Prof
           </Text>
           <View pointerEvents="box-none" style={styles.handleRow}>
             {profile.followsMe ? (
-              <View pointerEvents="box-none" style={styles.followsYou}>
+              <View pointerEvents="box-none" style={styles.chip}>
                 <Text size="sm">Segue você</Text>
               </View>
             ) : null}
             <Text tone="medium">{`@${profile.username}`}</Text>
+            {profile.isMutedByMe ? (
+              <View pointerEvents="box-none" style={styles.chip}>
+                <Text size="sm">Silenciado</Text>
+              </View>
+            ) : null}
           </View>
         </View>
         <View pointerEvents="box-none" style={styles.counts}>
@@ -286,7 +312,7 @@ const styles = StyleSheet.create({
   followSlot: { flexShrink: 1, minWidth: 0 },
   identity: { gap: space._2xs },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-  followsYou: {
+  chip: {
     backgroundColor: colors.bgContrast50,
     borderRadius: radii.xs,
     paddingHorizontal: space.sm,

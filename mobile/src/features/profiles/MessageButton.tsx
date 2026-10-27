@@ -6,10 +6,15 @@ import { authErrorMessage } from '@/features/auth';
 import { useStartConversation } from '@/features/chat/queries';
 import { showToast } from '@/lib/toast';
 
-export type MessageButtonProps = { userId: string; name: string };
+export type MessageButtonProps = {
+  userId: string;
+  name: string;
+  /** `false` when the person's privacy settings or a block rule messages out: nothing to show. */
+  canMessage?: boolean;
+};
 
 /** A round icon button that finds or creates the conversation with the user and opens it. */
-export function MessageButton({ userId, name }: MessageButtonProps) {
+export function MessageButton({ userId, name, canMessage = true }: MessageButtonProps) {
   const router = useRouter();
   const start = useStartConversation();
   const starting = useRef(false);
@@ -26,6 +31,8 @@ export function MessageButton({ userId, name }: MessageButtonProps) {
       starting.current = false;
     }
   }
+
+  if (!canMessage) return null;
 
   return (
     <Button
