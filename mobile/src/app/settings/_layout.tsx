@@ -16,6 +16,11 @@ export default function SettingsLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Configurações' }} />
       <Stack.Screen name="account" options={{ title: 'Conta' }} />
+      <Stack.Screen name="password" options={{ title: 'Trocar senha' }} />
+      <Stack.Screen name="delete-account" options={{ title: 'Excluir conta' }} />
+      <Stack.Screen name="privacy" options={{ title: 'Privacidade' }} />
+      <Stack.Screen name="muted" options={{ title: 'Contas silenciadas' }} />
+      <Stack.Screen name="blocked" options={{ title: 'Contas bloqueadas' }} />
       <Stack.Screen name="notifications" options={{ title: 'Notificações' }} />
       <Stack.Screen name="accessibility" options={{ title: 'Acessibilidade' }} />
       <Stack.Screen name="library" options={{ title: 'Biblioteca' }} />

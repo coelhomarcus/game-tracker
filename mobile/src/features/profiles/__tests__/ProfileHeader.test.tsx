@@ -38,6 +38,10 @@ const profile: UserProfile = {
   entryCount: 40,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 const withImages = {

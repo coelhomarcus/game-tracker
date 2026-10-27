@@ -41,6 +41,11 @@ export class SessionManager {
     await this.enqueue(() => this.store.write(tokens.refreshToken)).catch(() => undefined);
   }
 
+  /** This session's refresh token, or null when there is none in memory (signed out). */
+  get currentRefreshToken(): string | null {
+    return this.refreshToken;
+  }
+
   restore(): Promise<RefreshOutcome> {
     return this.refresh();
   }

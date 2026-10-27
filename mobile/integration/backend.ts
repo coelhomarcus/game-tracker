@@ -138,6 +138,8 @@ function loadFeatures() {
       require('@/features/notifications/api') as typeof import('@/features/notifications/api')
     ).notificationsApi,
     push: (require('@/features/push/api') as typeof import('@/features/push/api')).pushApi,
+    account: (require('@/features/auth/account') as typeof import('@/features/auth/account'))
+      .accountApi,
   };
 }
 /* eslint-enable @typescript-eslint/no-require-imports */

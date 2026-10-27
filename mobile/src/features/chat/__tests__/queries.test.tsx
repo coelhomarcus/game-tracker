@@ -33,6 +33,7 @@ function message(id: string, minute: number, conversationId = 'c1'): Message {
     createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)),
     clientMessageId: null,
     sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+    reactions: [],
   };
 }
 
@@ -42,6 +43,7 @@ function conversation(id: string, last: Message | null, unread = false): Convers
     otherUser: { id: `other-${id}`, username: `user-${id}`, name: null, avatarUrl: null },
     lastMessage: last,
     unread,
+    muted: false,
   };
 }
 

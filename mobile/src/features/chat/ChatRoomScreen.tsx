@@ -149,6 +149,7 @@ function buildRows(
       mine: true,
       senderName: '',
       status: item.status,
+      reason: item.refusal,
     }));
   return [...waiting, ...rows];
 }

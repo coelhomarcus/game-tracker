@@ -26,6 +26,12 @@ jest.mock('@/features/notifications/queries', () => ({
   useMarkAllRead: () => ({ mutate: jest.fn() }),
 }));
 
+jest.mock('@/features/profiles/api', () => {
+  const actual = jest.requireActual('@/features/profiles/api');
+  const empty = () => Promise.resolve({ items: [], nextCursor: null });
+  return { profilesApi: { ...actual.profilesApi, mutes: jest.fn(empty), blocks: jest.fn(empty) } };
+});
+
 const user = {
   id: 'u1',
   username: 'ana',
@@ -34,6 +40,7 @@ const user = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone' as const,
 };
 
 beforeEach(() => {
@@ -42,6 +49,7 @@ beforeEach(() => {
 
 const SUB_SCREENS = [
   ['Conta', 'E-mail'],
+  ['Privacidade', 'Quem pode te mandar mensagem'],
   ['Notificações', 'Central de notificações'],
   ['Acessibilidade', 'Desativar vibração'],
   ['Biblioteca', 'Ordenar por'],
@@ -96,4 +104,22 @@ test('Editar perfil in Conta opens the profile editor', async () => {
 
   await fireEvent.press(await screen.findByRole('button', { name: 'Editar perfil' }));
   expect(await screen.findByRole('button', { name: 'Salvar' })).toBeOnTheScreen();
+});
+
+test.each([
+  ['Conta', 'Trocar senha', 'Senha atual'],
+  ['Conta', 'Excluir conta', 'Continuar'],
+  ['Privacidade', 'Contas silenciadas', 'Você não silenciou ninguém'],
+  ['Privacidade', 'Contas bloqueadas', 'Você não bloqueou ninguém'],
+] as const)('%s → %s opens under its own header and back returns', async (section, row, content) => {
+  await renderRouter('./src/app', { initialUrl: '/settings' });
+
+  await fireEvent.press(await screen.findByRole('button', { name: section }));
+  await fireEvent.press(await screen.findByRole('button', { name: row }));
+  expect(await screen.findByText(content)).toBeOnTheScreen();
+  expect(screen.getByRole('header', { name: row })).toBeOnTheScreen();
+
+  await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
+
+  expect(await screen.findByRole('header', { name: section })).toBeOnTheScreen();
 });

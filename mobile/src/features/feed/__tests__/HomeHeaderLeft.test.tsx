@@ -19,6 +19,7 @@ beforeEach(() => {
       avatarUrl: null,
       bannerUrl: null,
       bio: null,
+      dmPolicy: 'everyone',
     },
   });
 });

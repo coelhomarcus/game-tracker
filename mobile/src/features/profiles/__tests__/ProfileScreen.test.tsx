@@ -78,6 +78,10 @@ const profile: UserProfile = {
   entryCount: 4,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 function game(id: string, igdbId: number, name: string): Game {

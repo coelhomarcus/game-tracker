@@ -6,11 +6,13 @@ import { imageForm } from '@/lib/imageForm';
 
 import {
   parseFollowListPage,
+  parseModerationPage,
   parsePersonResult,
   parseUserProfile,
   parseUserReplyPage,
   type FollowListPage,
   type ImageKind,
+  type ModerationPage,
   type PersonResult,
   type PickedImage,
   type UserProfile,
@@ -83,6 +85,28 @@ export const profilesApi = {
   async setFollow(id: string, follow: boolean): Promise<void> {
     if (follow) await api.post<void>(`/users/${id}/follow`);
     else await api.delete<void>(`/users/${id}/follow`);
+  },
+
+  /** Muting and unmuting are idempotent on the backend (204 both ways). */
+  async setMute(id: string, mute: boolean): Promise<void> {
+    if (mute) await api.post<void>(`/users/${id}/mute`);
+    else await api.delete<void>(`/users/${id}/mute`);
+  },
+
+  /** Blocking and unblocking are idempotent (204 both ways); a block also ends both follows. */
+  async setBlock(id: string, block: boolean): Promise<void> {
+    if (block) await api.post<void>(`/users/${id}/block`);
+    else await api.delete<void>(`/users/${id}/block`);
+  },
+
+  /** The accounts the signed-in user muted, newest first. The cursor is opaque. */
+  async mutes(cursor?: string): Promise<ModerationPage> {
+    return parseModerationPage(await api.get<Json>('/users/me/mutes', { query: pageQuery(cursor) }));
+  },
+
+  /** The accounts the signed-in user blocked, newest first. The cursor is opaque. */
+  async blocks(cursor?: string): Promise<ModerationPage> {
+    return parseModerationPage(await api.get<Json>('/users/me/blocks', { query: pageQuery(cursor) }));
   },
 
   /** Sends only the given keys (the backend keeps the rest); it answers 204 with no body. */

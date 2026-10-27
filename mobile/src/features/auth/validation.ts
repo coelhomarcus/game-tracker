@@ -57,3 +57,17 @@ export function validateRegister(input: {
   }
   return errors;
 }
+
+export type ChangePasswordInput = { current: string; next: string; confirm: string };
+export type ChangePasswordErrors = Partial<Record<keyof ChangePasswordInput, string>>;
+
+/** The new password follows the sign-up rules; the confirmation must repeat it exactly. */
+export function validateChangePassword(input: ChangePasswordInput): ChangePasswordErrors {
+  const errors: ChangePasswordErrors = {};
+  if (input.current.length === 0) errors.current = REQUIRED;
+  const next = passwordError(input.next);
+  if (next) errors.next = next;
+  if (input.confirm.length === 0) errors.confirm = REQUIRED;
+  else if (input.confirm !== input.next) errors.confirm = 'As senhas não coincidem';
+  return errors;
+}

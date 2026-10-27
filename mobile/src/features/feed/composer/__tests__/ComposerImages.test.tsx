@@ -121,6 +121,7 @@ beforeEach(async () => {
       avatarUrl: null,
       bannerUrl: null,
       bio: null,
+      dmPolicy: 'everyone',
     },
   });
   await AsyncStorage.clear();

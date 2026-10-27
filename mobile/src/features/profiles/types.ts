@@ -24,6 +24,14 @@ export type UserProfile = {
   isFollowedByMe: boolean;
   /** The profile's owner follows the signed-in user. */
   followsMe: boolean;
+  /** The signed-in user muted this person: their posts leave the feeds and notifications. */
+  isMutedByMe: boolean;
+  /** The signed-in user blocked this person. */
+  isBlockedByMe: boolean;
+  /** This person blocked the signed-in user. */
+  blocksMe: boolean;
+  /** Whether the signed-in user may message this person (blocks and their message policy). */
+  canMessage: boolean;
 };
 
 /** One row of the people search. */
@@ -54,6 +62,9 @@ export type UserReply = {
 
 export type UserReplyPage = { items: UserReply[]; nextCursor: string | null };
 
+/** A page of the accounts the signed-in user muted or blocked, newest first. */
+export type ModerationPage = { items: UserSummary[]; nextCursor: string | null };
+
 // The API payloads are trusted for required fields; optional ones are read defensively.
 type Json = Record<string, any>;
 
@@ -79,6 +90,11 @@ export function parseUserProfile(json: Json): UserProfile {
     entryCount: count(json.gameEntryCount),
     isFollowedByMe: json.isFollowedByMe === true,
     followsMe: json.followsMe === true,
+    isMutedByMe: json.isMutedByMe === true,
+    isBlockedByMe: json.isBlockedByMe === true,
+    blocksMe: json.blocksMe === true,
+    // A server that predates the policy lets everyone message.
+    canMessage: json.canMessage !== false,
   };
 }
 
@@ -118,6 +134,14 @@ export function parseUserReplyPage(json: Json): UserReplyPage {
         content: typeof item.post?.content === 'string' ? item.post.content : '',
       },
     })),
+    nextCursor: nullableString(json.nextCursor),
+  };
+}
+
+/** `GET /users/me/mutes` and `/users/me/blocks`. */
+export function parseModerationPage(json: Json): ModerationPage {
+  return {
+    items: (json.items as Json[]).map(parseUserSummary),
     nextCursor: nullableString(json.nextCursor),
   };
 }

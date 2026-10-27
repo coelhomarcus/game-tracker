@@ -9,6 +9,7 @@ import { apiBaseUrl } from '@/lib/env';
 import { profilesApi } from '../api';
 import {
   parseFollowListPage,
+  parseModerationPage,
   parsePersonResult,
   parseUserProfile,
   parseUserReplyPage,
@@ -63,7 +64,23 @@ describe('parseUserProfile', () => {
       entryCount: 6,
       isFollowedByMe: true,
       followsMe: true,
+      isMutedByMe: false,
+      isBlockedByMe: false,
+      blocksMe: false,
+      canMessage: true,
     });
+  });
+
+  it('reads the mute, block and message flags', () => {
+    expect(
+      parseUserProfile({
+        ...profileJson,
+        isMutedByMe: true,
+        isBlockedByMe: true,
+        blocksMe: true,
+        canMessage: false,
+      }),
+    ).toMatchObject({ isMutedByMe: true, isBlockedByMe: true, blocksMe: true, canMessage: false });
   });
 
   it('defaults missing counts to 0 and optional fields to null/false', () => {
@@ -83,7 +100,22 @@ describe('parseUserProfile', () => {
       entryCount: 0,
       isFollowedByMe: false,
       followsMe: false,
+      isMutedByMe: false,
+      isBlockedByMe: false,
+      blocksMe: false,
+      // A server without the policy lets everyone message.
+      canMessage: true,
     });
+  });
+});
+
+describe('parseModerationPage', () => {
+  it('parses the people and the cursor', () => {
+    expect(parseModerationPage({ items: [userJson], nextCursor: 'next' })).toEqual({
+      items: [{ id: 'u1', username: 'ana', name: 'Ana', avatarUrl: null }],
+      nextCursor: 'next',
+    });
+    expect(parseModerationPage({ items: [] })).toEqual({ items: [], nextCursor: null });
   });
 });
 
@@ -337,6 +369,72 @@ describe('profilesApi', () => {
     await profilesApi.setFollow('u1', false);
 
     expect(methods).toEqual(['POST', 'DELETE']);
+  });
+
+  it.each([
+    ['setMute', 'mute'],
+    ['setBlock', 'block'],
+  ] as const)('%s POSTs to /%s and DELETEs to undo it', async (method, path) => {
+    const calls: string[] = [];
+    server.use(
+      http.post(`${apiBaseUrl}/users/u1/${path}`, () => {
+        calls.push('POST');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/users/u1/${path}`, () => {
+        calls.push('DELETE');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(profilesApi[method]('u1', true)).resolves.toBeUndefined();
+    await expect(profilesApi[method]('u1', false)).resolves.toBeUndefined();
+
+    expect(calls).toEqual(['POST', 'DELETE']);
+  });
+
+  it.each([
+    ['mutes', 'mutes'],
+    ['blocks', 'blocks'],
+  ] as const)('%s pages through /users/me/%s with limit 20 and the cursor', async (method, path) => {
+    const searches: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/me/${path}`, ({ request }) => {
+        const search = new URL(request.url).searchParams;
+        searches.push(search);
+        return HttpResponse.json(
+          search.has('cursor')
+            ? { items: [], nextCursor: null }
+            : { items: [userJson], nextCursor: 'c2' },
+        );
+      }),
+    );
+
+    const first = await profilesApi[method]();
+    const second = await profilesApi[method]('c2');
+
+    expect(first).toEqual({ items: [userJson], nextCursor: 'c2' });
+    expect(second).toEqual({ items: [], nextCursor: null });
+    expect(searches.map((s) => [s.get('limit'), s.get('cursor')])).toEqual([
+      ['20', null],
+      ['20', 'c2'],
+    ]);
+  });
+
+  it('a refused block surfaces the API error', async () => {
+    server.use(
+      http.post(`${apiBaseUrl}/users/u1/block`, () =>
+        HttpResponse.json(
+          { error: { code: 'invalid_operation', message: 'Você não pode bloquear a si mesmo' } },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    await expect(profilesApi.setBlock('u1', true)).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_operation',
+    });
   });
 
   it('update sends only the given keys and resolves on 204', async () => {

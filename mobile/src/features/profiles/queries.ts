@@ -13,6 +13,7 @@ import { authErrorMessage, useSession } from '@/features/auth';
 import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
 import type { PostPage } from '@/features/feed/types';
+import type { UserSummary } from '@/features/games/types';
 import { showToast } from '@/lib/toast';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
@@ -26,6 +27,7 @@ import {
 import type {
   FollowListPage,
   ImageKind,
+  ModerationPage,
   PersonResult,
   PickedImage,
   UserProfile,
@@ -342,5 +344,151 @@ export function useRemoveImage() {
       if (context?.me === undefined || useSession.getState().user?.id !== context.me) return;
       applyImageChange(client, context.me, kind, null);
     },
+  });
+}
+
+// ---------- muted and blocked accounts ----------
+
+/** Which list: the accounts the signed-in user muted, or the ones they blocked. */
+export type ModerationKind = 'mutes' | 'blocks';
+type ModerationPages = InfiniteData<ModerationPage, string | undefined>;
+
+export const moderationKey = (kind: ModerationKind) => ['moderation', kind] as const;
+
+/** The flag of the person's profile that each list mirrors. */
+const MODERATION_FLAG = { mutes: 'isMutedByMe', blocks: 'isBlockedByMe' } as const satisfies Record<
+  ModerationKind,
+  keyof UserProfile
+>;
+
+/** The muted or blocked accounts, newest first, more pages as it scrolls. */
+export function useModerationList(kind: ModerationKind) {
+  return useInfiniteQuery<ModerationPage, Error, ModerationPages, readonly unknown[], string | undefined>({
+    queryKey: moderationKey(kind),
+    queryFn: ({ pageParam }) =>
+      kind === 'mutes' ? profilesApi.mutes(pageParam) : profilesApi.blocks(pageParam),
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+const moderationLanes = createLanes();
+const moderationLane = (kind: ModerationKind, id: string) => `${kind}:${id}`;
+
+type RowPlace = { page: number; index: number; person: UserSummary };
+/** Where a row taken out of a list stood, so a failed undo puts it back in the same place. */
+const removedRows = new Map<string, RowPlace>();
+
+function findRow(data: ModerationPages, id: string): Omit<RowPlace, 'person'> | null {
+  for (let page = 0; page < data.pages.length; page += 1) {
+    const index = data.pages[page].items.findIndex((person) => person.id === id);
+    if (index >= 0) return { page, index };
+  }
+  return null;
+}
+
+/**
+ * Writes one person's state into the cache: their profile's flag, and their row in the list (an
+ * undo takes it out; a rollback puts it back where it was).
+ */
+function applyModeration(client: QueryClient, kind: ModerationKind, person: UserSummary, on: boolean) {
+  const flag = MODERATION_FLAG[kind];
+  client.setQueryData<UserProfile>(['profile', person.id], (profile) =>
+    profile && profile[flag] !== on ? { ...profile, [flag]: on } : profile,
+  );
+  const lane = moderationLane(kind, person.id);
+  if (!on) {
+    client.setQueryData<ModerationPages>(moderationKey(kind), (data) => {
+      const at = data ? findRow(data, person.id) : null;
+      if (!data || !at) return data;
+      removedRows.set(lane, { ...at, person: data.pages[at.page].items[at.index] });
+      return {
+        ...data,
+        pages: data.pages.map((page, index) =>
+          index === at.page ? { ...page, items: page.items.filter((p) => p.id !== person.id) } : page,
+        ),
+      };
+    });
+    return;
+  }
+  const removed = removedRows.get(lane);
+  removedRows.delete(lane);
+  if (!removed) return;
+  client.setQueryData<ModerationPages>(moderationKey(kind), (data) => {
+    if (!data || findRow(data, person.id) || data.pages.length === 0) return data;
+    const pageIndex = Math.min(removed.page, data.pages.length - 1);
+    return {
+      ...data,
+      pages: data.pages.map((page, index) => {
+        if (index !== pageIndex) return page;
+        const items = [...page.items];
+        items.splice(Math.min(removed.index, items.length), 0, removed.person);
+        return { ...page, items };
+      }),
+    };
+  });
+}
+
+/**
+ * Once a person's requests are over: what depends on the mute or block is read again. `added`:
+ * the last request muted or blocked them.
+ */
+function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: string, added: boolean) {
+  removedRows.delete(moderationLane(kind, id));
+  void client.invalidateQueries({ queryKey: ['profile', id], exact: true });
+  // A new mute or block adds a row the optimistic write cannot build. An undo (or a rollback) is
+  // not refetched: the row is already right, and a refetch could race another undo on its way.
+  if (added) void client.invalidateQueries({ queryKey: moderationKey(kind) });
+  // The feeds and notifications filter the person in or out; read again on the next visit.
+  for (const key of [['feed'], ['notifications']]) {
+    void client.invalidateQueries({ queryKey: key, refetchType: 'none' });
+  }
+}
+
+export type ModerationVariables = {
+  person: UserSummary;
+  /** `true` mutes or blocks; `false` undoes it. */
+  on: boolean;
+};
+
+/**
+ * Mutes or blocks someone, or undoes it, optimistically: the profile's flag and the list row change
+ * at once. Requests for one person run in order; a failure rolls back only that person, once no
+ * later tap of theirs is pending, and says so in a toast.
+ */
+export function useSetModeration(kind: ModerationKind) {
+  const client = useQueryClient();
+  const settle = (person: UserSummary, on: boolean, error?: Error) => {
+    const lane = moderationLane(kind, person.id);
+    const to = moderationLanes.settle(lane, on, !error);
+    if (to !== undefined) {
+      applyModeration(client, kind, person, to);
+      if (error) showToast(authErrorMessage(error));
+    }
+    if (!moderationLanes.has(lane)) {
+      refreshAfterModeration(client, kind, person.id, to === undefined && on);
+    }
+  };
+  return useMutation<void, Error, ModerationVariables>({
+    mutationFn: ({ person, on }) =>
+      moderationLanes.run(moderationLane(kind, person.id), () =>
+        kind === 'mutes' ? profilesApi.setMute(person.id, on) : profilesApi.setBlock(person.id, on),
+      ),
+    onMutate: async ({ person, on }) => {
+      moderationLanes.begin(moderationLane(kind, person.id), !on);
+      // At once, so the row leaves on the tap; again after the cancel, which may put back what a
+      // stopped fetch held before.
+      applyModeration(client, kind, person, on);
+      await Promise.all([
+        client.cancelQueries({ queryKey: ['profile', person.id], exact: true }),
+        client.cancelQueries({
+          queryKey: moderationKey(kind),
+          predicate: (query) => query.state.data !== undefined,
+        }),
+      ]);
+      applyModeration(client, kind, person, on);
+    },
+    onSuccess: (_data, { person, on }) => settle(person, on),
+    onError: (error, { person, on }) => settle(person, on, error),
   });
 }

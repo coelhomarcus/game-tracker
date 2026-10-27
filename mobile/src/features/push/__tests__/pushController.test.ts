@@ -60,6 +60,7 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 
 const granted = { status: 'granted', granted: true, canAskAgain: true };

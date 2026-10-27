@@ -296,4 +296,19 @@ describe('SessionManager', () => {
     expect(await session.refreshAfterUnauthorized(null)).toBe('noSession');
     expect(onExpired).not.toHaveBeenCalled();
   });
+
+  it('exposes the refresh token of the session in memory', async () => {
+    const { session, refreshCall } = setup(null);
+    expect(session.currentRefreshToken).toBeNull();
+
+    await session.start(tokens(1));
+    expect(session.currentRefreshToken).toBe('r1');
+
+    refreshCall.mockResolvedValue(tokens(2));
+    await session.refreshAfterUnauthorized('a1');
+    expect(session.currentRefreshToken).toBe('r2');
+
+    await session.clear();
+    expect(session.currentRefreshToken).toBeNull();
+  });
 });

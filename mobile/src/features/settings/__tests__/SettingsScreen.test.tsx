@@ -29,6 +29,7 @@ const user = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone' as const,
 };
 
 async function renderSettings() {
@@ -72,6 +73,7 @@ describe('SettingsScreen', () => {
 
   it.each([
     ['Conta', '/settings/account'],
+    ['Privacidade', '/settings/privacy'],
     ['Notificações', '/settings/notifications'],
     ['Acessibilidade', '/settings/accessibility'],
     ['Biblioteca', '/settings/library'],
@@ -84,10 +86,27 @@ describe('SettingsScreen', () => {
     expect(mockPush).toHaveBeenCalledWith(href);
   });
 
-  it('keeps the removed rows out until the backend supports them', async () => {
+  it('lists the sections in order, Privacidade between Conta and Notificações', async () => {
     await renderSettings();
 
-    for (const label of ['Privacidade', 'Alterar senha', 'Excluir conta']) {
+    const labels = screen
+      .getAllByRole('button')
+      .map((row) => row.props.accessibilityLabel as string | undefined);
+    expect(labels).toEqual([
+      'Conta',
+      'Privacidade',
+      'Notificações',
+      'Acessibilidade',
+      'Biblioteca',
+      'Sobre',
+      'Sair',
+    ]);
+  });
+
+  it('keeps the account actions in Conta, out of the main screen', async () => {
+    await renderSettings();
+
+    for (const label of ['Trocar senha', 'Excluir conta']) {
       expect(screen.queryByText(label)).toBeNull();
     }
   });

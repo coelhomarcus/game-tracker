@@ -35,6 +35,10 @@ const ana: UserProfile = {
   entryCount: 4,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 /** The compact header as the profile shows it: from the cached profile, which a follow rewrites. */

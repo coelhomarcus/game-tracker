@@ -16,6 +16,7 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -42,6 +43,7 @@ function cachedMessage(id: string, minute: number): Message {
     createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)),
     clientMessageId: null,
     sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+    reactions: [],
   };
 }
 
@@ -56,8 +58,9 @@ function seedCache() {
       otherUser: null,
       lastMessage: { ...cachedMessage('x', 1), conversationId: 'c2' },
       unread: false,
+      muted: false,
     },
-    { id: 'c1', otherUser: null, lastMessage: cachedMessage('m0', 0), unread: true },
+    { id: 'c1', otherUser: null, lastMessage: cachedMessage('m0', 0), unread: true, muted: false },
   ]);
 }
 
@@ -153,6 +156,38 @@ describe('send', () => {
     ]);
   });
 
+  it.each([
+    ['blocked', 'Não é possível enviar mensagens para esta conta.'],
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+  ])('marks a send refused with %s failed with its reason, and never re-sends it', async (code, reason) => {
+    const id = store().send('c1', 'oi');
+
+    chatSocket
+      .pendingAck('message:send')
+      ?.resolve({ error: 'Esta pessoa só recebe mensagens de quem ela segue', code });
+    await flush();
+
+    expect(pendingOf()).toEqual([
+      expect.objectContaining({ clientMessageId: id, status: 'failed', error: reason, refusal: reason }),
+    ]);
+    chatSocket.drop();
+    chatSocket.connect();
+    chatSocket.ackLog = [];
+    store().resendPending();
+    expect(chatSocket.ackLog).toEqual([]);
+    expect(pendingOf()[0].status).toBe('failed');
+  });
+
+  it('keeps the server error, with no refusal, for other codes', async () => {
+    store().send('c1', 'oi');
+
+    chatSocket.pendingAck('message:send')?.resolve({ error: 'Conversa não encontrada', code: 'not_found' });
+    await flush();
+
+    expect(pendingOf()[0]).toMatchObject({ status: 'failed', error: 'Conversa não encontrada' });
+    expect(pendingOf()[0].refusal).toBeUndefined();
+  });
+
   it('marks the message uncertain on timeout and re-sends it with the same id', async () => {
     seedCache();
     const id = store().send('c1', 'oi');
@@ -217,6 +252,24 @@ describe('retry and discard', () => {
       { clientMessageId: id, content: 'oi', createdAt: expect.any(Date), status: 'sending' },
     ]);
     expect(chatSocket.pendingAck('message:send')?.payload).toMatchObject({ clientMessageId: id });
+  });
+
+  it('drops the refusal on a manual retry and sets it again if refused again', async () => {
+    const id = store().send('c1', 'oi');
+    chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code: 'blocked' });
+    await flush();
+
+    store().retry('c1', id ?? '');
+    expect(pendingOf()).toEqual([
+      { clientMessageId: id, content: 'oi', createdAt: expect.any(Date), status: 'sending' },
+    ]);
+    chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code: 'dm_not_allowed' });
+    await flush();
+
+    expect(pendingOf()[0]).toMatchObject({
+      status: 'failed',
+      refusal: 'Esta pessoa não aceita mensagens suas.',
+    });
   });
 
   it('discards a pending message', async () => {

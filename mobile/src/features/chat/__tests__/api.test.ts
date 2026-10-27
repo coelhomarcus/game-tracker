@@ -36,7 +36,23 @@ describe('parseMessage', () => {
       createdAt: new Date('2026-10-20T10:00:00.000Z'),
       clientMessageId: '11111111-2222-4333-8444-555555555555',
       sender: bia,
+      reactions: [],
     });
+  });
+
+  it('parses the reactions, oldest first, leaving malformed ones out', () => {
+    const reactions = [
+      { emoji: '👍', userId: 'u1' },
+      { emoji: '❤️', userId: 'u2' },
+    ];
+    expect(parseMessage({ ...message, reactions }).reactions).toEqual(reactions);
+    expect(
+      parseMessage({
+        ...message,
+        reactions: [{ emoji: '👍', userId: 'u1', extra: 1 }, { emoji: 1 }, null, 'x'],
+      }).reactions,
+    ).toEqual([{ emoji: '👍', userId: 'u1' }]);
+    expect(parseMessage({ ...message, reactions: null }).reactions).toEqual([]);
   });
 
   it('turns a missing or null clientMessageId into null', () => {
@@ -55,13 +71,21 @@ describe('parseConversation', () => {
       otherUser: bia,
       lastMessage: parseMessage(message),
       unread: true,
+      muted: false,
     });
+  });
+
+  it('reads the muted flag', () => {
+    expect(
+      parseConversation({ id: 'c1', otherUser: bia, lastMessage: null, unread: true, muted: true })
+        .muted,
+    ).toBe(true);
   });
 
   it('accepts a null otherUser and a null lastMessage', () => {
     expect(
       parseConversation({ id: 'c1', otherUser: null, lastMessage: null, unread: false }),
-    ).toEqual({ id: 'c1', otherUser: null, lastMessage: null, unread: false });
+    ).toEqual({ id: 'c1', otherUser: null, lastMessage: null, unread: false, muted: false });
   });
 
   it('defaults unread to false', () => {
@@ -171,5 +195,119 @@ describe('chatApi', () => {
 
     await expect(chatApi.markRead('c1')).resolves.toBeUndefined();
     expect(called).toBe(true);
+  });
+
+  it('markAllRead POSTs to read-all', async () => {
+    let called = false;
+    server.use(
+      http.post(`${apiBaseUrl}/conversations/read-all`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(chatApi.markAllRead()).resolves.toBeUndefined();
+    expect(called).toBe(true);
+  });
+
+  it('setMuted POSTs to mute and DELETEs to unmute', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post(`${apiBaseUrl}/conversations/c1/mute`, () => {
+        calls.push('POST');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/conversations/c1/mute`, () => {
+        calls.push('DELETE');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await chatApi.setMuted('c1', true);
+    await chatApi.setMuted('c1', false);
+
+    expect(calls).toEqual(['POST', 'DELETE']);
+  });
+
+  it('leave DELETEs the conversation', async () => {
+    let called = false;
+    server.use(
+      http.delete(`${apiBaseUrl}/conversations/c1`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(chatApi.leave('c1')).resolves.toBeUndefined();
+    expect(called).toBe(true);
+  });
+
+  it('hideMessage DELETEs the message for me', async () => {
+    let called = false;
+    server.use(
+      http.delete(`${apiBaseUrl}/conversations/c1/messages/m1`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(chatApi.hideMessage('c1', 'm1')).resolves.toBeUndefined();
+    expect(called).toBe(true);
+  });
+
+  it('addReaction POSTs the emoji', async () => {
+    let body: unknown;
+    server.use(
+      http.post(`${apiBaseUrl}/conversations/c1/messages/m1/reactions`, async ({ request }) => {
+        body = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await chatApi.addReaction('c1', 'm1', '👍');
+
+    expect(body).toEqual({ emoji: '👍' });
+  });
+
+  it('removeReaction DELETEs the URL-encoded emoji', async () => {
+    let path: string | undefined;
+    server.use(
+      http.delete(`${apiBaseUrl}/conversations/c1/messages/m1/reactions/:emoji`, ({ request }) => {
+        path = new URL(request.url).pathname;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await chatApi.removeReaction('c1', 'm1', '❤️');
+
+    expect(path?.endsWith(`/reactions/${encodeURIComponent('❤️')}`)).toBe(true);
+  });
+
+  it.each([
+    [409, 'reaction_limit', 'Você pode usar no máximo 5 reações por mensagem'],
+    [403, 'blocked', 'Não é possível enviar mensagens: há um bloqueio entre vocês'],
+    [403, 'dm_not_allowed', 'Esta pessoa não recebe mensagens diretas'],
+  ])('addReaction surfaces a %i %s', async (status, code, text) => {
+    server.use(
+      http.post(`${apiBaseUrl}/conversations/c1/messages/m1/reactions`, () =>
+        HttpResponse.json({ error: { code, message: text } }, { status }),
+      ),
+    );
+
+    await expect(chatApi.addReaction('c1', 'm1', '👍')).rejects.toMatchObject({ status, code });
+  });
+
+  it('setDmPolicy PATCHes the own profile with the policy only', async () => {
+    let body: unknown;
+    server.use(
+      http.patch(`${apiBaseUrl}/users/me`, async ({ request }) => {
+        body = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await chatApi.setDmPolicy('following');
+
+    expect(body).toEqual({ dmPolicy: 'following' });
   });
 });

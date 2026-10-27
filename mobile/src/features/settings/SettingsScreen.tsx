@@ -17,6 +17,7 @@ function unsentWarning(count: number): string | undefined {
 
 const SECTIONS: { label: string; icon: IoniconName; href: Href }[] = [
   { label: 'Conta', icon: 'person-circle-outline', href: '/settings/account' as Href },
+  { label: 'Privacidade', icon: 'lock-closed-outline', href: '/settings/privacy' as Href },
   { label: 'Notificações', icon: 'notifications-outline', href: '/settings/notifications' as Href },
   { label: 'Acessibilidade', icon: 'accessibility-outline', href: '/settings/accessibility' as Href },
   { label: 'Biblioteca', icon: 'library-outline', href: '/settings/library' as Href },

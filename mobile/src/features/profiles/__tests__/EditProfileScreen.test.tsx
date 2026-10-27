@@ -90,6 +90,10 @@ const profile: UserProfile = {
   entryCount: 0,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 const photo: PickedImage = {
@@ -132,6 +136,7 @@ beforeEach(() => {
       avatarUrl: null,
       bannerUrl: null,
       bio: 'Gosto de RPG',
+      dmPolicy: 'everyone',
     },
   });
   jest.mocked(pickImage).mockImplementation(actualPickImage);
