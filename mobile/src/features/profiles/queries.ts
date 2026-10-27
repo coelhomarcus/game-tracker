@@ -12,7 +12,11 @@ import {
 import { authErrorMessage, useSession } from '@/features/auth';
 import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
-import { removeUserPostsEverywhere } from '@/features/feed/postCache';
+import {
+  removeUserPostsEverywhere,
+  restoreRemovedPosts,
+  type RemovedPosts,
+} from '@/features/feed/postCache';
 import type { PostPage } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
 import { showToast } from '@/lib/toast';
@@ -377,6 +381,12 @@ const moderationLanes = createLanes();
 const moderationLane = (kind: ModerationKind, id: string) => `${kind}:${id}`;
 
 type RowPlace = { page: number; index: number; person: UserSummary };
+/** What a block or mute changed besides the flag, per person, to put back if the request fails. */
+type Removal = {
+  profile?: Pick<UserProfile, 'isFollowedByMe' | 'followsMe' | 'followerCount'>;
+  posts: RemovedPosts;
+};
+const removals = new Map<string, Removal>();
 /** Where a row taken out of a list stood, so a failed undo puts it back in the same place. */
 const removedRows = new Map<string, RowPlace>();
 
@@ -389,16 +399,38 @@ function findRow(data: ModerationPages, id: string): Omit<RowPlace, 'person'> | 
 }
 
 /**
- * Writes one person's state into the cache: their profile's flag, and their row in the list (an
- * undo takes it out; a rollback puts it back where it was).
+ * Writes one person's state into the cache: their profile's flag, their posts (a mute leaves the
+ * feeds, a block leaves every list) and their row in the list (an undo takes it out; a rollback
+ * puts it back where it was). `rollback`: the request that set the opposite state failed, so
+ * what it changed in the profile and the post lists is put back too.
  */
-function applyModeration(client: QueryClient, kind: ModerationKind, person: UserSummary, on: boolean) {
+function applyModeration(
+  client: QueryClient,
+  kind: ModerationKind,
+  person: UserSummary,
+  on: boolean,
+  rollback = false,
+) {
   const flag = MODERATION_FLAG[kind];
+  const lane = moderationLane(kind, person.id);
+  const before = removals.get(lane);
+  if (!on) removals.delete(lane);
   client.setQueryData<UserProfile>(['profile', person.id], (profile) => {
-    if (!profile || profile[flag] === on) return profile;
+    if (!profile) return profile;
+    if (!on && rollback && before?.profile && profile[flag] !== on) {
+      return { ...profile, [flag]: on, ...before.profile };
+    }
+    if (profile[flag] === on) return profile;
     const next = { ...profile, [flag]: on };
     // A block ends both follows on the server.
     if (kind === 'blocks' && on) {
+      const removal = removals.get(lane) ?? { posts: [] };
+      removal.profile ??= {
+        isFollowedByMe: profile.isFollowedByMe,
+        followsMe: profile.followsMe,
+        followerCount: profile.followerCount,
+      };
+      removals.set(lane, removal);
       if (profile.isFollowedByMe) {
         next.isFollowedByMe = false;
         next.followerCount = Math.max(0, profile.followerCount - 1);
@@ -407,8 +439,17 @@ function applyModeration(client: QueryClient, kind: ModerationKind, person: User
     }
     return next;
   });
-  if (kind === 'blocks' && on) removeUserPostsEverywhere(client, person.id);
-  const lane = moderationLane(kind, person.id);
+  if (on) {
+    // A mute only empties the feeds: profiles, threads and bookmarks keep showing a muted person.
+    const posts = removeUserPostsEverywhere(client, person.id, kind === 'blocks' ? undefined : [['feed']]);
+    if (posts.length > 0) {
+      const removal = removals.get(lane) ?? { posts: [] };
+      removal.posts.push(...posts);
+      removals.set(lane, removal);
+    }
+  } else if (rollback && before) {
+    restoreRemovedPosts(client, before.posts);
+  }
   if (!on) {
     client.setQueryData<ModerationPages>(moderationKey(kind), (data) => {
       const at = data ? findRow(data, person.id) : null;
@@ -462,6 +503,7 @@ const BLOCK_KEYS: readonly (readonly string[])[] = [
  */
 function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: string, added: boolean) {
   removedRows.delete(moderationLane(kind, id));
+  removals.delete(moderationLane(kind, id));
   void client.invalidateQueries({ queryKey: ['profile', id], exact: true });
   // A new mute or block adds a row the optimistic write cannot build. An undo (or a rollback) is
   // not refetched: the row is already right, and a refetch could race another undo on its way.
@@ -500,7 +542,7 @@ export function useSetModeration(kind: ModerationKind) {
     const lane = moderationLane(kind, person.id);
     const to = moderationLanes.settle(lane, on, !error);
     if (to !== undefined) {
-      applyModeration(client, kind, person, to);
+      applyModeration(client, kind, person, to, Boolean(error));
       if (error) showToast(authErrorMessage(error));
     }
     if (!moderationLanes.has(lane)) {

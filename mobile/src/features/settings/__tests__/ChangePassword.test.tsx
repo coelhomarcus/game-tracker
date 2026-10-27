@@ -123,6 +123,20 @@ describe('ChangePassword', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
+  it('does not go back a second time when the user left while the request was on its way', async () => {
+    const request = deferred();
+    mocked.changePassword.mockReturnValue(request.promise);
+    await renderScreen();
+    await fill('antiga', 'nova-senha-1', 'nova-senha-1');
+    await fireEvent.press(save());
+
+    await screen.unmount();
+    await act(async () => request.resolve());
+
+    expect(showToast).toHaveBeenCalledWith('Senha alterada');
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
   it('marks a wrong current password on its field and stays', async () => {
     mocked.changePassword.mockRejectedValue(
       new ApiError(400, 'invalid_password', 'Senha atual incorreta'),

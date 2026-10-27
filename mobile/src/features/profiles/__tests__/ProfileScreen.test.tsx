@@ -10,6 +10,7 @@ import type { Post } from '@/features/feed/types';
 import type { Game } from '@/features/games/types';
 import type { GameEntry } from '@/features/library/types';
 import { ApiError } from '@/lib/http/errors';
+import { queryClient } from '@/lib/queryClient';
 import { showToast } from '@/lib/toast';
 
 import { ProfileScreen } from '../ProfileScreen';
@@ -428,6 +429,33 @@ describe('Mensagem', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
     expect(mockRouter.push).toHaveBeenCalledWith('/chat/c9');
+  });
+
+  it.each([
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+    ['blocked', 'Não é possível interagir com esta conta.'],
+  ])('explains a %s refusal and reloads the profile', async (code, copy) => {
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    startConversation.mockRejectedValueOnce(new ApiError(403, code, 'refused'));
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
+
+    expect(showToast).toHaveBeenCalledWith(copy);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['profile', 'u1'], exact: true });
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    invalidate.mockRestore();
+  });
+
+  it('does not reload the profile for an unrelated failure', async () => {
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    startConversation.mockRejectedValueOnce(new ApiError(500, 'boom', 'x'));
+    await renderProfile('u1');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' }));
+
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['profile', 'u1'], exact: true });
+    invalidate.mockRestore();
   });
 });
 

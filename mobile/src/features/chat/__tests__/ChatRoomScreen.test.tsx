@@ -612,6 +612,20 @@ describe('ChatRoomScreen: bubbles', () => {
     expect(screen.getAllByText('Não enviada')).toHaveLength(2);
     expect(screen.queryByText('nope')).toBeNull();
   });
+
+  it.each([
+    ['blocked', 'Não é possível enviar mensagens para esta conta.'],
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+  ])('offers no retry for a message refused with %s, only the reason and Descartar', async (code, reason) => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Recusada');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code }));
+
+    expect(screen.getByText(reason)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Descartar' })).toBeOnTheScreen();
+  });
 });
 
 describe('ChatRoomScreen: composer', () => {

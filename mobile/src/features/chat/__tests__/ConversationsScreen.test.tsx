@@ -374,6 +374,20 @@ describe('NewConversationSheet', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+    ['blocked', 'Não é possível interagir com esta conta.'],
+  ])('explains a %s refusal instead of asking to try again', async (code, copy) => {
+    mockedApi.create.mockRejectedValue(new ApiError(403, code, 'refused'));
+    await renderSheet();
+    await type('Buscar pessoas', 'bi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(copy));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it('clears the inline failure when typing or choosing again', async () => {
     mockedApi.create
       .mockRejectedValueOnce(new ApiError(500, 'server_error', 'Erro no servidor'))

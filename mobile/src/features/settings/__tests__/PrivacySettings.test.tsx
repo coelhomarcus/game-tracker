@@ -2,11 +2,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession, type User } from '@/features/auth';
+import { authApi } from '@/features/auth/api';
 import { chatApi } from '@/features/chat/api';
 import { NetworkError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
-import { dmPolicySettled } from '../dmPolicy';
+import { dmPolicySettled, refreshDmPolicy } from '../dmPolicy';
 import { PrivacySettings } from '../PrivacySettings';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -16,9 +17,18 @@ jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/features/chat/api', () => ({ chatApi: { setDmPolicy: jest.fn() } }));
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock('@/features/auth/api', () => ({
+  ...jest.requireActual('@/features/auth/api'),
+  authApi: { me: jest.fn() },
+}));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush }),
+  // Focus effects run once on mount, as for a page that opens focused.
+  useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
+}));
 
 const mocked = jest.mocked(chatApi);
+const mockedMe = jest.mocked(authApi.me);
 
 const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 800 },
@@ -36,10 +46,10 @@ const ana: User = {
   dmPolicy: 'everyone',
 };
 
-function deferred() {
-  let resolve!: () => void;
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
   let reject!: (error: Error) => void;
-  const promise = new Promise<void>((res, rej) => {
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
   });
@@ -64,6 +74,8 @@ const policy = () => useSession.getState().user?.dmPolicy;
 beforeEach(() => {
   jest.clearAllMocks();
   mocked.setDmPolicy.mockResolvedValue(undefined);
+  // By default the server holds what the session shows.
+  mockedMe.mockImplementation(async () => useSession.getState().user as User);
   useSession.setState({ status: 'signedIn', user: ana });
 });
 
@@ -96,6 +108,47 @@ describe('PrivacySettings', () => {
     await act(() => dmPolicySettled());
     expect(checked()).toEqual(['Ninguém']);
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('reads the policy from the server when the screen opens', async () => {
+    mockedMe.mockResolvedValue({ ...ana, dmPolicy: 'nobody' });
+    await renderPrivacy();
+
+    expect(mockedMe).toHaveBeenCalledTimes(1);
+    expect(checked()).toEqual(['Ninguém']);
+    expect(policy()).toBe('nobody');
+  });
+
+  it('keeps what is shown when the server cannot be read', async () => {
+    mockedMe.mockRejectedValue(new NetworkError());
+    await renderPrivacy();
+
+    expect(checked()).toEqual(['Todos']);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('lets a choice made while the read is out win over its answer', async () => {
+    const read = deferred<User>();
+    mockedMe.mockReturnValueOnce(read.promise);
+    await renderPrivacy();
+
+    await fireEvent.press(radio('Quem eu sigo'));
+    await act(() => dmPolicySettled());
+    await act(async () => read.resolve({ ...ana, dmPolicy: 'nobody' }));
+
+    expect(checked()).toEqual(['Quem eu sigo']);
+  });
+
+  it('does not read the server while a choice is pending', async () => {
+    const first = deferred<void>();
+    mocked.setDmPolicy.mockReturnValueOnce(first.promise);
+    await renderPrivacy();
+    mockedMe.mockClear();
+
+    await fireEvent.press(radio('Ninguém'));
+    await act(() => refreshDmPolicy());
+    expect(mockedMe).not.toHaveBeenCalled();
+    await act(async () => first.resolve());
   });
 
   it('does not save the choice that is already set', async () => {

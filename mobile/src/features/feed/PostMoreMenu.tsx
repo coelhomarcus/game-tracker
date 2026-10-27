@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { ConfirmDialog, OptionSheet, type OptionSheetOption } from '@/components';
 import { useSession } from '@/features/auth';
 import { useModerationMenu, type ModerationChoice } from '@/features/profiles/moderationMenu';
+import type { UserProfile } from '@/features/profiles/types';
+import { queryClient } from '@/lib/queryClient';
 import { showToast } from '@/lib/toast';
 
 import { useDeletePost } from './queries';
@@ -31,7 +33,14 @@ export function PostMoreMenu({ post, visible, narrow, onShare, onClose, onDone }
   const isMine = useSession((state) => state.user?.id === post.author.id);
   const deletePost = useDeletePost();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const moderation = useModerationMenu(post.author, undefined, onDone);
+  // A profile in the cache knows whether the author is already muted or blocked; without one the
+  // sheet offers the plain actions.
+  const profile = queryClient.getQueryData<UserProfile>(['profile', post.author.id]);
+  const moderation = useModerationMenu(
+    post.author,
+    { muted: profile?.isMutedByMe, blocked: profile?.isBlockedByMe },
+    onDone,
+  );
 
   const copy = async () => {
     try {

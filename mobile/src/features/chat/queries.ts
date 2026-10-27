@@ -201,9 +201,10 @@ function withReaction(message: Message, { emoji, userId, action }: ReactionChang
 }
 
 /**
- * Applies a reaction added or removed to the message wherever it is loaded: the conversation's
- * pages and the list's last message. A message that is not loaded is left alone (nothing is
- * created for it); the next fetch brings its reactions.
+ * Applies a reaction added or removed to the message in the conversation's loaded pages. A message
+ * that is not loaded is left alone (nothing is created for it); the next fetch brings its
+ * reactions. The list's last message is not touched: the server sends it without reactions, so
+ * it never holds the full set.
  */
 export function applyReactionToCache(client: QueryClient, change: ReactionChange): void {
   updateNowAndAfterFetch<MessagePages>(client, messagesKey(change.conversationId), (data) => {
@@ -220,15 +221,5 @@ export function applyReactionToCache(client: QueryClient, change: ReactionChange
         };
       }),
     };
-  });
-  const isPreview = (item: Conversation) =>
-    item.id === change.conversationId && item.lastMessage?.id === change.messageId;
-  updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) => {
-    const at = data?.findIndex(isPreview) ?? -1;
-    const current = at >= 0 ? data?.[at] : undefined;
-    if (!data || !current?.lastMessage) return data;
-    const lastMessage = withReaction(current.lastMessage, change);
-    if (lastMessage === current.lastMessage) return data;
-    return data.map((item, index) => (index === at ? { ...item, lastMessage } : item));
   });
 }

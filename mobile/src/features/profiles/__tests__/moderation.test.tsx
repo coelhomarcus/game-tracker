@@ -172,14 +172,41 @@ describe('blocking cleans the caches', () => {
     expect(idsOf(['userPosts', 'u2', 'posts'])).toEqual([]);
   });
 
-  it('leaves the lists alone when muting', async () => {
+  it('takes a muted user out of the feeds at once and leaves every other list alone', async () => {
     seedLists();
     mocked.setMute.mockReturnValueOnce(hang());
     const { result } = await renderHook(() => useSetModeration('mutes'), { wrapper });
 
     await act(async () => result.current.mutate({ person: bia, on: true }));
 
+    expect(idsOf(['feed', 'all'])).toEqual(['p2', 'p4']);
+    expect(idsOf(['gamePosts', 'g1'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(idsOf(['bookmarks'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(idsOf(['userPosts', 'u2', 'posts'])).toEqual(['p1', 'p5']);
+  });
+
+  it('puts the feed posts back when the mute fails', async () => {
+    seedLists();
+    mocked.setMute.mockRejectedValueOnce(new Error('boom'));
+    const { result } = await renderHook(() => useSetModeration('mutes'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(flagOf('isMutedByMe')).toBe(false);
     expect(idsOf(['feed', 'all'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+  });
+
+  it('keeps the posts out when a mute is undone, since only the server knows what comes back', async () => {
+    seedLists();
+    mocked.setMute.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useSetModeration('mutes'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+    await waitFor(() => expect(client.getQueryState(['profile', 'u2'])?.isInvalidated).toBe(true));
+    await act(async () => result.current.mutate({ person: bia, on: false }));
+
+    expect(idsOf(['feed', 'all'])).toEqual(['p2', 'p4']);
   });
 
   it('ends both follows on the profile at once', async () => {
@@ -244,5 +271,52 @@ describe('blocking cleans the caches', () => {
     expect(showToast).toHaveBeenCalled();
     expect(client.getQueryState(['feed', 'all'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['notifications'])?.isInvalidated).toBe(true);
+  });
+
+  it('puts back the follows, the follower count and the posts when the block fails', async () => {
+    seedLists();
+    client.setQueryData<Partial<UserProfile>>(['profile', 'u2'], {
+      id: 'u2',
+      isMutedByMe: false,
+      isBlockedByMe: false,
+      isFollowedByMe: true,
+      followsMe: true,
+      followerCount: 5,
+    });
+    mocked.setBlock.mockRejectedValueOnce(new Error('boom'));
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(client.getQueryData(['profile', 'u2'])).toMatchObject({
+      isBlockedByMe: false,
+      isFollowedByMe: true,
+      followsMe: true,
+      followerCount: 5,
+    });
+    expect(idsOf(['feed', 'all'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(idsOf(['gamePosts', 'g1'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(idsOf(['bookmarks'])).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(idsOf(['userPosts', 'u2', 'posts'])).toEqual(['p1', 'p5']);
+  });
+
+  it('leaves a list that changed since the block alone when the block fails', async () => {
+    seedLists();
+    const request = deferred();
+    mocked.setBlock.mockReturnValueOnce(request.promise);
+    const { result } = await renderHook(() => useSetModeration('blocks'), { wrapper });
+
+    await act(async () => result.current.mutate({ person: bia, on: true }));
+    // A refetch lands a newer page while the request is out.
+    client.setQueryData(['feed', 'all'], {
+      pages: [{ items: [post('p9', ana)], nextCursor: null }],
+      pageParams: [undefined],
+    });
+    await act(async () => request.reject(new Error('boom')));
+
+    await waitFor(() => expect(flagOf('isBlockedByMe')).toBe(false));
+    expect(idsOf(['feed', 'all'])).toEqual(['p9']);
+    expect(idsOf(['gamePosts', 'g1'])).toEqual(['p1', 'p2', 'p3', 'p4']);
   });
 });

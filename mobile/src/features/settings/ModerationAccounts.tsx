@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import { memo, useCallback, useMemo, useState, type ReactElement } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, EmptyState, Screen, Text } from '@/components';
@@ -108,8 +108,19 @@ export function ModerationAccounts({ kind }: { kind: ModerationKind }) {
     }
   }, [refetch]);
 
-  let empty: ReactElement;
-  if (data !== undefined) {
+  // Every loaded row can be undone while more pages wait on the server: ask for the next one.
+  const exhausted = data !== undefined && people.length === 0 && hasNextPage;
+  useEffect(() => {
+    if (exhausted && !isFetchingNextPage && !isFetchNextPageError) {
+      void fetchNextPage({ cancelRefetch: false });
+    }
+  }, [exhausted, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+
+  let empty: ReactElement | null;
+  if (exhausted) {
+    // Not empty yet: the footer shows the page loading, or the retry when it failed.
+    empty = null;
+  } else if (data !== undefined) {
     empty = <EmptyState title={copy.empty} message={copy.emptyMessage} fill />;
   } else if (query.isError) {
     empty = (
@@ -157,7 +168,7 @@ export function ModerationAccounts({ kind }: { kind: ModerationKind }) {
         onEndReachedThreshold={0.5}
         onRefresh={() => void refresh()}
         refreshing={pulling}
-        ListEmptyComponent={empty}
+        ListEmptyComponent={empty ?? undefined}
         ListFooterComponent={footer}
       />
     </Screen>

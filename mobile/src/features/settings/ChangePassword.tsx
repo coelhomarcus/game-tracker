@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button, Screen, Text, TextField, type TextFieldInput } from '@/components';
@@ -21,6 +21,14 @@ export function ChangePassword() {
   const router = useRouter();
   const nextRef = useRef<TextFieldInput>(null);
   const confirmRef = useRef<TextFieldInput>(null);
+  // The request outlives the screen if the user backs out meanwhile; then there is nothing to leave.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [values, setValues] = useState<ChangePasswordInput>({ current: '', next: '', confirm: '' });
   // A field's rule shows once the user has left it, and then follows the typing.
   const [touched, setTouched] = useState<Partial<Record<Field, boolean>>>({});
@@ -58,7 +66,7 @@ export function ChangePassword() {
       return;
     }
     showToast('Senha alterada');
-    router.back();
+    if (mounted.current) router.back();
   }
 
   return (

@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useCallback } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { Screen, SettingsList, Text } from '@/components';
 import { useSession, type DmPolicy } from '@/features/auth';
 import { colors, space } from '@/theme/tokens';
 
-import { setDmPolicy } from './dmPolicy';
+import { refreshDmPolicy, setDmPolicy } from './dmPolicy';
 
 const DM_OPTIONS: { value: DmPolicy; label: string }[] = [
   { value: 'everyone', label: 'Todos' },
@@ -20,6 +21,13 @@ const BLOCKED = '/settings/blocked' as Href;
 export function PrivacySettings() {
   const router = useRouter();
   const dmPolicy = useSession((state) => state.user?.dmPolicy ?? 'everyone');
+
+  // The session holds the policy from sign-in; read it again each time the screen opens.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshDmPolicy();
+    }, []),
+  );
 
   return (
     <Screen scroll>

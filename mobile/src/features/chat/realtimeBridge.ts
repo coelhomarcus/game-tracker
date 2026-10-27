@@ -26,10 +26,10 @@ const chat = () => useChatStore.getState();
 
 /**
  * Applies socket events to the chat store and the query cache while the connection runs: new
- * messages, messages deleted for me, reactions, typing, presence, and on every (re)connect
- * re-sends unconfirmed messages and re-joins the open conversation. Every join of the open conversation is followed by a refetch of its
- * messages (whatever was sent while outside the room only reached the server) and then by one
- * read mark. Started and stopped with the connection by `SessionGate`.
+ * messages, messages deleted for me, reactions, typing, presence, and on every (re)connect re-sends
+ * unconfirmed messages and re-joins the open conversation. Every join of the open conversation is
+ * followed by a refetch of its messages (whatever was sent while outside the room only reached the
+ * server) and then by one read mark. Started and stopped with the connection by `SessionGate`.
  */
 class RealtimeBridge {
   private subscriptions: (() => void)[] = [];

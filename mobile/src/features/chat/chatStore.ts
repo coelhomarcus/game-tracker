@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { useSession } from '@/features/auth';
+import { DM_NOT_ALLOWED_MESSAGE, useSession } from '@/features/auth';
 import { queryClient } from '@/lib/queryClient';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { newUuid } from '@/lib/uuid';
@@ -24,7 +24,9 @@ export type PendingMessage = {
   error?: string;
   /** Set when the server refused it for good (a block, or the recipient's message policy). */
   refusal?: string;
-};type SendAck =
+};
+
+type SendAck =
   | { message?: Record<string, unknown> | null; error?: unknown; code?: unknown }
   | null
   | undefined;
@@ -35,7 +37,7 @@ export type PendingMessage = {
  */
 export const SEND_REFUSALS = {
   blocked: 'Não é possível enviar mensagens para esta conta.',
-  dm_not_allowed: 'Esta pessoa não aceita mensagens suas.',
+  dm_not_allowed: DM_NOT_ALLOWED_MESSAGE,
 } as const;
 
 function refusalReason(code: unknown): string | undefined {

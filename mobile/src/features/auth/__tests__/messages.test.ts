@@ -34,6 +34,16 @@ test.each([
     'Dados inválidos. Revise os campos.',
   ],
   [
+    'a message policy refusal',
+    new ApiError(403, 'dm_not_allowed', 'Esta pessoa não recebe mensagens de quem ela não segue.'),
+    'Esta pessoa não aceita mensagens suas.',
+  ],
+  [
+    'a block',
+    new ApiError(403, 'blocked', 'Ação indisponível'),
+    'Não é possível interagir com esta conta.',
+  ],
+  [
     'another API error',
     new ApiError(403, 'forbidden', 'Forbidden'),
     'Não foi possível concluir. Tente de novo.',

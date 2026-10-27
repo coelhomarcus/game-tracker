@@ -227,6 +227,21 @@ describe('MutedAccounts', () => {
     );
   });
 
+  it('loads the next page instead of the empty state when every loaded row is undone', async () => {
+    mocked.setMute.mockResolvedValue(undefined);
+    mocked.mutes
+      .mockResolvedValueOnce(pageOf([person('u2')], 'c2'))
+      .mockResolvedValueOnce(pageOf([person('u3')]));
+    await renderScreen(MutedAccounts);
+    await screen.findByText('Pessoa u2');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Reativar Pessoa u2' }));
+
+    expect(await screen.findByText('Pessoa u3')).toBeOnTheScreen();
+    expect(mocked.mutes).toHaveBeenLastCalledWith('c2');
+    expect(screen.queryByText('Você não silenciou ninguém')).not.toBeOnTheScreen();
+  });
+
   it('shows the empty state once the last row is undone', async () => {
     mocked.setMute.mockResolvedValue(undefined);
     mocked.mutes.mockResolvedValue(pageOf([person('u2')]));

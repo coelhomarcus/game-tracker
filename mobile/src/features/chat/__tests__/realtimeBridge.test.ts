@@ -335,7 +335,7 @@ describe('message:reaction', () => {
     action,
   });
 
-  it('adds and removes a reaction on a loaded message and on the list preview', () => {
+  it('adds and removes a reaction on a loaded message and leaves the list preview alone', () => {
     seedCache();
 
     chatSocket.fire('message:reaction', event('add'));
@@ -346,12 +346,13 @@ describe('message:reaction', () => {
       { emoji: '❤️', userId: 'me' },
     ];
     expect(reactionsOf('m0')).toEqual(both);
-    expect(previewOf('c1')).toEqual(both);
+    // The server's list sends the last message without reactions: a partial set would be wrong.
+    expect(previewOf('c1')).toEqual([]);
 
     chatSocket.fire('message:reaction', event('remove'));
 
     expect(reactionsOf('m0')).toEqual([{ emoji: '❤️', userId: 'me' }]);
-    expect(previewOf('c1')).toEqual([{ emoji: '❤️', userId: 'me' }]);
+    expect(previewOf('c1')).toEqual([]);
   });
 
   it('is idempotent: a repeated add or remove changes nothing', () => {

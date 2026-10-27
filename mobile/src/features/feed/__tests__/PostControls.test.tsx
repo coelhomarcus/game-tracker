@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
 import { haptic } from '@/lib/haptics';
+import { queryClient } from '@/lib/queryClient';
 import { showToast } from '@/lib/toast';
 import { socialDefaults } from '@/test-utils/postDefaults';
 import { colors } from '@/theme/tokens';
@@ -101,6 +102,7 @@ function signIn(id: string) {
 }
 
 beforeEach(() => {
+  queryClient.clear();
   jest.clearAllMocks();
   jest.mocked(useTogglePostLike).mockReturnValue(like as never);
   jest.mocked(useTogglePostRepost).mockReturnValue(repost as never);
@@ -451,6 +453,20 @@ describe('PostControls more menu', () => {
 
     expect(block.mutate).not.toHaveBeenCalled();
     expect(screen.queryByText('Bloquear @ana?')).toBeNull();
+  });
+
+  it('offers to unmute and unblock an author the cached profile shows as muted and blocked', async () => {
+    queryClient.setQueryData(['profile', 'u1'], { id: 'u1', isMutedByMe: true, isBlockedByMe: true });
+    await render(withSafeArea(<PostControls post={post()} />));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+
+    expect(screen.queryByRole('button', { name: 'Silenciar @ana' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Bloquear @ana' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Desbloquear @ana' })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reativar @ana' }));
+    expect(mute.mutate).toHaveBeenCalledWith({ person: ana, on: false });
+    expect(showToast).toHaveBeenCalledWith('@ana reativado');
   });
 
   it('offers no mute or block on the user’s own post', async () => {
