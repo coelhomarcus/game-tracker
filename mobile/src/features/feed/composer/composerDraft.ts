@@ -46,6 +46,9 @@ export function draftHasContent(draft: Pick<ComposerDraft, 'text' | 'link' | 'im
   return draft.text.trim().length > 0 || draft.images.length > 0 || Boolean(draft.link?.game);
 }
 
+/** The most the server takes in an image description. */
+export const ALT_MAX_LENGTH = 1000;
+
 /** A draft untouched for this long is forgotten. */
 export const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -88,6 +91,15 @@ function isImage(value: unknown): value is PostImageInput {
   );
 }
 
+/** The image as a draft keeps it: the description only when it is a usable one (1 to 1000). */
+function toImage(value: PostImageInput): PostImageInput {
+  const { url, width, height } = value;
+  const alt = typeof value.alt === 'string' ? value.alt.trim() : '';
+  return alt.length > 0 && alt.length <= ALT_MAX_LENGTH
+    ? { url, width, height, alt }
+    : { url, width, height };
+}
+
 function isGame(value: unknown): value is Game {
   return isObject(value) && typeof value.id === 'string' && typeof value.name === 'string';
 }
@@ -103,7 +115,7 @@ function parseDraft(value: unknown): ComposerDraft | null {
     link,
     entryId: typeof value.entryId === 'string' ? value.entryId : null,
     quotedPostId: typeof value.quotedPostId === 'string' ? value.quotedPostId : null,
-    images: Array.isArray(value.images) ? value.images.filter(isImage) : [],
+    images: Array.isArray(value.images) ? value.images.filter(isImage).map(toImage) : [],
     savedAt: typeof value.savedAt === 'number' ? value.savedAt : 0,
   };
 }

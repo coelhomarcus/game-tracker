@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -319,6 +319,26 @@ describe('ImageGrid', () => {
 
     expect(screen.getByRole('imagebutton', { name: 'Imagem 1 de 2' })).toBeOnTheScreen();
     expect(screen.getByRole('imagebutton', { name: 'Imagem 2 de 2: Tela final' })).toBeOnTheScreen();
+  });
+
+  it('shows a small ALT badge only on the images that have a description', async () => {
+    const described = [image(1), image(2, { alt: 'Tela final' })];
+    await render(<ImageGrid images={described} />);
+
+    const [first, second] = screen.getAllByTestId('post-image');
+    const hidden = { includeHiddenElements: true };
+    expect(within(first).queryByTestId('post-image-alt', hidden)).toBeNull();
+    const badge = within(second).getByTestId('post-image-alt', hidden);
+    expect(badge).toHaveStyle({ position: 'absolute', left: 4, bottom: 4 });
+    expect(badge).toHaveProp('accessibilityElementsHidden', true);
+  });
+
+  it('keeps the description in the label of the image in the viewer too', async () => {
+    await render(withSafeArea(<ImageGrid images={[image(1, { alt: 'Tela final' })]} />));
+
+    await fireEvent.press(screen.getByRole('imagebutton', { name: 'Imagem do post: Tela final' }));
+
+    expect(within(screen.getByTestId('image-viewer')).getByLabelText('Imagem do post: Tela final')).toBeOnTheScreen();
   });
 
   it('puts the second and third of three images in a column beside the first', async () => {

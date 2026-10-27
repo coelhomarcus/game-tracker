@@ -10,6 +10,7 @@ const GAP = space.sm;
 /** Real touch boxes; the pressables are this big, since Android ignores hitSlop past the parent. */
 const TOUCH_BOX = 48;
 const REMOVE_DOT = 24;
+const ALT_PILL_HEIGHT = 24;
 const SINGLE_MAX_HEIGHT = 300;
 /** Up to three squares fit in a row; four wrap into two rows. */
 const MAX_IN_ROW = 3;
@@ -22,6 +23,8 @@ export type ComposerGalleryProps = {
   onRetry: (id: string) => void;
   /** A restored image failed to load (its file is gone): it can only be removed. */
   onBroken: (id: string) => void;
+  /** Opens the sheet where the description of an uploaded image is written. */
+  onEditAlt: (id: string) => void;
 };
 
 /** Width over height of a lone image, from the picked asset when it is known. */
@@ -36,6 +39,7 @@ function Thumb({
   onRemove,
   onRetry,
   onBroken,
+  onEditAlt,
 }: {
   image: ComposerImage;
   index: number;
@@ -43,10 +47,12 @@ function Thumb({
   onRemove: () => void;
   onRetry: () => void;
   onBroken: () => void;
+  onEditAlt: () => void;
 }) {
   const number = index + 1;
   // A restored image has no file to upload again.
   const retryable = image.source !== null;
+  const alt = image.image?.alt;
   return (
     <View
       testID={`composer-image-${number}`}
@@ -115,6 +121,31 @@ function Thumb({
         </View>
       ) : null}
 
+      {/* Only an uploaded image can be described. The pill is the visible part of a real 48 dp box. */}
+      {image.status === 'done' && image.image ? (
+        <Pressable
+          testID={`composer-image-${number}-alt`}
+          accessibilityRole="button"
+          accessibilityLabel={
+            alt ? `Editar descrição da imagem ${number}` : `Adicionar descrição à imagem ${number}`
+          }
+          onPress={onEditAlt}
+          style={styles.altBox}
+        >
+          <View style={styles.altPill}>
+            {alt ? <Ionicons
+                testID={`composer-image-${number}-alt-set`}
+                name="checkmark"
+                size={12}
+                color={colors.textEmphasis}
+              /> : null}
+            <Text size="xs" weight="bold" tone="high">
+              ALT
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
+
       {/* A real 48 dp box in the corner of the thumbnail, with the 24 dp round "x" inside. */}
       <Pressable
         accessibilityRole="button"
@@ -131,7 +162,13 @@ function Thumb({
 }
 
 /** The images of the post under the editor: one wide, or two to four squares in a row. */
-export function ComposerGallery({ images, onRemove, onRetry, onBroken }: ComposerGalleryProps) {
+export function ComposerGallery({
+  images,
+  onRemove,
+  onRetry,
+  onBroken,
+  onEditAlt,
+}: ComposerGalleryProps) {
   if (images.length === 0) return null;
   const single = images.length === 1;
   const thumbs = images.map((image, index) => (
@@ -143,6 +180,7 @@ export function ComposerGallery({ images, onRemove, onRetry, onBroken }: Compose
       onRemove={() => onRemove(image.id)}
       onRetry={() => onRetry(image.id)}
       onBroken={() => onBroken(image.id)}
+      onEditAlt={() => onEditAlt(image.id)}
     />
   ));
   // Four squares in one row would be about 80 dp wide: too small to hold the remove box and the
@@ -200,6 +238,27 @@ const styles = StyleSheet.create({
     height: TOUCH_BOX,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  altBox: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    minWidth: TOUCH_BOX,
+    height: TOUCH_BOX,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    paddingLeft: space.xs,
+  },
+  altPill: {
+    minHeight: ALT_PILL_HEIGHT,
+    minWidth: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: space.xs,
+    borderRadius: radii.full,
+    backgroundColor: colors.scrim,
   },
   removeBox: {
     position: 'absolute',
