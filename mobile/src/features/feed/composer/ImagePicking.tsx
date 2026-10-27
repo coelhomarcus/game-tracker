@@ -222,6 +222,21 @@ export function useComposerImages(initial: PostImageInput[]) {
     [patch],
   );
 
+  /** Sets the description of an uploaded image (trimmed; empty removes it). */
+  const setAlt = useCallback(
+    (id: string, alt: string) =>
+      commit((list) =>
+        list.map((item) => {
+          if (item.id !== id || !item.image) return item;
+          const image: PostImageInput = { ...item.image };
+          delete image.alt;
+          const text = alt.trim();
+          return { ...item, image: text ? { ...image, alt: text } : image };
+        }),
+      ),
+    [commit],
+  );
+
   const uploaded = items.flatMap((item) => (item.image ? [item.image] : []));
   return {
     items,
@@ -235,5 +250,6 @@ export function useComposerImages(initial: PostImageInput[]) {
     remove,
     retry,
     markBroken,
+    setAlt,
   };
 }

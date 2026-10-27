@@ -25,6 +25,7 @@ import { statusLabel } from '@/features/library/status';
 import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
 import { resolveImageUrl } from '@/lib/imageUrl';
+import { usePreferences } from '@/lib/preferences';
 import { showToast } from '@/lib/toast';
 import { colors, hairline, lineHeight, radii, space, type } from '@/theme/tokens';
 
@@ -33,6 +34,7 @@ import { GamePickerSheet } from '../GamePickerSheet';
 import { useCreatePost, usePost } from '../queries';
 import { displayName, isPostId, toQuotedPost, type QuotedPost as QuotedPostData } from '../types';
 import { measurePost, POST_MAX_LENGTH } from './CharProgress';
+import { AltTextSheet } from './AltTextSheet';
 import { ComposerFooter } from './ComposerFooter';
 import { ComposerGallery } from './ComposerGallery';
 import { ComposerTopBar } from './ComposerTopBar';
@@ -52,6 +54,7 @@ const AVATAR_SIZE = 42;
 const GAME_COVER_WIDTH = 36;
 const AUTOSAVE_DELAY_MS = 500;
 const INPUT_SIZE = type.size.lg;
+const MISSING_ALT_MESSAGE = 'Adicione uma descrição a todas as imagens.';
 
 /** What the composer knows about the game of the post. */
 type GameLink =
@@ -272,6 +275,9 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const [finished, setFinished] = useState(false);
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  // The image whose description is being written, by id.
+  const [altFor, setAltFor] = useState<{ id: string; notice: boolean } | null>(null);
+  const requireAltText = usePreferences((state) => state.requireAltText);
   const images = useComposerImages(restored?.images ?? []);
   // A newer choice or a removal makes the answer of an older lookup stale.
   const lookup = useRef(0);
@@ -286,6 +292,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   );
   const chosenRecord = records.find((entry) => entry.id === entryId);
 
+  const altImage = images.items.find((item) => item.id === altFor?.id);
   const trimmed = text.trim();
   // The ring counts what is typed; the limit applies to what is sent (trimmed).
   const { count } = measurePost(text);
@@ -413,6 +420,15 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
       showToast('Remova ou tente de novo as imagens que falharam');
       return;
     }
+    // With the preference on, every uploaded image needs a description before the post goes out.
+    if (requireAltText) {
+      const missing = images.items.find((item) => item.image && !item.image.alt);
+      if (missing) {
+        showToast(MISSING_ALT_MESSAGE);
+        setAltFor({ id: missing.id, notice: true });
+        return;
+      }
+    }
     sending.current = true;
     setApiError(null);
     setPublishing(true);
@@ -520,6 +536,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
                 onRemove={images.remove}
                 onRetry={images.retry}
                 onBroken={images.markBroken}
+                onEditAlt={(id) => setAltFor({ id, notice: false })}
               />
             </View>
           ) : null}
@@ -612,6 +629,17 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
           setPickerOpen(false);
           void resolve(game.igdbId);
         }}
+      />
+      <AltTextSheet
+        visible={altImage !== undefined}
+        imageUri={altImage?.uri ?? ''}
+        initialAlt={altImage?.image?.alt ?? ''}
+        notice={altFor?.notice ? MISSING_ALT_MESSAGE : undefined}
+        onSave={(alt) => {
+          if (altFor !== null) images.setAlt(altFor.id, alt);
+          setAltFor(null);
+        }}
+        onCancel={() => setAltFor(null)}
       />
       <DiscardDraftPrompt
         visible={leave !== null}

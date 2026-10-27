@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
+import { Text } from '@/components';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
@@ -132,6 +133,20 @@ function Cell({ image, label, shape, round, onPress }: CellProps) {
       {uri ? <Image source={{ uri }} resizeMode="cover" style={styles.image} /> : null}
       {/* A hairline drawn over the image keeps light pictures from bleeding into the page. */}
       <View pointerEvents="none" style={[styles.border, round]} />
+      {/* The label above already speaks the description; the badge is only for sighted users. */}
+      {image.alt ? (
+        <View
+          testID="post-image-alt"
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.altBadge}
+        >
+          <Text size="xs" weight="bold" tone="high">
+            ALT
+          </Text>
+        </View>
+      ) : null}
     </>
   );
   // A preview takes no touch, so the card around it gets the tap; its label carries the post.
@@ -168,6 +183,14 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   cell: { overflow: 'hidden', backgroundColor: colors.bgContrast25 },
   image: { width: '100%', height: '100%' },
+  altBadge: {
+    position: 'absolute',
+    left: space.xs,
+    bottom: space.xs,
+    paddingHorizontal: space.xs,
+    borderRadius: radii.full,
+    backgroundColor: colors.scrim,
+  },
   border: {
     position: 'absolute',
     top: 0,
