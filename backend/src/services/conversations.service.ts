@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
 import {
   blocks,
@@ -73,6 +73,29 @@ async function messagingRefusal(
 export async function assertCanMessage(senderId: string, recipientId: string, executor: Executor = db): Promise<void> {
   const refusal = await messagingRefusal(senderId, recipientId, executor);
   if (refusal) throw refusal;
+}
+
+/**
+ * Expressão SQL booleana: `senderId` pode mandar mensagem para a pessoa de cada linha da tabela
+ * `users` da consulta agora. As mesmas regras de `messagingRefusal`, para uma lista inteira
+ * numa consulta só. Falsa para a própria pessoa.
+ */
+export function canMessageSql(senderId: string): SQL<boolean> {
+  return sql<boolean>`(
+    ${users.id} <> ${senderId}
+    and not exists(
+      select 1 from ${blocks} b
+      where (b.blocker_id = ${senderId} and b.blocked_id = ${users.id})
+         or (b.blocker_id = ${users.id} and b.blocked_id = ${senderId})
+    )
+    and (
+      ${users.dmPolicy} = 'everyone'
+      or (
+        ${users.dmPolicy} = 'following'
+        and exists(select 1 from ${follows} f where f.follower_id = ${users.id} and f.following_id = ${senderId})
+      )
+    )
+  )`;
 }
 
 /** Se `senderId` pode mandar mensagem para `recipientId` agora. Falso para si mesmo. */
