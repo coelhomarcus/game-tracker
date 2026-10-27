@@ -703,9 +703,37 @@ export async function deletePost(userId: string, postId: string) {
     await tx.delete(posts).where(eq(posts.id, postId));
   });
 
-  for (const { url } of images) {
-    const stillUsed = await db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1);
-    if (stillUsed.length === 0) await deletePostImageIfLocal(url);
+  await removeUnusedPostImageFiles(images.map((image) => image.url));
+}
+
+/** Todas as URLs de imagem dos posts de um usuário (as de `post_images` e a `image_url` legada), sem repetição. */
+export async function postImageUrlsOf(userId: string): Promise<string[]> {
+  const [fromImages, fromPosts] = await Promise.all([
+    db
+      .select({ url: postImages.url })
+      .from(postImages)
+      .innerJoin(posts, eq(posts.id, postImages.postId))
+      .where(eq(posts.userId, userId)),
+    db.select({ url: posts.imageUrl }).from(posts).where(eq(posts.userId, userId)),
+  ]);
+  const urls = new Set<string>();
+  for (const { url } of fromImages) urls.add(url);
+  for (const { url } of fromPosts) if (url) urls.add(url);
+  return [...urls];
+}
+
+/** Best-effort: apaga os arquivos dessas imagens, menos os que algum post ainda usa. */
+export async function removeUnusedPostImageFiles(urls: string[]) {
+  for (const url of urls) {
+    try {
+      const [stillInImages, stillInPosts] = await Promise.all([
+        db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1),
+        db.select({ id: posts.id }).from(posts).where(eq(posts.imageUrl, url)).limit(1),
+      ]);
+      if (stillInImages.length === 0 && stillInPosts.length === 0) await deletePostImageIfLocal(url);
+    } catch (err) {
+      console.error('[posts] não foi possível limpar uma imagem de post:', err);
+    }
   }
 }
 

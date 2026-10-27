@@ -308,7 +308,7 @@ export async function markRead(userId: string, conversationId: string) {
   const participant = await requireParticipant(userId, conversationId);
   await db
     .update(conversationParticipants)
-    .set({ lastReadAt: new Date() })
+    .set({ lastReadAt: sql`now()` })
     .where(eq(conversationParticipants.id, participant.id));
 }
 
@@ -316,7 +316,7 @@ export async function markRead(userId: string, conversationId: string) {
 export async function markAllRead(userId: string) {
   await db
     .update(conversationParticipants)
-    .set({ lastReadAt: new Date() })
+    .set({ lastReadAt: sql`now()` })
     .where(eq(conversationParticipants.userId, userId));
 }
 

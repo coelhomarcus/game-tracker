@@ -453,6 +453,8 @@ export const messageHides = pgTable(
   },
   (table) => ({
     messageUserUnique: unique('message_hides_message_id_user_id_unique').on(table.messageId, table.userId),
+    // Apagar a conta remove as linhas pelo user_id; sem o índice cada exclusão varre a tabela.
+    userIdIdx: index('message_hides_user_id_idx').on(table.userId),
   }),
 );
 
@@ -476,6 +478,7 @@ export const messageReactions = pgTable(
       table.userId,
       table.emoji,
     ),
+    userIdIdx: index('message_reactions_user_id_idx').on(table.userId),
   }),
 );
 

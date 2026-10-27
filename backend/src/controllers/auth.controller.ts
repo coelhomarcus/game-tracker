@@ -24,6 +24,12 @@ export async function meHandler(req: Request, res: Response) {
   res.json(user);
 }
 
+export async function changePasswordHandler(req: Request, res: Response) {
+  const { currentPassword, newPassword, refreshToken } = req.body;
+  await authService.changePassword(req.user!.id, currentPassword, newPassword, refreshToken);
+  res.status(204).send();
+}
+
 export async function logoutHandler(req: Request, res: Response) {
   const { refreshToken } = req.body;
   await authService.logout(refreshToken);

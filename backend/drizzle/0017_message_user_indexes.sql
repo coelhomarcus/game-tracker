@@ -1,0 +1,2 @@
+CREATE INDEX "message_hides_user_id_idx" ON "message_hides" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "message_reactions_user_id_idx" ON "message_reactions" USING btree ("user_id");

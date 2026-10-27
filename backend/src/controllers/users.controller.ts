@@ -123,6 +123,11 @@ export async function unfollowHandler(req: Request, res: Response) {
   res.status(204).send();
 }
 
+export async function deleteAccountHandler(req: Request, res: Response) {
+  await usersService.deleteAccount(req.user!.id, req.body.password);
+  res.status(204).send();
+}
+
 export async function updateProfileHandler(req: Request, res: Response) {
   await usersService.updateProfile(req.user!.id, req.body);
   res.status(204).send();

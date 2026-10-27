@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   blockHandler,
+  deleteAccountHandler,
   followHandler,
   getFollowersHandler,
   getFollowingHandler,
@@ -25,8 +26,10 @@ import {
   uploadBannerHandler,
 } from '../controllers/users.controller';
 import { requireAuth } from '../middlewares/auth';
+import { authLimiter } from '../middlewares/authLimiter';
 import { validateBody, validateQuery } from '../middlewares/validate';
 import { avatarUpload, bannerUpload } from '../lib/uploads';
+import { deleteAccountSchema } from '../schemas/auth.schema';
 import { bookmarksQuerySchema } from '../schemas/posts.schema';
 import { listGameEntriesQuerySchema } from '../schemas/gameEntry.schema';
 import {
@@ -41,6 +44,7 @@ export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
 usersRouter.patch('/me', validateBody(updateProfileSchema), updateProfileHandler);
+usersRouter.delete('/me', authLimiter, validateBody(deleteAccountSchema), deleteAccountHandler);
 usersRouter.post('/me/avatar', avatarUpload.single('avatar'), uploadAvatarHandler);
 usersRouter.post('/me/banner', bannerUpload.single('banner'), uploadBannerHandler);
 usersRouter.delete('/me/avatar', removeAvatarHandler);

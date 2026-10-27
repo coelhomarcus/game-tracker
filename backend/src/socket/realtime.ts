@@ -16,6 +16,16 @@ export const conversationRoom = (conversationId: string) => `conversation:${conv
 /** Sala de um usuário: todos os sockets dele (vários aparelhos ou abas). */
 export const userRoom = (userId: string) => `user:${userId}`;
 
+/**
+ * Derruba todos os sockets de um usuário. O adaptador do Redis só repassa o pedido às instâncias
+ * pelo Redis; a chamada local garante o efeito imediato nesta instância, mesmo se o Redis atrasar.
+ */
+export function disconnectUser(userId: string) {
+  const room = userRoom(userId);
+  current?.local.in(room).disconnectSockets(true);
+  current?.in(room).disconnectSockets(true);
+}
+
 export function emitToRoom(room: string, event: string, payload: unknown) {
   current?.to(room).emit(event, payload);
 }

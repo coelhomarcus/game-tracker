@@ -1,18 +1,16 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
-import { loginHandler, logoutHandler, meHandler, refreshHandler, registerHandler } from '../controllers/auth.controller';
-import { loginSchema, refreshSchema, registerSchema } from '../schemas/auth.schema';
+import {
+  changePasswordHandler,
+  loginHandler,
+  logoutHandler,
+  meHandler,
+  refreshHandler,
+  registerHandler,
+} from '../controllers/auth.controller';
+import { changePasswordSchema, loginSchema, refreshSchema, registerSchema } from '../schemas/auth.schema';
 import { requireAuth } from '../middlewares/auth';
+import { authLimiter } from '../middlewares/authLimiter';
 import { validateBody } from '../middlewares/validate';
-
-// Padrão de produção: 20 tentativas por 15 minutos por IP. `AUTH_RATE_LIMIT_MAX` existe para
-// ambientes de teste isolados, onde suítes de integração criam dezenas de contas.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: Number(process.env.AUTH_RATE_LIMIT_MAX) || 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 export const authRouter = Router();
 
@@ -20,4 +18,6 @@ authRouter.post('/register', authLimiter, validateBody(registerSchema), register
 authRouter.post('/login', authLimiter, validateBody(loginSchema), loginHandler);
 authRouter.post('/refresh', validateBody(refreshSchema), refreshHandler);
 authRouter.post('/logout', validateBody(refreshSchema), logoutHandler);
+// Confere a senha atual com bcrypt: o mesmo limite do login contém tentativas em série.
+authRouter.post('/password', authLimiter, requireAuth, validateBody(changePasswordSchema), changePasswordHandler);
 authRouter.get('/me', requireAuth, meHandler);

@@ -1,14 +1,17 @@
-import { and, count, eq, ilike, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, ilike, inArray, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { type DmPolicy, follows, gameEntries, users } from '../db/schema';
+import { type DmPolicy, follows, gameEntries, posts, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
 import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
 import { isUuid } from '../lib/uuid';
 import { deleteAvatarIfLocal, deleteBannerIfLocal, saveAvatar, saveBanner } from '../lib/uploads';
+import { disconnectUser } from '../socket/realtime';
+import * as authService from './auth.service';
 import * as conversationsService from './conversations.service';
 import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
+import * as postsService from './posts.service';
 
 /** Pessoas pelo username ou nome. Quem tem bloqueio com quem busca (em qualquer sentido) não aparece. */
 export async function search(viewerId: string, term: string) {
@@ -202,6 +205,41 @@ export async function updateProfile(
     }
     throw err;
   }
+}
+
+/**
+ * Apaga a conta de quem está logado, depois de conferir a senha. O banco leva junto, em cascata,
+ * sessões, posts (com likes, comentários, imagens e notificações), reposts, salvos, follows,
+ * bloqueios, silenciados, registros de jogos, favoritos, instalações de push, participações em
+ * conversas e as mensagens, reações e ocultações dessa pessoa. As conversas continuam para a outra
+ * pessoa, sem o par. As citações dos posts apagados ficam, marcadas como removidas, como em
+ * `deletePost`. Depois os sockets caem e os arquivos (avatar, capa, imagens de posts) saem do disco,
+ * sem que uma falha ali desfaça a exclusão.
+ */
+export async function deleteAccount(userId: string, password: string) {
+  await authService.assertPassword(userId, password);
+
+  const current = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { avatarUrl: true, bannerUrl: true },
+  });
+  const postImageUrls = await postsService.postImageUrlsOf(userId);
+
+  await db.transaction(async (tx) => {
+    const ownPosts = tx.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+    // Marca as citações antes: apagar zera `quoted_post_id` pela FK, e a marca é o que sobra.
+    await tx.update(posts).set({ quotedPostRemoved: true }).where(inArray(posts.quotedPostId, ownPosts));
+    await tx.delete(users).where(eq(users.id, userId));
+  });
+
+  // Quem ainda tem um token de acesso válido (até 15 min) não reabre a conexão: o handshake confere a conta.
+  disconnectUser(userId);
+
+  await Promise.allSettled([
+    deleteAvatarIfLocal(current?.avatarUrl ?? null),
+    deleteBannerIfLocal(current?.bannerUrl ?? null),
+    postsService.removeUnusedPostImageFiles(postImageUrls),
+  ]);
 }
 
 export async function updateAvatar(userId: string, buffer: Buffer) {
