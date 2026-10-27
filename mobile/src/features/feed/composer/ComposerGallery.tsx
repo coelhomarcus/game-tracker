@@ -139,7 +139,7 @@ function Thumb({
                 size={12}
                 color={colors.textEmphasis}
               /> : null}
-            <Text size="xs" weight="bold" tone="high">
+            <Text size="xs" weight="bold" tone="high" maxFontSizeMultiplier={1.2}>
               ALT
             </Text>
           </View>
@@ -243,7 +243,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    minWidth: TOUCH_BOX,
+    // Stops where the remove box starts, so the two real boxes never overlap, however narrow.
+    right: TOUCH_BOX,
     height: TOUCH_BOX,
     alignItems: 'flex-start',
     justifyContent: 'center',

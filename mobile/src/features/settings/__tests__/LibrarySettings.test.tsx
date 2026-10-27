@@ -39,6 +39,7 @@ describe('LibrarySettings', () => {
       expect(screen.getByRole('radio', { name: label, checked: false })).toBeOnTheScreen();
     }
 
+    expect(screen.getByTestId('sort-options')).toHaveProp('accessibilityRole', 'radiogroup');
     await fireEvent.press(screen.getByRole('radio', { name: 'Minha nota' }));
 
     expect(useLibraryPrefs.getState().sort).toBe('rating');

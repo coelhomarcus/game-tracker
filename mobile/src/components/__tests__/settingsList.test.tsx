@@ -1,8 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 import { Text as RNText } from 'react-native';
 
 import { SettingsList } from '@/components';
+import { usePreferences } from '@/lib/preferences';
 import { colors } from '@/theme/tokens';
+
+jest.mock('expo-haptics', () => ({
+  AndroidHaptics: { Context_Click: 'context-click', Long_Press: 'long-press', Confirm: 'confirm' },
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+  impactAsync: jest.fn().mockResolvedValue(undefined),
+}));
+const impact = Haptics.impactAsync as jest.Mock;
 
 const touch = { nativeEvent: { touches: [], changedTouches: [], target: 1, timestamp: 0 }, persist: () => {} };
 
@@ -89,11 +98,14 @@ describe('SettingsList', () => {
     await render(
       <SettingsList.Container>
         <RNText>antes</RNText>
-        <SettingsList.Divider />
+        <SettingsList.Divider testID="divider" />
         <RNText>depois</RNText>
       </SettingsList.Container>,
     );
 
+    const divider = screen.getByTestId('divider', { includeHiddenElements: true });
+    expect(divider).toHaveProp('accessibilityElementsHidden', true);
+    expect(divider).toHaveProp('importantForAccessibility', 'no-hide-descendants');
     expect(screen.getByText('antes')).toBeOnTheScreen();
     expect(screen.getByText('depois')).toBeOnTheScreen();
   });
@@ -122,6 +134,30 @@ describe('SettingsList', () => {
       );
       await fireEvent.press(screen.getByRole('switch', { name: 'Desativar vibração', checked: true }));
       expect(onValueChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('vibrates after the toggle, so turning vibration off is silent and turning it on is felt', async () => {
+      impact.mockClear();
+      usePreferences.setState({ hapticsEnabled: true });
+      function Wired() {
+        const enabled = usePreferences((state) => state.hapticsEnabled);
+        return (
+          <SettingsList.SwitchItem
+            label="Desativar vibração"
+            value={!enabled}
+            onValueChange={(off) => usePreferences.getState().setHapticsEnabled(!off)}
+          />
+        );
+      }
+      await render(<Wired />);
+
+      await fireEvent.press(screen.getByRole('switch', { name: 'Desativar vibração' }));
+      expect(usePreferences.getState().hapticsEnabled).toBe(false);
+      expect(impact).not.toHaveBeenCalled();
+
+      await fireEvent.press(screen.getByRole('switch', { name: 'Desativar vibração' }));
+      expect(usePreferences.getState().hapticsEnabled).toBe(true);
+      expect(impact).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the native switch out of the accessibility tree, so the row is the only control', async () => {

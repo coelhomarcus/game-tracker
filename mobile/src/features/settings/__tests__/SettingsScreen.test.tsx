@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
@@ -95,8 +95,14 @@ describe('SettingsScreen', () => {
   it('draws Sair in the danger tone and without a chevron', async () => {
     await renderSettings();
 
+    const sair = screen.getByRole('button', { name: 'Sair' });
     expect(screen.getByText('Sair')).toHaveStyle({ color: colors.danger });
-    expect(screen.getByRole('button', { name: 'Sair' })).toHaveStyle({ minHeight: 48 });
+    expect(sair).toHaveStyle({ minHeight: 48 });
+    expect(within(sair).queryByTestId('settings-chevron')).toBeNull();
+    // The navigation rows do have one.
+    expect(
+      within(screen.getByRole('button', { name: 'Biblioteca' })).getByTestId('settings-chevron'),
+    ).toBeOnTheScreen();
   });
 
   it('asks before signing out and keeps the session when the user stays', async () => {

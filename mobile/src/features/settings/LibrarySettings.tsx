@@ -10,7 +10,7 @@ export function LibrarySettings() {
 
   return (
     <Screen scroll>
-      <SettingsList.Container>
+      <SettingsList.Container testID="sort-options" accessibilityRole="radiogroup">
         <SettingsList.Item style={styles.heading}>
           <Text accessibilityRole="header" weight="semibold" tone="high">
             Ordenar por

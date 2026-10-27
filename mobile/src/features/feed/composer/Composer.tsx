@@ -54,6 +54,7 @@ const AVATAR_SIZE = 42;
 const GAME_COVER_WIDTH = 36;
 const AUTOSAVE_DELAY_MS = 500;
 const INPUT_SIZE = type.size.lg;
+const MISSING_ALT_MESSAGE = 'Adicione uma descrição a todas as imagens.';
 
 /** What the composer knows about the game of the post. */
 type GameLink =
@@ -275,7 +276,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const [scrolled, setScrolled] = useState(false);
   // The image whose description is being written, by id.
-  const [altFor, setAltFor] = useState<string | null>(null);
+  const [altFor, setAltFor] = useState<{ id: string; notice: boolean } | null>(null);
   const requireAltText = usePreferences((state) => state.requireAltText);
   const images = useComposerImages(restored?.images ?? []);
   // A newer choice or a removal makes the answer of an older lookup stale.
@@ -291,7 +292,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   );
   const chosenRecord = records.find((entry) => entry.id === entryId);
 
-  const altImage = images.items.find((item) => item.id === altFor);
+  const altImage = images.items.find((item) => item.id === altFor?.id);
   const trimmed = text.trim();
   // The ring counts what is typed; the limit applies to what is sent (trimmed).
   const { count } = measurePost(text);
@@ -423,8 +424,8 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     if (requireAltText) {
       const missing = images.items.find((item) => item.image && !item.image.alt);
       if (missing) {
-        showToast('Adicione uma descrição a todas as imagens.');
-        setAltFor(missing.id);
+        showToast(MISSING_ALT_MESSAGE);
+        setAltFor({ id: missing.id, notice: true });
         return;
       }
     }
@@ -535,7 +536,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
                 onRemove={images.remove}
                 onRetry={images.retry}
                 onBroken={images.markBroken}
-                onEditAlt={setAltFor}
+                onEditAlt={(id) => setAltFor({ id, notice: false })}
               />
             </View>
           ) : null}
@@ -633,8 +634,9 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
         visible={altImage !== undefined}
         imageUri={altImage?.uri ?? ''}
         initialAlt={altImage?.image?.alt ?? ''}
+        notice={altFor?.notice ? MISSING_ALT_MESSAGE : undefined}
         onSave={(alt) => {
-          if (altFor !== null) images.setAlt(altFor, alt);
+          if (altFor !== null) images.setAlt(altFor.id, alt);
           setAltFor(null);
         }}
         onCancel={() => setAltFor(null)}

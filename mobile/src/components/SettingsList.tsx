@@ -20,8 +20,23 @@ import { Text } from './Text';
 const ROW_MIN_HEIGHT = 48;
 
 /** The column that holds the rows of a settings page. */
-export function Container({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.container, style]}>{children}</View>;
+export function Container({
+  children,
+  style,
+  accessibilityRole,
+  testID,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  /** `radiogroup` for a list of radio rows, so a screen reader reads them as one group. */
+  accessibilityRole?: 'radiogroup';
+  testID?: string;
+}) {
+  return (
+    <View testID={testID} accessibilityRole={accessibilityRole} style={[styles.container, style]}>
+      {children}
+    </View>
+  );
 }
 
 export type ItemProps = { children: ReactNode; style?: StyleProp<ViewStyle>; testID?: string };
@@ -70,8 +85,9 @@ export function PressableItem({
       accessibilityState={{ ...accessibilityState, disabled }}
       disabled={disabled}
       onPress={() => {
-        haptic('tap');
+        // After the action, so a row that turns haptics off does not vibrate once more.
         onPress();
+        haptic('tap');
       }}
       style={({ pressed }) => [styles.item, pressed && styles.pressed, style]}
     >
@@ -114,7 +130,7 @@ export function ItemValue({ children }: { children: string }) {
 
 /** Marks a row that opens another screen. */
 export function Chevron() {
-  return <Ionicons name="chevron-forward" size={18} color={colors.textLow} />;
+  return <Ionicons testID="settings-chevron" name="chevron-forward" size={18} color={colors.textLow} />;
 }
 
 /** A count on the right side of the row. */
@@ -123,9 +139,10 @@ export function BadgeItem({ count }: { count: number }) {
 }
 
 /** A hairline between groups of rows. */
-export function Divider() {
+export function Divider({ testID }: { testID?: string }) {
   return (
     <View
+      testID={testID}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={styles.divider}

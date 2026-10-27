@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Text, TextField } from '@/components';
@@ -16,6 +16,11 @@ export type AltTextSheetProps = {
   visible: boolean;
   /** What the preview shows. */
   imageUri: string;
+  /**
+   * Why the sheet opened by itself (e.g. Publicar needs a description). A native Modal covers the
+   * toast host, so the sheet shows it, and announces it, itself.
+   */
+  notice?: string;
   /** The description the image has now ('' when none). */
   initialAlt: string;
   /** The trimmed description; '' removes it. */
@@ -24,19 +29,31 @@ export type AltTextSheetProps = {
 };
 
 /** The sheet where the description (alt text) of one image of the post is written. */
-export function AltTextSheet({ visible, imageUri, initialAlt, onSave, onCancel }: AltTextSheetProps) {
+export function AltTextSheet({
+  visible,
+  imageUri,
+  initialAlt,
+  notice,
+  onSave,
+  onCancel,
+}: AltTextSheetProps) {
   return (
     <Modal
+      testID="alt-modal"
       transparent
       statusBarTranslucent
       animationType="slide"
       visible={visible}
       onRequestClose={onCancel}
     >
-      {/* The sheet lives in its own window, which the app's keyboard provider does not reach. */}
-      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-        <AltForm imageUri={imageUri} initialAlt={initialAlt} onSave={onSave} onCancel={onCancel} />
-      </KeyboardProvider>
+      {/* The app's keyboard provider already follows the keyboard inside a Modal's window. */}
+      <AltForm
+        imageUri={imageUri}
+        initialAlt={initialAlt}
+        notice={notice}
+        onSave={onSave}
+        onCancel={onCancel}
+      />
     </Modal>
   );
 }
@@ -44,12 +61,16 @@ export function AltTextSheet({ visible, imageUri, initialAlt, onSave, onCancel }
 function AltForm({
   imageUri,
   initialAlt,
+  notice,
   onSave,
   onCancel,
 }: Omit<AltTextSheetProps, 'visible'>) {
   const insets = useSafeAreaInsets();
   // Mounted only while the sheet is open, so every opening starts from the saved description.
   const [text, setText] = useState(initialAlt);
+  useEffect(() => {
+    if (notice) AccessibilityInfo.announceForAccessibility(notice);
+  }, [notice]);
 
   return (
     <KeyboardAvoidingView behavior="padding" style={styles.root}>
@@ -68,6 +89,11 @@ function AltForm({
           <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
             Descrição da imagem
           </Text>
+          {notice ? (
+            <Text testID="alt-notice" size="sm" tone="medium">
+              {notice}
+            </Text>
+          ) : null}
           <Image
             accessibilityIgnoresInvertColors
             accessibilityLabel="Imagem sendo descrita"

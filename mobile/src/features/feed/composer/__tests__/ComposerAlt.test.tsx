@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { AccessibilityInfo } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
@@ -172,6 +173,43 @@ describe('AltTextSheet', () => {
     expect(screen.getByText('998/1000')).toBeOnTheScreen();
   });
 
+  it('cancels from the backdrop and from Android back, never saving', async () => {
+    await renderSheet();
+    await fireEvent.changeText(screen.getByLabelText('Descrição'), 'Algo');
+
+    await fireEvent.press(screen.getByTestId('alt-backdrop', { includeHiddenElements: true }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await fireEvent(screen.getByTestId('alt-modal'), 'requestClose');
+
+    expect(onCancel).toHaveBeenCalledTimes(2);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('shows the notice inside the sheet and announces it, only when there is one', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    const { unmount } = await renderSheet();
+    expect(screen.queryByTestId('alt-notice')).toBeNull();
+    expect(announce).not.toHaveBeenCalled();
+    await unmount();
+
+    await render(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <AltTextSheet
+          visible
+          imageUri="file:///a.jpg"
+          initialAlt=""
+          notice={MISSING}
+          onSave={onSave}
+          onCancel={onCancel}
+        />
+      </SafeAreaProvider>,
+    );
+
+    expect(screen.getByTestId('alt-notice')).toHaveTextContent(MISSING);
+    expect(announce).toHaveBeenCalledWith(MISSING);
+    announce.mockRestore();
+  });
+
   it('shows the image with a contained preview at most 240 high', async () => {
     await renderSheet();
 
@@ -192,7 +230,7 @@ describe('Composer image descriptions', () => {
     await act(async () => finish(uploaded('a')));
 
     const pill = screen.getByRole('button', { name: 'Adicionar descrição à imagem 1' });
-    expect(pill).toHaveStyle({ top: 0, left: 0, height: 48, minWidth: 48 });
+    expect(pill).toHaveStyle({ top: 0, left: 0, right: 48, height: 48 });
     expect(screen.getByText('ALT')).toBeOnTheScreen();
   });
 
@@ -222,6 +260,34 @@ describe('Composer image descriptions', () => {
     await fireEvent.changeText(screen.getByLabelText('Escrever post'), 'Oi');
     await press('Publicar');
     expect(mockCreate).toHaveBeenCalledWith({ content: 'Oi', images: [uploaded('a')] });
+  });
+
+  it('has no notice when the sheet is opened from the ALT pill', async () => {
+    await renderScreen();
+    await addImages('a');
+
+    await press('Adicionar descrição à imagem 1');
+
+    expect(screen.getByTestId('alt-sheet')).toBeOnTheScreen();
+    expect(screen.queryByTestId('alt-notice')).toBeNull();
+  });
+
+  it('takes the description of a removed image with it', async () => {
+    await renderScreen();
+    await addImages('a', 'b');
+    await describeImage(1, 'Primeira');
+    await describeImage(2, 'Segunda');
+
+    await press('Remover imagem 1');
+
+    expect(screen.getByRole('button', { name: 'Editar descrição da imagem 1' })).toBeOnTheScreen();
+    await addImages('c');
+    expect(screen.getByRole('button', { name: 'Adicionar descrição à imagem 2' })).toBeOnTheScreen();
+    await press('Publicar');
+    expect(mockCreate).toHaveBeenCalledWith({
+      content: '',
+      images: [{ ...uploaded('b'), alt: 'Segunda' }, uploaded('c')],
+    });
   });
 
   it('keeps the old description when the sheet is cancelled', async () => {
@@ -257,8 +323,15 @@ describe('Composer image descriptions', () => {
   });
 
   describe('when descriptions are required', () => {
+    let announce: jest.SpyInstance;
+
     beforeEach(() => {
       usePreferences.setState({ requireAltText: true });
+      announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      announce.mockRestore();
     });
 
     it('blocks Publicar with a toast and opens the first image without one', async () => {
@@ -271,6 +344,9 @@ describe('Composer image descriptions', () => {
       expect(showToast).toHaveBeenCalledWith(MISSING);
       expect(mockCreate).not.toHaveBeenCalled();
       expect(screen.getByTestId('alt-sheet')).toBeOnTheScreen();
+      // A Modal covers the toast host, so the reason is also written inside the sheet.
+      expect(sheet().getByTestId('alt-notice')).toHaveTextContent(MISSING);
+      expect(announce).toHaveBeenCalledWith(MISSING);
       expect(sheet().getByLabelText('Descrição').props.value).toBe('');
       // It is image 2, the first one without a description, that is open.
       await fireEvent.changeText(sheet().getByLabelText('Descrição'), 'Segunda');
