@@ -1,4 +1,4 @@
-import type { QueryClient } from '@tanstack/react-query';
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 import { useSession, type User } from '@/features/auth';
 
@@ -33,6 +33,35 @@ export function cancelOwnProfileRefetch(client: QueryClient, me: string): Promis
     exact: true,
     predicate: (query) => query.state.data !== undefined,
   });
+}
+
+/**
+ * Every cached list or page that shows users' avatars beside what they wrote: the feeds and
+ * other post lists, a post and its comments, replies, chat, notifications and people lists.
+ */
+const AVATAR_LISTS: readonly QueryKey[] = [
+  ['feed'],
+  ['gamePosts'],
+  ['userPosts'],
+  ['bookmarks'],
+  ['post'],
+  ['comments'],
+  ['userReplies'],
+  ['conversations'],
+  ['messages'],
+  ['notifications'],
+  ['people'],
+  ['follows'],
+  ['gamePlayers'],
+];
+
+/**
+ * After the own avatar changed or was removed. The server deletes the old file, so a list still
+ * holding its URL would draw a broken image: the lists on screen refetch now, the others when
+ * they are shown again.
+ */
+export function invalidateAvatarLists(client: QueryClient): Promise<unknown> {
+  return Promise.all(AVATAR_LISTS.map((queryKey) => client.invalidateQueries({ queryKey })));
 }
 
 /**

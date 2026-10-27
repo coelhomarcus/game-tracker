@@ -10,7 +10,11 @@ import type { ImageKind, PickedImage } from '../types';
 export const IMAGE_KINDS = ['avatar', 'banner'] as const satisfies readonly ImageKind[];
 
 /** What the sheet does with one image when saving: keep it, send a new one, or remove it. */
-export type ImageEdit = { kind: 'saved' } | { kind: 'picked'; image: PickedImage } | { kind: 'removed' };
+export type ImageEdit =
+  | { kind: 'saved' }
+  /** `previous` is what "Remover" goes back to: the saved image, or a removal chosen before. */
+  | { kind: 'picked'; image: PickedImage; previous: 'saved' | 'removed' }
+  | { kind: 'removed' };
 
 /**
  * The sheet's edits. `fields` holds only what the user typed: a field they never touched follows
@@ -34,6 +38,7 @@ export type SaveStep =
   | { type: 'patch'; changes: ProfileChanges };
 
 const SAVED: ImageEdit = { kind: 'saved' };
+const REMOVED: ImageEdit = { kind: 'removed' };
 
 export const EMPTY_EDITS: EditProfileState = {
   fields: {},
@@ -121,22 +126,27 @@ export function editField(
   return { ...state, fields: { ...state.fields, [field]: value } };
 }
 
-/** A new image for `kind`, sent on save; it replaces a pending removal. */
+/**
+ * A new image for `kind`, sent on save. It replaces a pending removal, which "Remover" brings
+ * back; picking again over a pick keeps what came before the first pick.
+ */
 export function pickImageEdit(
   state: EditProfileState,
   kind: ImageKind,
   image: PickedImage,
 ): EditProfileState {
-  return { ...state, images: { ...state.images, [kind]: { kind: 'picked', image } } };
+  const edit = state.images[kind];
+  const previous = edit.kind === 'picked' ? edit.previous : edit.kind;
+  return { ...state, images: { ...state.images, [kind]: { kind: 'picked', image, previous } } };
 }
 
 /**
- * "Remover": a picked image that was never saved is dropped, and the saved one shows again; a
- * saved image is marked for removal.
+ * "Remover": a picked image that was never saved is dropped and what came before it returns (the
+ * saved image, or the removal chosen before the pick); a saved image is marked for removal.
  */
 export function removeImageEdit(state: EditProfileState, kind: ImageKind): EditProfileState {
   const edit = state.images[kind];
-  const next: ImageEdit = edit.kind === 'picked' ? SAVED : { kind: 'removed' };
+  const next: ImageEdit = edit.kind === 'picked' && edit.previous === 'saved' ? SAVED : REMOVED;
   return { ...state, images: { ...state.images, [kind]: next } };
 }
 

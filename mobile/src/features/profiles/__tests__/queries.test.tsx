@@ -809,17 +809,83 @@ describe('useUploadImage', () => {
 });
 
 describe('useUploadImage and useRemoveImage', () => {
-  it('marks the own posts stale after an avatar change, since they carry the avatar', async () => {
-    mocked.upload.mockResolvedValue('/uploads/a.png');
+  /** A cached copy of each list that shows avatars, as the screens key them. */
+  const AVATAR_LIST_KEYS = [
+    ['feed', 'following'],
+    ['feed', 'all'],
+    ['gamePosts', 'g1'],
+    ['userPosts', 'me', 'posts'],
+    ['userPosts', 'u2', 'posts'],
+    ['bookmarks'],
+    ['post', 'p1'],
+    ['comments', 'p1', 'top'],
+    ['userReplies', 'me'],
+    ['conversations'],
+    ['messages', 'c1'],
+    ['notifications'],
+    ['people', 'an'],
+    ['follows', 'u2', 'followers'],
+    ['gamePlayers', 'g1', 'all'],
+  ];
+
+  function seedAvatarLists(client: QueryClient) {
+    for (const key of AVATAR_LIST_KEYS) client.setQueryData(key, { cached: true });
+  }
+
+  function staleLists(client: QueryClient) {
+    return AVATAR_LIST_KEYS.filter((key) => client.getQueryState(key)?.isInvalidated);
+  }
+
+  it.each([
+    ['an upload', () => mocked.upload.mockResolvedValue('/uploads/a.png'), useUploadImage],
+    ['a removal', () => mocked.removeImage.mockResolvedValue(undefined), useRemoveImage],
+  ] as const)('refreshes every list that shows the avatar after %s of it', async (_label, arrange, hook) => {
+    arrange();
     const client = freshClient();
-    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    seedAvatarLists(client);
+    client.setQueryData(['userFavorites', 'me'], []);
+    const { result } = await renderHook(() => hook(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      if (hook === useUploadImage) {
+        await (result.current as ReturnType<typeof useUploadImage>).mutateAsync({ kind: 'avatar', image });
+      } else {
+        await (result.current as ReturnType<typeof useRemoveImage>).mutateAsync('avatar');
+      }
+    });
+
+    expect(staleLists(client)).toEqual(AVATAR_LIST_KEYS);
+    // Lists without avatars are left alone.
+    expect(client.getQueryState(['userFavorites', 'me'])?.isInvalidated).toBe(false);
+  });
+
+  it('leaves the lists alone after a banner change, which only the profile shows', async () => {
+    mocked.upload.mockResolvedValue('/uploads/b.png');
+    mocked.removeImage.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedAvatarLists(client);
+    const upload = await renderHook(() => useUploadImage(), { wrapper: wrapperFor(client) });
+    const remove = await renderHook(() => useRemoveImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await upload.result.current.mutateAsync({ kind: 'banner', image });
+      await remove.result.current.mutateAsync('banner');
+    });
+
+    expect(staleLists(client)).toEqual([]);
+  });
+
+  it('refreshes nothing when the avatar upload fails', async () => {
+    mocked.upload.mockRejectedValue(new Error('boom'));
+    const client = freshClient();
+    seedAvatarLists(client);
     const { result } = await renderHook(() => useUploadImage(), { wrapper: wrapperFor(client) });
 
     await act(async () => {
-      await result.current.mutateAsync({ kind: 'avatar', image });
+      await expect(result.current.mutateAsync({ kind: 'avatar', image })).rejects.toThrow('boom');
     });
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['userPosts', 'me'] });
+    expect(staleLists(client)).toEqual([]);
   });
 
   it('keeps the new URL when a profile refetch that started before the upload ends later', async () => {
@@ -888,7 +954,7 @@ describe('useUploadImage and useRemoveImage', () => {
       bannerUrl: '/uploads/b.png',
     });
     expect(useSession.getState().user).toMatchObject({ avatarUrl: null, bannerUrl: '/uploads/b.png' });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['userPosts', 'me'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['userPosts'] });
   });
 
   it('clears the removed banner only', async () => {

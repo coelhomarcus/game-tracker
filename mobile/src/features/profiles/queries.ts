@@ -17,7 +17,12 @@ import { showToast } from '@/lib/toast';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { profilesApi, type ProfileChanges } from './api';
-import { cancelOwnProfileRefetch, patchOwnProfile, type OwnProfilePatch } from './ownProfile';
+import {
+  cancelOwnProfileRefetch,
+  invalidateAvatarLists,
+  patchOwnProfile,
+  type OwnProfilePatch,
+} from './ownProfile';
 import type {
   FollowListPage,
   ImageKind,
@@ -307,12 +312,12 @@ const IMAGE_FIELD = { avatar: 'avatarUrl', banner: 'bannerUrl' } as const satisf
 >;
 
 /**
- * Writes an image change into the own profile and session, and marks the own posts stale: they
- * carry the author's avatar.
+ * Writes an image change into the own profile and session. A new or removed avatar also
+ * refreshes every list that shows it: the server deleted the old file.
  */
 function applyImageChange(client: QueryClient, me: string, kind: ImageKind, url: string | null) {
   patchOwnProfile(client, me, { [IMAGE_FIELD[kind]]: url });
-  if (kind === 'avatar') void client.invalidateQueries({ queryKey: ['userPosts', me] });
+  if (kind === 'avatar') void invalidateAvatarLists(client);
 }
 
 export function useUploadImage() {

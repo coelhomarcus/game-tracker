@@ -73,12 +73,24 @@ function Field({
 }) {
   return (
     <View style={styles.field}>
-      <Text size="sm" weight="semibold" tone="medium">
+      {/* The input already carries the label for screen readers; this one is visual only. */}
+      <Text
+        accessible={false}
+        importantForAccessibility="no"
+        size="sm"
+        weight="semibold"
+        tone="medium"
+      >
         {label}
       </Text>
       {children}
       {count !== undefined && max !== undefined ? (
-        <Text size="sm" tone={count > max ? 'danger' : 'low'} style={styles.counter}>
+        <Text
+          accessibilityLabel={`${count} de ${max} caracteres`}
+          size="sm"
+          tone={count > max ? 'danger' : 'low'}
+          style={styles.counter}
+        >
           {`${count}/${max}`}
         </Text>
       ) : null}

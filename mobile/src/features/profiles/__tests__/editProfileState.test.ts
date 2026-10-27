@@ -118,6 +118,37 @@ describe('image edits', () => {
 
     expect(savePlan(state, saved)).toEqual([{ type: 'upload', kind: 'banner', image: other }]);
   });
+
+  type Action = 'pick' | 'remove';
+  it.each<[string, Action[], string | null, { type: string; kind: string }[]]>([
+    ['pick → remove', ['pick', 'remove'], 'https://img.test/avatar.jpg', []],
+    ['remove → pick', ['remove', 'pick'], 'file:///a.jpg', [{ type: 'upload', kind: 'avatar' }]],
+    // The removal chosen before the pick comes back, not the image the user removed.
+    ['remove → pick → remove', ['remove', 'pick', 'remove'], null, [{ type: 'remove', kind: 'avatar' }]],
+    ['remove → pick → pick → remove', ['remove', 'pick', 'pick', 'remove'], null, [{ type: 'remove', kind: 'avatar' }]],
+    ['pick → pick → remove', ['pick', 'pick', 'remove'], 'https://img.test/avatar.jpg', []],
+    ['pick → remove → remove', ['pick', 'remove', 'remove'], null, [{ type: 'remove', kind: 'avatar' }]],
+  ])('%s on a saved avatar', (_label, actions, preview, plan) => {
+    let state = EMPTY_EDITS;
+    for (const action of actions) {
+      state =
+        action === 'pick' ? pickImageEdit(state, 'avatar', photo) : removeImageEdit(state, 'avatar');
+    }
+
+    expect(previewUri(state, saved, 'avatar')).toBe(preview);
+    expect(
+      savePlan(state, saved).map((step) => ({ type: step.type, kind: 'kind' in step ? step.kind : null })),
+    ).toEqual(plan);
+    expect(canRemove(state, saved, 'avatar')).toBe(preview !== null);
+  });
+
+  it('empties an unset banner again when its pick is removed', () => {
+    const state = removeImageEdit(pickImageEdit(EMPTY_EDITS, 'banner', photo), 'banner');
+
+    expect(previewUri(state, saved, 'banner')).toBeNull();
+    expect(isDirty(state, saved)).toBe(false);
+    expect(savePlan(state, saved)).toEqual([]);
+  });
 });
 
 describe('savePlan', () => {

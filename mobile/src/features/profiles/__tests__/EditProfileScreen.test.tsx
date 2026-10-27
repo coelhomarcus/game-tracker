@@ -219,6 +219,20 @@ describe('EditProfileScreen form', () => {
     expect(StyleSheet.flatten(screen.getByLabelText('Bio').props.style).minHeight).toBe(80);
   });
 
+  it('reads each field once and the counters in words', async () => {
+    await renderScreen();
+
+    for (const name of ['Nome', 'Nome de usuário', 'Bio']) {
+      const label = screen.getByText(name);
+      expect(label.props.accessible).toBe(false);
+      expect(label.props.importantForAccessibility).toBe('no');
+      // The input carries the name for screen readers.
+      expect(screen.getByLabelText(name).props.value).toBeDefined();
+    }
+    expect(screen.getByText('9/64').props.accessibilityLabel).toBe('9 de 64 caracteres');
+    expect(screen.getByText('12/256').props.accessibilityLabel).toBe('12 de 256 caracteres');
+  });
+
   it('pads the sheet below the status bar', async () => {
     await renderScreen();
 
@@ -580,6 +594,24 @@ describe('EditProfileScreen images', () => {
     await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
     expect(sent).toEqual(['upload avatar']);
     expect(mockUpload).toHaveBeenCalledWith({ kind: 'avatar', image: photo });
+  });
+
+  it('keeps a removal when a pick made after it is removed', async () => {
+    mockProfileData = { ...profile, avatarUrl: OLD_AVATAR };
+    await renderScreen();
+
+    await press('Alterar foto');
+    await press('Remover foto');
+    await pick('avatar');
+    await press('Alterar foto');
+    await press('Remover foto');
+
+    // The avatar the user removed does not come back.
+    expect(screen.queryByLabelText('Ana Souza')).toBeNull();
+    await press('Salvar');
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(sent).toEqual(['remove avatar']);
   });
 });
 
