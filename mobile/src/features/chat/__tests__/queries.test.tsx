@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { useSession } from '@/features/auth';
+import { showToast } from '@/lib/toast';
 
 import { chatApi } from '../api';
 import {
@@ -12,15 +13,29 @@ import {
   markReadInList,
   messagesKey,
   useConversations,
+  useLeaveConversation,
+  useMarkAllRead,
+  useMarkRead,
   useMessages,
+  useMuteConversation,
   useStartConversation,
   type MessagePages,
 } from '../queries';
 import type { Conversation, Message, MessagePage } from '../types';
 
 jest.mock('@/features/chat/api', () => ({
-  chatApi: { list: jest.fn(), create: jest.fn(), messages: jest.fn(), markRead: jest.fn() },
+  chatApi: {
+    list: jest.fn(),
+    create: jest.fn(),
+    messages: jest.fn(),
+    markRead: jest.fn(),
+    markAllRead: jest.fn(),
+    setMuted: jest.fn(),
+    leave: jest.fn(),
+  },
 }));
+
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
 const mocked = jest.mocked(chatApi);
 
@@ -282,5 +297,122 @@ describe('cache helpers', () => {
     applyLatestMessage(client, message('m1', 1), true);
 
     expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+  });
+});
+
+describe('list actions', () => {
+  async function run<V>(hook: () => { mutateAsync: (v: V) => Promise<void> }, variables: V) {
+    const { result, unmount } = await renderHook(hook, { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync(variables).catch(() => undefined);
+    });
+    await unmount();
+  }
+  const list = () => client.getQueryData<Conversation[]>(conversationsKey);
+
+  it('marks one conversation read in the list and on the server', async () => {
+    mocked.markRead.mockResolvedValue();
+    client.setQueryData(conversationsKey, [conversation('c1', null, true), conversation('c2', null, true)]);
+
+    await run(() => useMarkRead(), 'c1');
+
+    expect(mocked.markRead).toHaveBeenCalledWith('c1');
+    expect(list()?.map((item) => item.unread)).toEqual([false, true]);
+  });
+
+  it('reads the list again and says so when marking read fails', async () => {
+    mocked.markRead.mockRejectedValue(new Error('boom'));
+    client.setQueryData(conversationsKey, [conversation('c1', null, true)]);
+
+    await run(() => useMarkRead(), 'c1');
+
+    expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível marcar a conversa como lida');
+  });
+
+  it('marks every conversation read, muted ones too', async () => {
+    mocked.markAllRead.mockResolvedValue();
+    client.setQueryData(conversationsKey, [
+      conversation('c1', null, true),
+      { ...conversation('c2', null, true), muted: true },
+      conversation('c3', null, false),
+    ]);
+
+    await run<void>(() => useMarkAllRead(), undefined);
+
+    expect(mocked.markAllRead).toHaveBeenCalledTimes(1);
+    expect(list()?.map((item) => item.unread)).toEqual([false, false, false]);
+  });
+
+  it('reads the list again when marking all read fails', async () => {
+    mocked.markAllRead.mockRejectedValue(new Error('boom'));
+    client.setQueryData(conversationsKey, [conversation('c1', null, true)]);
+
+    await run<void>(() => useMarkAllRead(), undefined);
+
+    expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível marcar as conversas como lidas');
+  });
+
+  it('mutes and unmutes a conversation at once', async () => {
+    mocked.setMuted.mockResolvedValue();
+    client.setQueryData(conversationsKey, [conversation('c1', null), conversation('c2', null)]);
+
+    await run(() => useMuteConversation(), { conversationId: 'c1', muted: true });
+    expect(mocked.setMuted).toHaveBeenLastCalledWith('c1', true);
+    expect(list()?.map((item) => item.muted)).toEqual([true, false]);
+    expect(showToast).toHaveBeenLastCalledWith('Conversa silenciada');
+
+    await run(() => useMuteConversation(), { conversationId: 'c1', muted: false });
+    expect(mocked.setMuted).toHaveBeenLastCalledWith('c1', false);
+    expect(list()?.[0].muted).toBe(false);
+    expect(showToast).toHaveBeenLastCalledWith('Conversa reativada');
+  });
+
+  it('puts the server state back when muting fails', async () => {
+    mocked.setMuted.mockRejectedValue(new Error('boom'));
+    mocked.list.mockResolvedValue([conversation('c1', null)]);
+    client.setQueryData(conversationsKey, [conversation('c1', null)]);
+
+    await run(() => useMuteConversation(), { conversationId: 'c1', muted: true });
+
+    expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível silenciar a conversa');
+  });
+
+  it('takes a left conversation out of the list and forgets its messages', async () => {
+    mocked.leave.mockResolvedValue();
+    client.setQueryData(conversationsKey, [conversation('c1', null), conversation('c2', null)]);
+    client.setQueryData(messagesKey('c1'), { pages: [], pageParams: [] });
+
+    await run(() => useLeaveConversation(), 'c1');
+
+    expect(mocked.leave).toHaveBeenCalledWith('c1');
+    expect(list()?.map((item) => item.id)).toEqual(['c2']);
+    expect(client.getQueryData(messagesKey('c1'))).toBeUndefined();
+  });
+
+  it('keeps a left conversation out of a list response already on its way', async () => {
+    mocked.leave.mockResolvedValue();
+    const response = deferred<Conversation[]>();
+    mocked.list.mockReturnValue(response.promise);
+    const { result, unmount } = await renderHook(() => useConversations(), {
+      wrapper: wrapperFor(client),
+    });
+    await run(() => useLeaveConversation(), 'c1');
+    await act(async () => response.resolve([conversation('c1', null), conversation('c2', null)]));
+
+    await waitFor(() => expect(result.current.data?.map((item) => item.id)).toEqual(['c2']));
+    await unmount();
+  });
+
+  it('reads the list again and says so when leaving fails', async () => {
+    mocked.leave.mockRejectedValue(new Error('boom'));
+    client.setQueryData(conversationsKey, [conversation('c1', null)]);
+
+    await run(() => useLeaveConversation(), 'c1');
+
+    expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível sair da conversa');
   });
 });

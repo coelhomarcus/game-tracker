@@ -1,18 +1,29 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react-native';
 import { useState, type ReactNode } from 'react';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
-import { usePeopleSearch } from '@/features/profiles/queries';
-import type { PersonResult } from '@/features/profiles/types';
+import { useFollowList, usePeopleSearch, useSetModeration } from '@/features/profiles/queries';
+import type { PersonResult, UserProfile } from '@/features/profiles/types';
+import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
+import { colors } from '@/theme/tokens';
 
 import { chatApi } from '../api';
 import ConversationsScreen from '../ConversationsScreen';
-import { messagesTabLabel, NewConversationButton, useUnreadConversationCount } from '../MessagesTab';
-import { NewConversationSheet } from '../NewConversationSheet';
+import { formatConversationTime } from '../formatConversationTime';
+import {
+  MessagesMoreButton,
+  messagesTabLabel,
+  NewConversationButton,
+  useUnreadConversationCount,
+} from '../MessagesTab';
+import { NewConversationSheet, pickSuggestions } from '../NewConversationSheet';
+import { conversationsKey } from '../queries';
 import { openNewConversationSheet, useNewConversationSheet } from '../sheetStore';
 import type { Conversation, Message } from '../types';
 
@@ -25,12 +36,25 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
+jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
+
 jest.mock('@/features/chat/api', () => ({
-  chatApi: { list: jest.fn(), create: jest.fn(), messages: jest.fn(), markRead: jest.fn() },
+  chatApi: {
+    list: jest.fn(),
+    create: jest.fn(),
+    messages: jest.fn(),
+    markRead: jest.fn(),
+    markAllRead: jest.fn(),
+    setMuted: jest.fn(),
+    leave: jest.fn(),
+  },
 }));
 
+const mockBlock = jest.fn();
 jest.mock('@/features/profiles/queries', () => ({
   usePeopleSearch: jest.fn(),
+  useFollowList: jest.fn(),
+  useSetModeration: jest.fn(),
   useToggleFollow: () => ({ mutate: jest.fn() }),
 }));
 
@@ -96,7 +120,9 @@ async function renderScreen() {
   await render(
     <QueryClientProvider client={client}>
       <SafeAreaProvider initialMetrics={metrics}>
-        <ConversationsScreen />
+        <GestureHandlerRootView>
+          <ConversationsScreen />
+        </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>,
   );
@@ -121,6 +147,12 @@ const person: PersonResult = {
   isFollowedByMe: false,
 };
 
+function mockFollowing(people: PersonResult[] = []) {
+  jest.mocked(useFollowList).mockReturnValue({
+    data: { pages: [{ items: people.map((p) => ({ ...p, followsMe: false })), nextCursor: null }], pageParams: [undefined] },
+  } as unknown as ReturnType<typeof useFollowList>);
+}
+
 function mockSearch(overrides: Record<string, unknown> = {}) {
   jest.mocked(usePeopleSearch).mockReturnValue({
     data: [person],
@@ -142,6 +174,16 @@ beforeEach(() => {
   mockedApi.create.mockReset();
   jest.mocked(showToast).mockReset();
   mockSearch();
+  mockFollowing();
+  mockBlock.mockReset();
+  jest.mocked(useSetModeration).mockReturnValue({ mutate: mockBlock } as unknown as ReturnType<
+    typeof useSetModeration
+  >);
+  jest.mocked(haptic).mockReset();
+  for (const fn of [mockedApi.markRead, mockedApi.markAllRead, mockedApi.setMuted, mockedApi.leave]) {
+    fn.mockReset();
+    fn.mockResolvedValue(undefined);
+  }
   useNewConversationSheet.setState({ open: false });
   useSession.setState({
     status: 'signedIn',
@@ -155,25 +197,28 @@ afterEach(() => {
 });
 
 describe('ConversationsScreen', () => {
-  it('shows skeleton rows while the first load is pending', async () => {
+  it('shows 12 skeleton rows while the first load is pending', async () => {
     mockedApi.list.mockReturnValue(new Promise(() => undefined));
     await renderScreen();
 
-    expect(screen.getAllByTestId('conversation-skeleton-row').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('conversation-skeleton-row')).toHaveLength(12);
   });
 
   it('lists the conversations with previews, times and the unread label', async () => {
     await renderWithList([withAna, withJoao, withCarla, orphan]);
+    const time = (c: Conversation) => formatConversationTime(c.lastMessage!.createdAt);
 
     expect(
-      screen.getByRole('button', { name: 'Ana Souza, Não lida, Bora jogar?, há 5 min' }),
+      screen.getByRole('button', { name: `Ana Souza, Não lida, Bora jogar?, ${time(withAna)}` }),
     ).toBeOnTheScreen();
     expect(
-      screen.getByRole('button', { name: 'João Lima, Você: Fechado, há 2 h' }),
+      screen.getByRole('button', { name: `João Lima, Você: Fechado, ${time(withJoao)}` }),
     ).toBeOnTheScreen();
     // A blank name falls back to the username; no message has no time.
     expect(screen.getByRole('button', { name: 'carla, Nenhuma mensagem' })).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Conversa, Oi, há 1 min' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: `Conversa, Oi, ${time(orphan)}` })).toBeOnTheScreen();
+    expect(screen.getByText('@ana')).toBeOnTheScreen();
+    expect(screen.getByText(time(withAna))).toBeOnTheScreen();
     expect(screen.getByText('Você: Fechado')).toBeOnTheScreen();
     expect(screen.getByText('Nenhuma mensagem')).toBeOnTheScreen();
     expect(screen.getAllByTestId('conversation-unread-dot')).toHaveLength(1);
@@ -237,7 +282,7 @@ describe('ConversationsScreen', () => {
     await renderWithList([]);
 
     expect(screen.getByText('Nenhuma conversa ainda')).toBeOnTheScreen();
-    expect(screen.getByText('Converse com quem você encontrar na comunidade.')).toBeOnTheScreen();
+    expect(screen.getByText('Diga oi para alguém.')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Buscar conversas')).not.toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Nova conversa' }));
@@ -298,6 +343,185 @@ describe('ConversationsScreen', () => {
     await renderWithList([withAna]);
 
     expect(mockNavigation.addListener).toHaveBeenCalledWith('tabPress', expect.any(Function));
+  });
+});
+
+describe('conversation rows', () => {
+  it('tints an unread row, shows the dot and sets the preview in medium', async () => {
+    await renderWithList([withAna, withJoao]);
+
+    expect(screen.getByRole('button', { name: /^Ana Souza/ })).toHaveStyle({
+      backgroundColor: colors.bgContrast25,
+    });
+    expect(screen.getByRole('button', { name: /^João Lima/ })).toHaveStyle({ backgroundColor: colors.bg });
+    expect(screen.getAllByTestId('conversation-unread-dot')).toHaveLength(1);
+    expect(screen.getByText('Bora jogar?')).toHaveStyle({ fontFamily: 'Inter_500Medium', color: colors.text });
+    expect(screen.getByText('Você: Fechado')).toHaveStyle({
+      fontFamily: 'Inter_400Regular',
+      color: colors.textMedium,
+    });
+    expect(screen.getByText('Ana Souza')).toHaveStyle({
+      fontFamily: 'Inter_600SemiBold',
+      color: colors.textEmphasis,
+    });
+  });
+
+  it('shows a muted conversation with the bell-off icon and never as unread', async () => {
+    await renderWithList([{ ...withAna, muted: true }]);
+    const row = screen.getByRole('button', { name: /^Ana Souza/ });
+    const time = formatConversationTime(withAna.lastMessage!.createdAt);
+
+    expect(row).toHaveAccessibleName(`Ana Souza, Silenciada, Bora jogar?, ${time}`);
+    expect(screen.getByTestId('conversation-muted-icon')).toBeOnTheScreen();
+    expect(screen.queryByTestId('conversation-unread-dot')).not.toBeOnTheScreen();
+    expect(row).toHaveStyle({ backgroundColor: colors.bg });
+    expect(screen.getByText('Bora jogar?')).toHaveStyle({ fontFamily: 'Inter_400Regular' });
+    // Nor among the unread ones.
+    expect(screen.getByRole('tab', { name: 'Não lidas (0)' })).toBeOnTheScreen();
+  });
+});
+
+describe('conversation menu', () => {
+  async function openMenu(name: RegExp) {
+    await fireEvent(screen.getByRole('button', { name }), 'longPress');
+  }
+  const option = (name: string) => screen.getByRole('button', { name });
+
+  it('opens on a long press with the haptic and the options of an unread conversation', async () => {
+    await renderWithList([withAna, withJoao]);
+    await openMenu(/^Ana Souza/);
+
+    expect(haptic).toHaveBeenCalledWith('longPress');
+    for (const name of [
+      'Ver perfil',
+      'Marcar como lida',
+      'Silenciar conversa',
+      'Bloquear @ana',
+      'Sair da conversa',
+    ]) {
+      expect(option(name)).toBeOnTheScreen();
+    }
+    expect(screen.queryByRole('button', { name: 'Reativar conversa' })).not.toBeOnTheScreen();
+  });
+
+  it('offers to unmute and no mark-read on a read, muted conversation', async () => {
+    await renderWithList([{ ...withJoao, muted: true }]);
+    await openMenu(/^João Lima/);
+
+    expect(option('Reativar conversa')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Marcar como lida' })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Silenciar conversa' })).not.toBeOnTheScreen();
+
+    await fireEvent.press(option('Reativar conversa'));
+    expect(mockedApi.setMuted).toHaveBeenCalledWith('c2', false);
+  });
+
+  it('opens the profile', async () => {
+    await renderWithList([withAna]);
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Ver perfil'));
+
+    expect(mockPush).toHaveBeenCalledWith('/users/u1');
+  });
+
+  it('marks the conversation read', async () => {
+    await renderWithList([withAna]);
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Marcar como lida'));
+
+    expect(mockedApi.markRead).toHaveBeenCalledWith('c1');
+    expect(screen.queryByTestId('conversation-unread-dot')).not.toBeOnTheScreen();
+  });
+
+  it('mutes the conversation', async () => {
+    await renderWithList([withAna]);
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Silenciar conversa'));
+
+    expect(mockedApi.setMuted).toHaveBeenCalledWith('c1', true);
+    expect(await screen.findByTestId('conversation-muted-icon')).toBeOnTheScreen();
+  });
+
+  it('blocks the person after the confirmation', async () => {
+    await renderWithList([withAna]);
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Bloquear @ana'));
+
+    expect(screen.getByText('Bloquear @ana?')).toBeOnTheScreen();
+    expect(mockBlock).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear' }));
+    expect(mockBlock).toHaveBeenCalledWith({ person: ana, on: true });
+  });
+
+  it('offers no profile or block for a conversation without the other person', async () => {
+    await renderWithList([orphan]);
+    await openMenu(/^Conversa/);
+
+    expect(screen.queryByRole('button', { name: 'Ver perfil' })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /^Bloquear/ })).not.toBeOnTheScreen();
+    expect(option('Sair da conversa')).toBeOnTheScreen();
+  });
+
+  it('leaves only after the confirmation', async () => {
+    await renderWithList([withAna, withJoao]);
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Sair da conversa'));
+
+    expect(screen.getByText('Sair da conversa?')).toBeOnTheScreen();
+    expect(
+      screen.getByText('A conversa some da sua lista. Se @ana mandar uma nova mensagem, ela volta.'),
+    ).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(mockedApi.leave).not.toHaveBeenCalled();
+    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
+
+    await openMenu(/^Ana Souza/);
+    await fireEvent.press(option('Sair da conversa'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    expect(mockedApi.leave).toHaveBeenCalledWith('c1');
+    expect(screen.queryByText('Ana Souza')).not.toBeOnTheScreen();
+    expect(screen.getByText('João Lima')).toBeOnTheScreen();
+  });
+});
+
+describe('conversation swipe', () => {
+  async function swipe(id: string, translationX: number) {
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(`conversation-swipe-${id}`), [
+        { state: State.BEGAN, translationX: 0 },
+        { state: State.ACTIVE, translationX: -20 },
+        { translationX },
+        { state: State.END, translationX },
+      ]);
+    });
+  }
+
+  it('marks read past 120', async () => {
+    await renderWithList([withAna]);
+    await swipe('c1', -150);
+
+    expect(mockedApi.markRead).toHaveBeenCalledWith('c1');
+    expect(screen.queryByTestId('conversation-unread-dot')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sair da conversa?')).not.toBeOnTheScreen();
+  });
+
+  it('asks to leave past 225', async () => {
+    await renderWithList([withAna]);
+    await swipe('c1', -240);
+
+    expect(mockedApi.markRead).not.toHaveBeenCalled();
+    expect(screen.getByText('Sair da conversa?')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    expect(mockedApi.leave).toHaveBeenCalledWith('c1');
+  });
+
+  it('does nothing below 120', async () => {
+    await renderWithList([withAna]);
+    await swipe('c1', -100);
+
+    expect(mockedApi.markRead).not.toHaveBeenCalled();
+    expect(screen.queryByText('Sair da conversa?')).not.toBeOnTheScreen();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
@@ -444,6 +668,14 @@ describe('Messages tab', () => {
     await waitFor(() => expect(result.current).toBe(2));
   });
 
+  it('leaves muted conversations out of the count', async () => {
+    mockedApi.list.mockResolvedValue([withAna, { ...withJoao, unread: true, muted: true }]);
+    const { result } = await renderCount();
+
+    // Counting the muted one would reach 2.
+    await waitFor(() => expect(result.current).toBe(1));
+  });
+
   it('counts none when everything is read', async () => {
     mockedApi.list.mockResolvedValue([withJoao]);
     const { result } = await renderCount();
@@ -465,5 +697,125 @@ describe('Messages tab', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Nova conversa' }));
 
     expect(useNewConversationSheet.getState().open).toBe(true);
+  });
+});
+
+describe('Messages list actions', () => {
+  async function renderMore(list: Conversation[]) {
+    mockedApi.list.mockResolvedValue(list);
+    await render(
+      <QueryClientProvider client={client}>
+        <SafeAreaProvider initialMetrics={metrics}>
+          <MessagesMoreButton />
+        </SafeAreaProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(client.getQueryData(conversationsKey)).toBeDefined());
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+  }
+
+  it('marks every conversation read', async () => {
+    await renderMore([withAna, withJoao]);
+    const markAll = screen.getByRole('button', { name: 'Marcar todas como lidas' });
+    expect(markAll).toBeEnabled();
+
+    await fireEvent.press(markAll);
+    expect(mockedApi.markAllRead).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData<Conversation[]>(conversationsKey)?.some((c) => c.unread)).toBe(false);
+  });
+
+  it('cannot mark all read when nothing shows as unread', async () => {
+    await renderMore([withJoao, { ...withAna, muted: true }]);
+    const markAll = screen.getByRole('button', { name: 'Marcar todas como lidas' });
+
+    expect(markAll).toBeDisabled();
+    await fireEvent.press(markAll);
+    expect(mockedApi.markAllRead).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewConversationSheet suggestions', () => {
+  const bia = person;
+  const me: PersonResult = { ...person, id: 'me', username: 'eu', name: 'Eu Mesmo' };
+
+  it('suggests people from my conversations, then the ones I follow, without repeats or me', async () => {
+    client.setQueryData(conversationsKey, [withAna, withJoao, orphan]);
+    mockedApi.list.mockResolvedValue([withAna, withJoao, orphan]);
+    mockFollowing([{ ...person, ...ana, bio: null }, bia, me]);
+    await renderSheet();
+
+    expect(screen.getByText('Sugestões')).toBeOnTheScreen();
+    const rows = screen.getAllByRole('button', { name: /^Conversar com / });
+    expect(rows.map((row) => row.props.accessibilityLabel)).toEqual([
+      'Conversar com Ana Souza',
+      'Conversar com João Lima',
+      'Conversar com Bia Rocha',
+    ]);
+  });
+
+  it('starts a conversation from a suggestion', async () => {
+    mockFollowing([bia]);
+    mockedApi.create.mockResolvedValue('conv-9');
+    await renderSheet();
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+
+    expect(mockedApi.create).toHaveBeenCalledWith('p1');
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/chat/conv-9'));
+  });
+
+  it('keeps at most 10 suggestions', () => {
+    const people = Array.from({ length: 14 }, (_, i) => ({ ...ana, id: `f${i}` }));
+    const picked = pickSuggestions([joao, null, ana], people, 'me');
+
+    expect(picked).toHaveLength(10);
+    expect(picked.slice(0, 3).map((p) => p.id)).toEqual(['u2', 'u1', 'f0']);
+  });
+
+  it('hides the suggestions while searching', async () => {
+    mockFollowing([bia]);
+    mockSearch({ data: [{ ...person, id: 'p2', name: 'Bianca' }] });
+    await renderSheet();
+    await type('Buscar pessoas', 'bi');
+
+    expect(screen.queryByText('Sugestões')).not.toBeOnTheScreen();
+    expect(screen.getByText('Bianca')).toBeOnTheScreen();
+    expect(screen.queryByText('Bia Rocha')).not.toBeOnTheScreen();
+  });
+
+  it('dims people who do not take my messages, with the reason, and does not start with them', async () => {
+    mockSearch({ data: [{ ...person, canMessage: false }] });
+    await renderSheet();
+    await type('Buscar pessoas', 'bi');
+
+    const row = screen.getByRole('button', { name: 'Bia Rocha, Não aceita mensagens suas' });
+    expect(row).toBeDisabled();
+    expect(row).toHaveStyle({ opacity: 0.5 });
+    expect(screen.getByText('Não aceita mensagens suas')).toBeOnTheScreen();
+    await fireEvent.press(row);
+    expect(mockedApi.create).not.toHaveBeenCalled();
+  });
+
+  it('marks a blocked person in the suggestions', async () => {
+    client.setQueryData(conversationsKey, [withAna]);
+    mockedApi.list.mockResolvedValue([withAna]);
+    client.setQueryData(['profile', 'u1'], { isBlockedByMe: true } as UserProfile);
+    await renderSheet();
+
+    expect(screen.getByRole('button', { name: 'Ana Souza, Bloqueado' })).toBeDisabled();
+    expect(screen.getByText('Bloqueado')).toBeOnTheScreen();
+  });
+
+  it('colours the search icon while the field has focus and clears the search', async () => {
+    await renderSheet();
+    const field = screen.getByLabelText('Buscar pessoas');
+    expect(screen.getByTestId('search-icon')).toHaveStyle({ color: colors.textMedium });
+
+    await fireEvent(field, 'focus');
+    expect(screen.getByTestId('search-icon')).toHaveStyle({ color: colors.primary });
+
+    expect(screen.queryByRole('button', { name: 'Limpar busca' })).not.toBeOnTheScreen();
+    await type('Buscar pessoas', 'bi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Limpar busca' }));
+    expect(screen.getByLabelText('Buscar pessoas').props.value).toBe('');
   });
 });

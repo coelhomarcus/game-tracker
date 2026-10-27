@@ -27,6 +27,11 @@ export type Conversation = {
   muted: boolean;
 };
 
+/** Unread as the list shows it: a muted conversation never looks unread nor counts in the badge. */
+export function showsUnread(conversation: Conversation): boolean {
+  return conversation.unread && !conversation.muted;
+}
+
 /** Newest first; `nextCursor` points at the older messages. */
 export type MessagePage = {
   items: Message[];

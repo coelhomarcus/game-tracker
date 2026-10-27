@@ -9,6 +9,8 @@ module.exports = {
   preset: 'jest-expo',
   // Reanimated and worklets ship a JS-only build of their native entry points for jest.
   resolver: 'react-native-reanimated/jest/resolver.js',
+  // Gesture handler's mocks (concatenated after the preset's setup files) let tests drive gestures.
+  setupFiles: ['react-native-gesture-handler/jestSetup.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   // The integration suites need a running test API; they run with `npm run test:integration`.
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/integration/'],

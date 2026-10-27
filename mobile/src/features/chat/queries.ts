@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 
 import { useSession } from '@/features/auth';
+import { showToast } from '@/lib/toast';
 
 import { chatApi } from './api';
 import { mergeIntoPages } from './mergeMessages';
@@ -221,5 +222,99 @@ export function applyReactionToCache(client: QueryClient, change: ReactionChange
         };
       }),
     };
+  });
+}
+
+// ---------- list actions ----------
+
+/** Sets fields of one conversation in the list, now and on top of a list response on its way. */
+function patchInList(client: QueryClient, conversationId: string, patch: Partial<Conversation>): void {
+  updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) => {
+    const current = data?.find((item) => item.id === conversationId);
+    if (!data || !current) return data;
+    const changes = (Object.keys(patch) as (keyof Conversation)[]).some(
+      (key) => current[key] !== patch[key],
+    );
+    return changes
+      ? data.map((item) => (item.id === conversationId ? { ...item, ...patch } : item))
+      : data;
+  });
+}
+
+/** The list says again what the server holds; used when an optimistic change failed. */
+function refetchList(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: conversationsKey });
+}
+
+/** Marks one conversation read: the list at once, the server after; a failure reads the list again. */
+export function useMarkRead() {
+  const client = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (conversationId) => chatApi.markRead(conversationId),
+    onMutate: (conversationId) => markReadInList(client, conversationId),
+    onError: () => {
+      refetchList(client);
+      showToast('Não foi possível marcar a conversa como lida');
+    },
+  });
+}
+
+/** Marks every conversation read (muted ones too), optimistically. */
+export function useMarkAllRead() {
+  const client = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: () => chatApi.markAllRead(),
+    onMutate: () => {
+      updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
+        data?.some((item) => item.unread)
+          ? data.map((item) => (item.unread ? { ...item, unread: false } : item))
+          : data,
+      );
+    },
+    onError: () => {
+      refetchList(client);
+      showToast('Não foi possível marcar as conversas como lidas');
+    },
+  });
+}
+
+export type MuteVariables = { conversationId: string; muted: boolean };
+
+/** Mutes or unmutes a conversation, optimistically; a failure puts the server's state back. */
+export function useMuteConversation() {
+  const client = useQueryClient();
+  return useMutation<void, Error, MuteVariables>({
+    mutationFn: ({ conversationId, muted }) => chatApi.setMuted(conversationId, muted),
+    onMutate: ({ conversationId, muted }) => patchInList(client, conversationId, { muted }),
+    onSuccess: (_data, { muted }) => {
+      showToast(muted ? 'Conversa silenciada' : 'Conversa reativada');
+    },
+    onError: (_error, { muted }) => {
+      refetchList(client);
+      showToast(muted ? 'Não foi possível silenciar a conversa' : 'Não foi possível reativar a conversa');
+    },
+  });
+}
+
+/**
+ * Leaves a conversation: it leaves the list at once and its loaded messages are forgotten (a new
+ * message brings it back with only what comes after). A failure reads the list again.
+ */
+export function useLeaveConversation() {
+  const client = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (conversationId) => chatApi.leave(conversationId),
+    onMutate: (conversationId) => {
+      updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
+        data?.some((item) => item.id === conversationId)
+          ? data.filter((item) => item.id !== conversationId)
+          : data,
+      );
+      client.removeQueries({ queryKey: messagesKey(conversationId), exact: true });
+    },
+    onError: () => {
+      refetchList(client);
+      showToast('Não foi possível sair da conversa');
+    },
   });
 }

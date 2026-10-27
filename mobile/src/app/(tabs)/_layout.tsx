@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { BottomBar, HeaderBell, Layout } from '@/components';
 import {
   messagesTabLabel,
-  NewConversationButton,
+  MessagesHeaderRight,
   useUnreadConversationCount,
 } from '@/features/chat/MessagesTab';
 import { colors } from '@/theme/tokens';
@@ -73,7 +73,7 @@ export default function TabsLayout() {
           title: 'Mensagens',
           tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
           tabBarAccessibilityLabel: messagesTabLabel(unreadMessages),
-          headerRight: NewConversationButton,
+          headerRight: MessagesHeaderRight,
         }}
       />
       <Tabs.Screen name="profile" options={{ title: 'Perfil', headerRight: ProfileHeaderRight }} />
