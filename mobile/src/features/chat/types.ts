@@ -1,5 +1,10 @@
 import { parseUserSummary, type UserSummary } from '@/features/games/types';
 
+export type { DmPolicy } from '@/features/auth';
+
+/** One person's emoji on a message; a person may use up to 5 different ones per message. */
+export type Reaction = { emoji: string; userId: string };
+
 export type Message = {
   id: string;
   conversationId: string;
@@ -9,6 +14,8 @@ export type Message = {
   /** Absent on messages written by clients that predate idempotent sends. */
   clientMessageId: string | null;
   sender: UserSummary;
+  /** Oldest first. */
+  reactions: Reaction[];
 };
 
 export type Conversation = {
@@ -16,6 +23,8 @@ export type Conversation = {
   otherUser: UserSummary | null;
   lastMessage: Message | null;
   unread: boolean;
+  /** Muted: its messages send no push to me; it still shows as unread. */
+  muted: boolean;
 };
 
 /** Newest first; `nextCursor` points at the older messages. */
@@ -26,6 +35,18 @@ export type MessagePage = {
 
 // The API payloads are trusted for required fields; optional ones are read defensively.
 type Json = Record<string, any>;
+
+function isReaction(value: unknown): value is Reaction {
+  const item = value as Partial<Reaction> | null;
+  return typeof item?.emoji === 'string' && typeof item.userId === 'string';
+}
+
+/** Reactions from a payload; anything malformed is left out. */
+export function parseReactions(value: unknown): Reaction[] {
+  return Array.isArray(value)
+    ? value.filter(isReaction).map(({ emoji, userId }) => ({ emoji, userId }))
+    : [];
+}
 
 /**
  * `fallbackSender` stands in for a payload without `sender`: the conversation list sends the bare
@@ -47,6 +68,7 @@ export function parseMessage(json: Json, fallbackSender?: UserSummary | null): M
     createdAt: new Date(json.createdAt),
     clientMessageId: typeof json.clientMessageId === 'string' ? json.clientMessageId : null,
     sender,
+    reactions: parseReactions(json.reactions),
   };
 }
 
@@ -57,6 +79,7 @@ export function parseConversation(json: Json): Conversation {
     otherUser,
     lastMessage: json.lastMessage == null ? null : parseMessage(json.lastMessage, otherUser),
     unread: json.unread === true,
+    muted: json.muted === true,
   };
 }
 

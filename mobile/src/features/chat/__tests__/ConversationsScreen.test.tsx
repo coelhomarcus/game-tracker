@@ -54,6 +54,7 @@ function message(id: string, senderId: string, content: string, minutesAgo: numb
     createdAt: new Date(Date.now() - minutesAgo * 60_000),
     clientMessageId: null,
     sender: { id: senderId, username: senderId, name: null, avatarUrl: null },
+    reactions: [],
   };
 }
 
@@ -62,19 +63,22 @@ const withAna: Conversation = {
   otherUser: ana,
   lastMessage: message('m1', 'u1', 'Bora jogar?', 5),
   unread: true,
+  muted: false,
 };
 const withJoao: Conversation = {
   id: 'c2',
   otherUser: joao,
   lastMessage: message('m2', 'me', 'Fechado', 120),
   unread: false,
+  muted: false,
 };
-const withCarla: Conversation = { id: 'c3', otherUser: carla, lastMessage: null, unread: false };
+const withCarla: Conversation = { id: 'c3', otherUser: carla, lastMessage: null, unread: false, muted: false };
 const orphan: Conversation = {
   id: 'c4',
   otherUser: null,
   lastMessage: message('m4', 'u9', 'Oi', 1),
   unread: false,
+  muted: false,
 };
 
 let client: QueryClient;
@@ -367,6 +371,20 @@ describe('NewConversationSheet', () => {
     // The root toast host sits under the native Modal: the sheet shows the failure itself.
     expect(await screen.findByRole('alert')).toHaveTextContent('Erro no servidor');
     expect(screen.getByLabelText('Buscar pessoas')).toBeOnTheScreen();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+    ['blocked', 'Não é possível interagir com esta conta.'],
+  ])('explains a %s refusal instead of asking to try again', async (code, copy) => {
+    mockedApi.create.mockRejectedValue(new ApiError(403, code, 'refused'));
+    await renderSheet();
+    await type('Buscar pessoas', 'bi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Conversar com Bia Rocha' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(copy));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
     expect(mockPush).not.toHaveBeenCalled();
   });
 

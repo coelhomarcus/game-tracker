@@ -60,6 +60,7 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 
 function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile {
@@ -76,6 +77,10 @@ function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile 
     entryCount: 1,
     isFollowedByMe: false,
     followsMe: false,
+    isMutedByMe: false,
+    isBlockedByMe: false,
+    blocksMe: false,
+    canMessage: true,
     ...overrides,
   };
 }

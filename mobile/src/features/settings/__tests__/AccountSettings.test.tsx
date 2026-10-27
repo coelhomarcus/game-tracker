@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
+import { colors } from '@/theme/tokens';
 
 import { AccountSettings } from '../AccountSettings';
 
@@ -37,6 +38,7 @@ beforeEach(() => {
       avatarUrl: null,
       bannerUrl: null,
       bio: null,
+      dmPolicy: 'everyone',
     },
   });
 });
@@ -60,5 +62,25 @@ describe('AccountSettings', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Editar perfil' }));
 
     expect(mockPush).toHaveBeenCalledWith('/me/edit');
+  });
+
+  it.each([
+    ['Trocar senha', '/settings/password'],
+    ['Excluir conta', '/settings/delete-account'],
+  ])('opens %s', async (label, href) => {
+    await renderSettings();
+
+    await fireEvent.press(screen.getByRole('button', { name: label }));
+
+    expect(mockPush).toHaveBeenCalledWith(href);
+  });
+
+  it('draws Excluir conta last, in the danger tone, with a 48 dp row', async () => {
+    await renderSettings();
+
+    const labels = screen.getAllByRole('button').map((row) => row.props.accessibilityLabel);
+    expect(labels).toEqual(['Editar perfil', 'Trocar senha', 'Excluir conta']);
+    expect(screen.getByText('Excluir conta')).toHaveStyle({ color: colors.danger });
+    expect(screen.getByRole('button', { name: 'Excluir conta' })).toHaveStyle({ minHeight: 48 });
   });
 });

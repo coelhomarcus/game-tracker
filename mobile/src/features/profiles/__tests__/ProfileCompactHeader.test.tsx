@@ -35,6 +35,10 @@ const ana: UserProfile = {
   entryCount: 4,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 /** The compact header as the profile shows it: from the cached profile, which a follow rewrites. */
@@ -131,6 +135,16 @@ describe('ProfileCompactHeader', () => {
     expect(showToast).not.toHaveBeenCalledWith('Seguindo Ana Souza');
     expect(screen.getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
   });
+
+  it.each([{ isBlockedByMe: true }, { blocksMe: true }])(
+    'has no follow button while there is a block between them (%p)',
+    async (flags) => {
+      client.setQueryData(['profile', 'u1'], { ...ana, ...flags });
+      await renderFromCache(client);
+
+      expect(screen.queryByRole('button', { name: /Seguir/ })).toBeNull();
+    },
+  );
 
   it('has no follow button once the user follows them', async () => {
     client.setQueryData(['profile', 'u1'], { ...ana, isFollowedByMe: true });

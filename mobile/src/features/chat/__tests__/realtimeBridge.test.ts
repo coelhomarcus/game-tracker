@@ -23,6 +23,7 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 
 type JsonOptions = {
@@ -56,6 +57,7 @@ function cached(id: string, conversationId: string, minute: number): Message {
     createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)),
     clientMessageId: null,
     sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
+    reactions: [],
   };
 }
 
@@ -70,12 +72,14 @@ function seedCache() {
       otherUser: { id: 'u3', username: 'caio', name: null, avatarUrl: null },
       lastMessage: cached('x', 'c2', 1),
       unread: false,
+      muted: false,
     },
     {
       id: 'c1',
       otherUser: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
       lastMessage: cached('m0', 'c1', 0),
       unread: false,
+      muted: false,
     },
   ]);
 }
@@ -155,8 +159,8 @@ describe('lifecycle', () => {
   it('removes every listener and typing timer on stop and is idempotent', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     realtimeBridge.start();
-    // Five server events and the reconnect hook, registered once.
-    expect(chatSocket.listenerCount()).toBe(6);
+    // Seven server events and the reconnect hook, registered once.
+    expect(chatSocket.listenerCount()).toBe(8);
     chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
 
     realtimeBridge.stop();
@@ -242,6 +246,160 @@ describe('message:receive', () => {
     chatSocket.fire('message:receive', { id: 'm1' });
 
     expect(cachedIds()).toEqual(['m0']);
+  });
+});
+
+describe('message:hidden', () => {
+  it('removes the message from the loaded pages, on any page', () => {
+    seedCache();
+    queryClient.setQueryData<MessagePages>(messagesKey('c1'), {
+      pages: [
+        { items: [cached('m2', 'c1', 2), cached('m1', 'c1', 1)], nextCursor: 'older' },
+        { items: [cached('m0', 'c1', 0)], nextCursor: null },
+      ],
+      pageParams: [undefined, 'older'],
+    });
+
+    chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm1' });
+    chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm0' });
+
+    expect(cachedIds()).toEqual(['m2']);
+    // m0 is the last message in the seeded list: the list is read again for the new one.
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('reads the list again only when the hidden message was the last one', () => {
+    seedCache();
+    queryClient.setQueryData<MessagePages>(messagesKey('c1'), {
+      pages: [{ items: [cached('m1', 'c1', 1), cached('m0', 'c1', 0)], nextCursor: null }],
+      pageParams: [undefined],
+    });
+
+    chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm1' });
+
+    expect(cachedIds()).toEqual(['m0']);
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(false);
+  });
+
+  it('ignores unknown messages and conversations without creating anything', () => {
+    seedCache();
+    const before = queryClient.getQueryData(messagesKey('c1'));
+
+    chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'nope' });
+    chatSocket.fire('message:hidden', { conversationId: 'c9', messageId: 'm0' });
+
+    expect(queryClient.getQueryData(messagesKey('c1'))).toBe(before);
+    expect(queryClient.getQueryData(messagesKey('c9'))).toBeUndefined();
+    expect(queryClient.getQueryState(conversationsKey)?.isInvalidated).toBe(false);
+  });
+
+  it('applies again on top of a fetch already in flight', async () => {
+    await loadMessages(cached('m1', 'c1', 1), cached('m0', 'c1', 0));
+    const refetch = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(refetch.promise);
+    void queryClient.refetchQueries({ queryKey: messagesKey('c1'), exact: true });
+
+    chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm1' });
+    // Read by the server before the message was hidden.
+    refetch.resolve(page(cached('m1', 'c1', 1), cached('m0', 'c1', 0)));
+    await flush();
+    await flush();
+
+    expect(cachedIds()).toEqual(['m0']);
+  });
+
+  it('ignores malformed payloads', () => {
+    seedCache();
+
+    chatSocket.fire('message:hidden', null);
+    chatSocket.fire('message:hidden', { conversationId: 'c1' });
+    chatSocket.fire('message:hidden', { messageId: 'm0' });
+
+    expect(cachedIds()).toEqual(['m0']);
+  });
+});
+
+describe('message:reaction', () => {
+  const reactionsOf = (id: string) =>
+    queryClient
+      .getQueryData<MessagePages>(messagesKey('c1'))
+      ?.pages.flatMap((p) => p.items)
+      .find((item) => item.id === id)?.reactions;
+  const previewOf = (conversationId: string) =>
+    conversations().find((item) => item.id === conversationId)?.lastMessage?.reactions;
+  const event = (action: string, emoji = '👍', userId = 'u2', messageId = 'm0') => ({
+    conversationId: 'c1',
+    messageId,
+    emoji,
+    userId,
+    action,
+  });
+
+  it('adds and removes a reaction on a loaded message and leaves the list preview alone', () => {
+    seedCache();
+
+    chatSocket.fire('message:reaction', event('add'));
+    chatSocket.fire('message:reaction', event('add', '❤️', 'me'));
+
+    const both = [
+      { emoji: '👍', userId: 'u2' },
+      { emoji: '❤️', userId: 'me' },
+    ];
+    expect(reactionsOf('m0')).toEqual(both);
+    // The server's list sends the last message without reactions: a partial set would be wrong.
+    expect(previewOf('c1')).toEqual([]);
+
+    chatSocket.fire('message:reaction', event('remove'));
+
+    expect(reactionsOf('m0')).toEqual([{ emoji: '❤️', userId: 'me' }]);
+    expect(previewOf('c1')).toEqual([]);
+  });
+
+  it('is idempotent: a repeated add or remove changes nothing', () => {
+    seedCache();
+
+    chatSocket.fire('message:reaction', event('add'));
+    const once = queryClient.getQueryData(messagesKey('c1'));
+    chatSocket.fire('message:reaction', event('add'));
+    expect(queryClient.getQueryData(messagesKey('c1'))).toBe(once);
+
+    chatSocket.fire('message:reaction', event('remove'));
+    const removed = queryClient.getQueryData(messagesKey('c1'));
+    chatSocket.fire('message:reaction', event('remove'));
+    expect(queryClient.getQueryData(messagesKey('c1'))).toBe(removed);
+    expect(reactionsOf('m0')).toEqual([]);
+  });
+
+  it('ignores unknown messages and conversations and creates no entries', () => {
+    seedCache();
+    const before = queryClient.getQueryData(messagesKey('c1'));
+    const list = queryClient.getQueryData(conversationsKey);
+
+    chatSocket.fire('message:reaction', event('add', '👍', 'u2', 'nope'));
+    chatSocket.fire('message:reaction', { ...event('add'), conversationId: 'c9' });
+
+    expect(queryClient.getQueryData(messagesKey('c1'))).toBe(before);
+    expect(queryClient.getQueryData(conversationsKey)).toBe(list);
+    expect(queryClient.getQueryData(messagesKey('c9'))).toBeUndefined();
+  });
+
+  it('works with nothing cached at all', () => {
+    chatSocket.fire('message:reaction', event('add'));
+
+    expect(queryClient.getQueryData(messagesKey('c1'))).toBeUndefined();
+    expect(queryClient.getQueryData(conversationsKey)).toBeUndefined();
+  });
+
+  it('ignores malformed payloads and unknown actions', () => {
+    seedCache();
+
+    chatSocket.fire('message:reaction', null);
+    chatSocket.fire('message:reaction', event('toggle'));
+    chatSocket.fire('message:reaction', { ...event('add'), emoji: '' });
+    chatSocket.fire('message:reaction', { ...event('add'), userId: 3 });
+    chatSocket.fire('message:reaction', { ...event('add'), messageId: undefined });
+
+    expect(reactionsOf('m0')).toEqual([]);
   });
 });
 

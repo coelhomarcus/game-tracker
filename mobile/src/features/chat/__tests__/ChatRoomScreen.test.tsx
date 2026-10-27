@@ -81,10 +81,11 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 const ana = { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null };
 
-const withAna: Conversation = { id: CONV, otherUser: ana, lastMessage: null, unread: true };
+const withAna: Conversation = { id: CONV, otherUser: ana, lastMessage: null, unread: true, muted: false };
 
 const now = new Date();
 function today(hours: number, minutes: number): Date {
@@ -109,6 +110,7 @@ function message(
     createdAt,
     clientMessageId: null,
     sender: senderId === 'u1' ? ana : { id: senderId, username: 'eu', name: 'Eu', avatarUrl: null },
+    reactions: [],
     ...overrides,
   };
 }
@@ -589,6 +591,40 @@ describe('ChatRoomScreen: bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Descartar' }));
     expect(screen.queryByText('Falhou')).not.toBeOnTheScreen();
     expect(useChatStore.getState().pending[CONV]).toBeUndefined();
+  });
+
+  it('says why a message was refused for good, and shows no reason for other failures', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Bloqueada');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () =>
+      chatSocket.pendingAck('message:send')?.resolve({ error: 'Bloqueio', code: 'blocked' }),
+    );
+
+    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
+    expect(screen.getByText('Não é possível enviar mensagens para esta conta.')).toBeOnTheScreen();
+    expect(screen.queryByText('Bloqueio')).toBeNull();
+
+    await type('Outra');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
+
+    expect(screen.getAllByText('Não enviada')).toHaveLength(2);
+    expect(screen.queryByText('nope')).toBeNull();
+  });
+
+  it.each([
+    ['blocked', 'Não é possível enviar mensagens para esta conta.'],
+    ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+  ])('offers no retry for a message refused with %s, only the reason and Descartar', async (code, reason) => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Recusada');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code }));
+
+    expect(screen.getByText(reason)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Descartar' })).toBeOnTheScreen();
   });
 });
 

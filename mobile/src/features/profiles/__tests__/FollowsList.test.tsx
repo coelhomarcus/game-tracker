@@ -38,6 +38,10 @@ const ana: UserProfile = {
   entryCount: 4,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 function person(id: string, overrides: Partial<FollowListPerson> = {}): FollowListPerson {

@@ -146,3 +146,80 @@ export function markReadInList(client: QueryClient, conversationId: string): voi
       : data,
   );
 }
+
+/** True when the loaded pages hold the message. */
+function pagesHold(data: MessagePages | undefined, messageId: string): boolean {
+  return data?.pages.some((page) => page.items.some((item) => item.id === messageId)) ?? false;
+}
+
+/**
+ * A message I deleted for myself (here or on another device) leaves the loaded pages. If it was
+ * the conversation's last message the list is read again: the server knows the new last one.
+ */
+export function removeMessageFromCache(
+  client: QueryClient,
+  conversationId: string,
+  messageId: string,
+): void {
+  updateNowAndAfterFetch<MessagePages>(client, messagesKey(conversationId), (data) =>
+    data && pagesHold(data, messageId)
+      ? {
+          ...data,
+          pages: data.pages.map((page) =>
+            page.items.some((item) => item.id === messageId)
+              ? { ...page, items: page.items.filter((item) => item.id !== messageId) }
+              : page,
+          ),
+        }
+      : data,
+  );
+  const list = client.getQueryData<Conversation[]>(conversationsKey);
+  if (list?.some((item) => item.id === conversationId && item.lastMessage?.id === messageId)) {
+    void client.invalidateQueries({ queryKey: conversationsKey });
+  }
+}
+
+export type ReactionChange = {
+  conversationId: string;
+  messageId: string;
+  emoji: string;
+  userId: string;
+  action: 'add' | 'remove';
+};
+
+/** The message with the change applied; the same object when it changes nothing. */
+function withReaction(message: Message, { emoji, userId, action }: ReactionChange): Message {
+  const has = message.reactions.some((item) => item.emoji === emoji && item.userId === userId);
+  if (action === 'add') {
+    return has ? message : { ...message, reactions: [...message.reactions, { emoji, userId }] };
+  }
+  if (!has) return message;
+  return {
+    ...message,
+    reactions: message.reactions.filter((item) => item.emoji !== emoji || item.userId !== userId),
+  };
+}
+
+/**
+ * Applies a reaction added or removed to the message in the conversation's loaded pages. A message
+ * that is not loaded is left alone (nothing is created for it); the next fetch brings its
+ * reactions. The list's last message is not touched: the server sends it without reactions, so
+ * it never holds the full set.
+ */
+export function applyReactionToCache(client: QueryClient, change: ReactionChange): void {
+  updateNowAndAfterFetch<MessagePages>(client, messagesKey(change.conversationId), (data) => {
+    if (!data || !pagesHold(data, change.messageId)) return data;
+    return {
+      ...data,
+      pages: data.pages.map((page) => {
+        if (!page.items.some((item) => item.id === change.messageId)) return page;
+        return {
+          ...page,
+          items: page.items.map((item) =>
+            item.id === change.messageId ? withReaction(item, change) : item,
+          ),
+        };
+      }),
+    };
+  });
+}

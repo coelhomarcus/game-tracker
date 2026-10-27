@@ -19,6 +19,7 @@ import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
 import { deletePostImageIfLocal, inspectIssuedPostImage, savePostImage } from '../lib/uploads';
 import { decodeCursor, decodeTimelineCursor, encodeCursor, encodeTimelineCursor, type TimelineKind } from '../lib/cursor';
+import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
 
 type PostType = (typeof postTypeEnum.enumValues)[number];
@@ -112,11 +113,17 @@ async function loadPostStats(ids: string[], viewerId: string) {
 type PostRow = Awaited<ReturnType<typeof loadPostRows>>[number];
 type PostStats = Omit<Awaited<ReturnType<typeof loadPostStats>>[number], 'id'>;
 
-function mapPost(row: PostRow, stats: PostStats) {
-  const { images: imageRows, quotedPost, ...rest } = row;
+/**
+ * `hideQuote`: o autor do post citado tem bloqueio com quem vê. A citação aparece como a de um
+ * post apagado (`quotedPost: null`, `quotedPostId: null`, `quotedPostRemoved: true`).
+ */
+function mapPost(row: PostRow, stats: PostStats, hideQuote = false) {
+  const { images: imageRows, quotedPost: loadedQuote, ...rest } = row;
+  const quotedPost = hideQuote ? null : loadedQuote;
   const images = imagesOf(imageRows, row.imageUrl);
   return {
     ...rest,
+    ...(hideQuote ? { quotedPostId: null, quotedPostRemoved: true } : {}),
     // Compatibilidade: `imageUrl` continua sendo a primeira imagem.
     imageUrl: images[0]?.url ?? null,
     images,
@@ -145,10 +152,15 @@ async function hydratePosts(ids: string[], viewerId: string): Promise<Map<string
   // Em sequência de propósito: o stand-in de teste (PGlite) mistura consultas simultâneas.
   const rows = await loadPostRows(unique);
   const stats = new Map((await loadPostStats(unique, viewerId)).map(({ id, ...s }) => [id, s]));
+  const blockedQuoteAuthors = await moderationService.blockedAmong(
+    viewerId,
+    rows.flatMap((row) => (row.quotedPost ? [row.quotedPost.user.id] : [])),
+  );
   const result = new Map<string, PostView>();
   for (const row of rows) {
     const rowStats = stats.get(row.id);
-    if (rowStats) result.set(row.id, mapPost(row, rowStats));
+    const hideQuote = row.quotedPost !== null && blockedQuoteAuthors.has(row.quotedPost.user.id);
+    if (rowStats) result.set(row.id, mapPost(row, rowStats, hideQuote));
   }
   return result;
 }
@@ -157,9 +169,10 @@ async function getPostById(id: string, viewerId: string) {
   return (await hydratePosts([id], viewerId)).get(id);
 }
 
+/** Um post por id. O de quem tem bloqueio com quem vê (em qualquer sentido) é 404, como se não existisse. */
 export async function getById(id: string, viewerId: string) {
   const post = await getPostById(id, viewerId);
-  if (!post) throw new AppError(404, 'not_found', 'Post não encontrado');
+  if (!post || (await moderationService.isBlockedEitherWay(viewerId, post.user.id))) throw new AppError(404, 'not_found', 'Post não encontrado');
   return post;
 }
 
@@ -218,7 +231,7 @@ export async function create(userId: string, input: CreatePostInput) {
     if (!game) throw new AppError(404, 'not_found', 'Jogo não encontrado');
   }
 
-  const quoted = input.quotedPostId ? await getPostOrThrow(input.quotedPostId) : null;
+  const quoted = input.quotedPostId ? await getInteractablePostOrThrow(userId, input.quotedPostId) : null;
   // O `imageUrl` legado é a primeira imagem: passa pela mesma validação e ganha sua linha em
   // `post_images` (o tamanho enviado aqui é só um espaço reservado; vale o do arquivo).
   const requested = input.images?.length ? input.images : input.imageUrl ? [{ url: input.imageUrl, width: 1, height: 1 }] : [];
@@ -375,24 +388,56 @@ async function timeline(viewerId: string, source: TimelineSource, cursor: string
   return { items, nextCursor };
 }
 
+/** O autor do post original (de `posts`, sem alias) não está em `hidden`. */
+function authorNotIn(hidden: SQL): SQL {
+  return sql`${posts.userId} not in ${hidden}`;
+}
+
+/**
+ * O repost (de `reposts`, sem alias) não é de alguém em `hidden`, e o post repostado também não é
+ * de alguém em `hiddenOriginal` — exceto o autor `exempt` (o dono do perfil, nos posts dele).
+ */
+function repostNotIn(hidden: SQL | null, hiddenOriginal: SQL, exempt?: string): SQL {
+  const exemptFilter = exempt ? sql`and op.user_id <> ${exempt}` : sql``;
+  const originalFilter = sql`not exists(select 1 from ${posts} op where op.id = ${reposts.postId} ${exemptFilter} and op.user_id in ${hiddenOriginal})`;
+  return hidden ? sql`(${reposts.userId} not in ${hidden} and ${originalFilter})` : originalFilter;
+}
+
+/**
+ * Feeds (Seguindo e Para você): somem os posts e reposts de quem tem bloqueio com o usuário (em
+ * qualquer sentido) ou foi silenciado por ele, e os reposts de posts dessas pessoas.
+ */
 export async function getFeed(
   userId: string,
   cursor: string | undefined,
   limit: number,
   scope: 'following' | 'general' = 'following',
 ) {
+  const hidden = moderationService.hiddenAuthorsSql(userId, true);
   if (scope === 'general') {
-    return timeline(userId, { posts: sql`true`, reposts: sql`true` }, cursor, limit);
+    return timeline(userId, { posts: authorNotIn(hidden), reposts: repostNotIn(hidden, hidden) }, cursor, limit);
   }
   // Seguindo: posts e reposts de quem o usuário segue, mais os dele mesmo.
   const followed = (column: typeof posts.userId | typeof reposts.userId) =>
     sql`(${column} = ${userId} or ${column} in (select ${follows.followingId} from ${follows} where ${follows.followerId} = ${userId}))`;
-  return timeline(userId, { posts: followed(posts.userId), reposts: followed(reposts.userId) }, cursor, limit);
+  return timeline(
+    userId,
+    {
+      posts: and(followed(posts.userId), authorNotIn(hidden))!,
+      reposts: and(followed(reposts.userId), repostNotIn(hidden, hidden))!,
+    },
+    cursor,
+    limit,
+  );
 }
+
+const EMPTY_PAGE = { items: [], nextCursor: null } as const;
 
 /**
  * Posts de um perfil. Os reposts do usuário entram junto (com `reason`), exceto na aba de
- * atividade (`type: 'activity'`), que mostra só as atividades dele.
+ * atividade (`type: 'activity'`), que mostra só as atividades dele. Com bloqueio entre quem vê e o
+ * dono do perfil a página vem vazia; os reposts de posts de quem tem bloqueio com quem vê, ou foi
+ * silenciado por ele, somem (o perfil de quem foi silenciado continua mostrando os próprios posts).
  */
 export async function getUserPosts(
   viewerId: string,
@@ -402,6 +447,8 @@ export async function getUserPosts(
   type?: 'activity' | 'post',
   filter?: 'media',
 ) {
+  if (cursor !== undefined && !decodeTimelineCursor(cursor)) throw new AppError(400, 'validation_error', 'Cursor inválido');
+  if (await moderationService.isBlockedEitherWay(viewerId, targetUserId)) return EMPTY_PAGE;
   if (filter === 'media') {
     // Só os posts do próprio usuário com ao menos uma imagem (tabela ou `image_url` legado); sem reposts.
     const hasImage = sql`(${posts.imageUrl} is not null or exists(select 1 from ${postImages} where ${postImages.postId} = ${posts.id}))`;
@@ -409,23 +456,37 @@ export async function getUserPosts(
   }
   const typeFilter = type === 'activity' ? eq(posts.type, 'activity') : type === 'post' ? ne(posts.type, 'activity') : undefined;
   const postsFilter = typeFilter ? and(eq(posts.userId, targetUserId), typeFilter)! : eq(posts.userId, targetUserId);
-  const repostsFilter = type === 'activity' ? null : eq(reposts.userId, targetUserId);
+  const repostsFilter =
+    type === 'activity'
+      ? null
+      : and(
+          eq(reposts.userId, targetUserId),
+          repostNotIn(null, moderationService.hiddenAuthorsSql(viewerId, true), targetUserId),
+        )!;
   return timeline(viewerId, { posts: postsFilter, reposts: repostsFilter }, cursor, limit);
 }
 
 /**
  * Busca posts pelo texto (ILIKE '%termo%', sem diferenciar maiúsculas), do mais novo ao mais antigo,
  * na mesma linha do tempo paginada dos demais (cursor keyset com microssegundos). Só posts
- * originais; `%`, `_` e `\` do termo valem como caracteres comuns. Ainda sem filtro de moderação.
+ * originais; `%`, `_` e `\` do termo valem como caracteres comuns. Somem os posts de quem tem
+ * bloqueio com quem busca (em qualquer sentido) ou foi silenciado por ele.
  */
 export async function searchPosts(viewerId: string, term: string, cursor: string | undefined, limit: number) {
   const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
-  return timeline(viewerId, { posts: sql`${posts.content} ilike ${pattern}`, reposts: null }, cursor, limit);
+  const hidden = moderationService.hiddenAuthorsSql(viewerId, true);
+  return timeline(
+    viewerId,
+    { posts: and(sql`${posts.content} ilike ${pattern}`, authorNotIn(hidden))!, reposts: null },
+    cursor,
+    limit,
+  );
 }
 
 /**
  * Os posts que o usuário curtiu, a curtida mais recente primeiro. Paginação keyset por
- * (likes.created_at, likes.id), com microssegundos. Itens com `reason: null`, como nos salvos.
+ * (likes.created_at, likes.id), com microssegundos. Itens com `reason: null`, como nos salvos. Somem
+ * os posts de quem tem bloqueio com o usuário (em qualquer sentido).
  */
 export async function getLikedPosts(userId: string, cursor: string | undefined, limit: number) {
   const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
@@ -439,6 +500,8 @@ export async function getLikedPosts(userId: string, cursor: string | undefined, 
       to_char(${likes.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text
     from ${likes}
     where ${likes.userId} = ${userId} ${cut}
+      and not exists(select 1 from ${posts} op where op.id = ${likes.postId}
+        and op.user_id in ${moderationService.blockedEitherWaySql(userId)})
     order by ${likes.createdAt} desc, ${likes.id} desc
     limit ${limit + 1}
   `);
@@ -460,12 +523,21 @@ export async function getLikedPosts(userId: string, cursor: string | undefined, 
   return { items, nextCursor };
 }
 
-/** Posts sobre um jogo: só os originais. */
+/**
+ * Posts sobre um jogo: só os originais. É um feed: somem os de quem tem bloqueio com quem vê (em
+ * qualquer sentido) ou foi silenciado por ele.
+ */
 export async function getGamePosts(gameId: string, viewerId: string, cursor: string | undefined, limit: number) {
-  return timeline(viewerId, { posts: eq(posts.gameId, gameId), reposts: null }, cursor, limit);
+  const hidden = moderationService.hiddenAuthorsSql(viewerId, true);
+  return timeline(viewerId, { posts: and(eq(posts.gameId, gameId), authorNotIn(hidden))!, reposts: null }, cursor, limit);
 }
 
-export async function getUserComments(targetUserId: string, cursor: string | undefined, limit: number) {
+/**
+ * Comentários de um perfil. Com bloqueio entre quem vê e o dono do perfil a página vem vazia; os
+ * comentários em posts de quem tem bloqueio com quem vê somem.
+ */
+export async function getUserComments(viewerId: string, targetUserId: string, cursor: string | undefined, limit: number) {
+  if (await moderationService.isBlockedEitherWay(viewerId, targetUserId)) return EMPTY_PAGE;
   const cursorFilter = cursor
     ? (() => {
         const decoded = decodeCursor(cursor);
@@ -473,7 +545,11 @@ export async function getUserComments(targetUserId: string, cursor: string | und
       })()
     : undefined;
 
-  const whereFilter = eq(comments.userId, targetUserId);
+  const whereFilter = and(
+    eq(comments.userId, targetUserId),
+    sql`not exists(select 1 from ${posts} op where op.id = ${comments.postId}
+      and op.user_id in ${moderationService.blockedEitherWaySql(viewerId)})`,
+  )!;
 
   const results = await db.query.comments.findMany({
     where: cursorFilter ? and(whereFilter, cursorFilter) : whereFilter,
@@ -496,8 +572,22 @@ async function getPostOrThrow(postId: string) {
   return post;
 }
 
-export async function like(userId: string, postId: string) {
+/** Com bloqueio entre quem age e o autor (em qualquer sentido), a interação é recusada (403 `blocked`). */
+async function assertNotBlocked(userId: string, authorId: string) {
+  if (await moderationService.isBlockedEitherWay(userId, authorId)) {
+    throw new AppError(403, 'blocked', 'Não é possível interagir: há um bloqueio entre vocês');
+  }
+}
+
+/** O post, se existe e se quem age pode interagir com ele (curtir, repostar, salvar, comentar, citar). */
+async function getInteractablePostOrThrow(userId: string, postId: string) {
   const post = await getPostOrThrow(postId);
+  await assertNotBlocked(userId, post.userId);
+  return post;
+}
+
+export async function like(userId: string, postId: string) {
+  const post = await getInteractablePostOrThrow(userId, postId);
 
   // `returning` vem vazio quando o like já existia (conflito ignorado): curtir de novo é
   // idempotente e não pode gerar outra notificação nem outro push.
@@ -519,7 +609,7 @@ export async function unlike(userId: string, postId: string) {
 
 /** Repostar de novo é idempotente: só o primeiro repost notifica. Repostar o próprio post vale, sem notificar. */
 export async function repost(userId: string, postId: string) {
-  const post = await getPostOrThrow(postId);
+  const post = await getInteractablePostOrThrow(userId, postId);
   const inserted = await db
     .insert(reposts)
     .values({ postId, userId })
@@ -538,7 +628,7 @@ export async function unrepost(userId: string, postId: string) {
 
 /** Salvos são privados e não geram notificação. */
 export async function bookmark(userId: string, postId: string) {
-  await getPostOrThrow(postId);
+  await getInteractablePostOrThrow(userId, postId);
   await db
     .insert(bookmarks)
     .values({ postId, userId })
@@ -559,7 +649,8 @@ interface BookmarkRow extends Record<string, unknown> {
 /**
  * Os posts que o usuário salvou, o salvo mais recente primeiro. Paginação keyset por
  * (bookmarks.created_at, bookmarks.id), com microssegundos como na linha do tempo, pelo índice
- * (user_id, created_at). Os itens têm `reason: null`, o mesmo formato dos itens do feed.
+ * (user_id, created_at). Os itens têm `reason: null`, o mesmo formato dos itens do feed. Somem os
+ * posts de quem tem bloqueio com o usuário (em qualquer sentido); desbloquear os traz de volta.
  */
 export async function getBookmarks(userId: string, cursor: string | undefined, limit: number) {
   const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
@@ -573,6 +664,8 @@ export async function getBookmarks(userId: string, cursor: string | undefined, l
       to_char(${bookmarks.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text
     from ${bookmarks}
     where ${bookmarks.userId} = ${userId} ${cut}
+      and not exists(select 1 from ${posts} op where op.id = ${bookmarks.postId}
+        and op.user_id in ${moderationService.blockedEitherWaySql(userId)})
     order by ${bookmarks.createdAt} desc, ${bookmarks.id} desc
     limit ${limit + 1}
   `);
@@ -610,9 +703,37 @@ export async function deletePost(userId: string, postId: string) {
     await tx.delete(posts).where(eq(posts.id, postId));
   });
 
-  for (const { url } of images) {
-    const stillUsed = await db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1);
-    if (stillUsed.length === 0) await deletePostImageIfLocal(url);
+  await removeUnusedPostImageFiles(images.map((image) => image.url));
+}
+
+/** Todas as URLs de imagem dos posts de um usuário (as de `post_images` e a `image_url` legada), sem repetição. */
+export async function postImageUrlsOf(userId: string): Promise<string[]> {
+  const [fromImages, fromPosts] = await Promise.all([
+    db
+      .select({ url: postImages.url })
+      .from(postImages)
+      .innerJoin(posts, eq(posts.id, postImages.postId))
+      .where(eq(posts.userId, userId)),
+    db.select({ url: posts.imageUrl }).from(posts).where(eq(posts.userId, userId)),
+  ]);
+  const urls = new Set<string>();
+  for (const { url } of fromImages) urls.add(url);
+  for (const { url } of fromPosts) if (url) urls.add(url);
+  return [...urls];
+}
+
+/** Best-effort: apaga os arquivos dessas imagens, menos os que algum post ainda usa. */
+export async function removeUnusedPostImageFiles(urls: string[]) {
+  for (const url of urls) {
+    try {
+      const [stillInImages, stillInPosts] = await Promise.all([
+        db.select({ id: postImages.id }).from(postImages).where(eq(postImages.url, url)).limit(1),
+        db.select({ id: posts.id }).from(posts).where(eq(posts.imageUrl, url)).limit(1),
+      ]);
+      if (stillInImages.length === 0 && stillInPosts.length === 0) await deletePostImageIfLocal(url);
+    } catch (err) {
+      console.error('[posts] não foi possível limpar uma imagem de post:', err);
+    }
   }
 }
 
@@ -622,13 +743,15 @@ async function getCommentOrThrow(commentId: string) {
   return comment;
 }
 
+/** Comentar (ou responder) é recusado com bloqueio entre quem comenta e o autor do post ou do comentário respondido. */
 export async function addComment(userId: string, postId: string, content: string, parentCommentId?: string) {
-  const post = await getPostOrThrow(postId);
+  const post = await getInteractablePostOrThrow(userId, postId);
 
   let parent: Awaited<ReturnType<typeof getCommentOrThrow>> | null = null;
   if (parentCommentId) {
     parent = await getCommentOrThrow(parentCommentId);
     if (parent.postId !== postId) throw new AppError(400, 'invalid_operation', 'Comentário pai não pertence a esse post');
+    await assertNotBlocked(userId, parent.userId);
   }
 
   const [created] = await db.insert(comments).values({ postId, userId, content, parentCommentId }).returning();
@@ -707,6 +830,31 @@ function buildCommentTree(flat: FlatComment[], viewerId: string, sort: CommentSo
   return roots;
 }
 
+/**
+ * Tira os comentários de quem está em `hiddenUserIds` e, junto, todas as respostas abaixo deles
+ * (de qualquer autor), para a conversa não ficar com respostas soltas.
+ */
+function withoutHiddenSubtrees<T extends { id: string; parentCommentId: string | null; userId: string }>(
+  flat: T[],
+  hiddenUserIds: Set<string>,
+): T[] {
+  if (hiddenUserIds.size === 0) return flat;
+  const removed = new Set(flat.filter((c) => hiddenUserIds.has(c.userId)).map((c) => c.id));
+  // Repete até estabilizar: não depende de o pai vir antes do filho na lista.
+  let grew = removed.size > 0;
+  while (grew) {
+    grew = false;
+    for (const c of flat) {
+      if (!removed.has(c.id) && c.parentCommentId !== null && removed.has(c.parentCommentId)) {
+        removed.add(c.id);
+        grew = true;
+      }
+    }
+  }
+  return flat.filter((c) => !removed.has(c.id));
+}
+
+/** A conversa de um post. Comentários de quem tem bloqueio com quem vê somem com as respostas deles. */
 export async function listComments(postId: string, viewerId: string, sort: CommentSort = 'oldest') {
   await getPostOrThrow(postId);
   const flat = await db.query.comments.findMany({
@@ -714,7 +862,8 @@ export async function listComments(postId: string, viewerId: string, sort: Comme
     orderBy: [asc(comments.createdAt), asc(comments.id)],
     with: { user: { columns: userColumns }, likes: { columns: { userId: true } } },
   });
-  return buildCommentTree(flat, viewerId, sort);
+  const blocked = await moderationService.blockedAmong(viewerId, flat.map((c) => c.userId));
+  return buildCommentTree(withoutHiddenSubtrees(flat, blocked), viewerId, sort);
 }
 
 /** Só o autor do comentário apaga (nem o autor do post). As respostas saem junto, em cascata. */

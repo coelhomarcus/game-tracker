@@ -43,6 +43,7 @@ jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn().mockResolvedValue
 jest.mock('@/features/profiles/queries', () => ({
   useProfile: (id?: string) => ({ data: id === undefined ? undefined : { isFollowedByMe: false } }),
   useToggleFollow: () => ({ mutate: jest.fn() }),
+  useSetModeration: () => ({ mutate: jest.fn() }),
 }));
 
 const mockScreenOptions = jest.fn();

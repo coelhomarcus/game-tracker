@@ -1,13 +1,19 @@
-import { and, count, eq, ilike, ne, or, sql } from 'drizzle-orm';
+import { and, count, eq, ilike, inArray, ne, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { follows, gameEntries, users } from '../db/schema';
+import { type DmPolicy, conversationParticipants, conversations, follows, gameEntries, posts, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
 import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
 import { isUuid } from '../lib/uuid';
 import { deleteAvatarIfLocal, deleteBannerIfLocal, saveAvatar, saveBanner } from '../lib/uploads';
+import { disconnectUser } from '../socket/realtime';
+import * as authService from './auth.service';
+import * as conversationsService from './conversations.service';
+import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
+import * as postsService from './posts.service';
 
+/** Pessoas pelo username ou nome. Quem tem bloqueio com quem busca (em qualquer sentido) não aparece. */
 export async function search(viewerId: string, term: string) {
   return db
     .select({
@@ -20,7 +26,13 @@ export async function search(viewerId: string, term: string) {
     })
     .from(users)
     .leftJoin(follows, and(eq(follows.followerId, viewerId), eq(follows.followingId, users.id)))
-    .where(and(or(ilike(users.username, `%${term}%`), ilike(users.name, `%${term}%`)), ne(users.id, viewerId)))
+    .where(
+      and(
+        or(ilike(users.username, `%${term}%`), ilike(users.name, `%${term}%`)),
+        ne(users.id, viewerId),
+        notInArray(users.id, moderationService.blockedEitherWaySql(viewerId)),
+      ),
+    )
     .limit(20);
 }
 
@@ -47,6 +59,12 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
           where: and(eq(follows.followerId, targetId), eq(follows.followingId, viewerId)),
         }),
   ]);
+  // Com bloqueio o perfil continua abrindo (nome, bio e contagens), mas as abas vêm vazias.
+  const [flags, canMessage] = await Promise.all([
+    moderationService.relationFlags(viewerId, targetId),
+    // Se quem vê pode mandar mensagem para a pessoa agora (bloqueio e política dela). Falso no próprio perfil.
+    conversationsService.canMessage(viewerId, targetId),
+  ]);
 
   return {
     ...user,
@@ -55,6 +73,8 @@ export async function getPublicProfile(viewerId: string, targetId: string) {
     gameEntryCount: gameEntryCountRows[0]!.value,
     isFollowedByMe: followRow != null,
     followsMe: followsMeRow != null,
+    ...flags,
+    canMessage,
   };
 }
 
@@ -87,6 +107,8 @@ export async function listFollows(
   if (!isUuid(targetId) || !(await db.query.users.findFirst({ where: eq(users.id, targetId), columns: { id: true } }))) {
     throw new AppError(404, 'not_found', 'Usuário não encontrado');
   }
+  // Com bloqueio entre quem vê e o dono da lista, a lista vem vazia.
+  if (await moderationService.isBlockedEitherWay(viewerId, targetId)) return { items: [], nextCursor: null };
 
   // Seguidores: a pessoa listada é quem segue (follower_id). Seguindo: é quem é seguido (following_id).
   const [ownSide, personSide] =
@@ -104,6 +126,7 @@ export async function listFollows(
     from ${follows}
     join ${users} u on u.id = ${personSide}
     where ${ownSide} = ${targetId} ${cut}
+      and u.id not in ${moderationService.blockedEitherWaySql(viewerId)}
     order by ${follows.createdAt} desc, ${follows.id} desc
     limit ${limit + 1}
   `);
@@ -133,23 +156,35 @@ export async function follow(followerId: string, followingId: string) {
   const target = await db.query.users.findFirst({ where: eq(users.id, followingId) });
   if (!target) throw new AppError(404, 'not_found', 'Usuário não encontrado');
 
-  // Só notifica quando a relação foi realmente criada; seguir de novo é idempotente.
-  const inserted = await db
-    .insert(follows)
-    .values({ followerId, followingId })
-    .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
-    .returning({ id: follows.id });
+  // Uma instrução só: o follow entra apenas se não houver bloqueio entre os dois, sem a janela
+  // entre "checar" e "inserir" de duas consultas separadas.
+  const inserted = await db.execute<{ id: string }>(sql`
+    insert into ${follows} (follower_id, following_id)
+    select ${followerId}::uuid, ${followingId}::uuid
+    where ${followingId}::uuid not in ${moderationService.blockedEitherWaySql(followerId)}
+    on conflict (follower_id, following_id) do nothing
+    returning id
+  `);
 
-  if (inserted.length > 0) {
-    await notificationsService.notify({ userId: followingId, actorId: followerId, type: 'follow' });
+  if (inserted.rows.length === 0) {
+    // Nada entrou: ou há bloqueio (403) ou já seguia (seguir de novo é idempotente).
+    if (await moderationService.isBlockedEitherWay(followerId, followingId)) {
+      throw new AppError(403, 'blocked', 'Não é possível seguir: há um bloqueio entre vocês');
+    }
+    return;
   }
+  // Só notifica quando a relação foi realmente criada.
+  await notificationsService.notify({ userId: followingId, actorId: followerId, type: 'follow' });
 }
 
 export async function unfollow(followerId: string, followingId: string) {
   await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
 }
 
-export async function updateProfile(userId: string, input: { username?: string; name?: string; bio?: string }) {
+export async function updateProfile(
+  userId: string,
+  input: { username?: string; name?: string; bio?: string; dmPolicy?: DmPolicy },
+) {
   if (input.username) {
     const existing = await db.query.users.findFirst({ where: eq(users.username, input.username) });
     if (existing && existing.id !== userId) {
@@ -170,6 +205,64 @@ export async function updateProfile(userId: string, input: { username?: string; 
     }
     throw err;
   }
+}
+
+/**
+ * Apaga a conta de quem está logado, depois de conferir a senha. O banco leva junto, em cascata,
+ * sessões, posts (com likes, comentários, imagens e notificações), reposts, salvos, follows,
+ * bloqueios, silenciados, registros de jogos, favoritos, instalações de push, participações em
+ * conversas e as mensagens, reações e ocultações dessa pessoa. As conversas continuam para a outra
+ * pessoa, sem o par. As citações dos posts apagados ficam, marcadas como removidas, como em
+ * `deletePost`. Depois os sockets caem e os arquivos (avatar, capa, imagens de posts) saem do disco,
+ * sem que uma falha ali desfaça a exclusão.
+ */
+export async function deleteAccount(userId: string, password: string) {
+  await authService.assertPassword(userId, password);
+
+  const current = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { avatarUrl: true, bannerUrl: true },
+  });
+  const postImageUrls = await postsService.postImageUrlsOf(userId);
+
+  await db.transaction(async (tx) => {
+    const ownPosts = tx.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+    // Marca as citações antes: apagar zera `quoted_post_id` pela FK, e a marca é o que sobra.
+    await tx.update(posts).set({ quotedPostRemoved: true }).where(inArray(posts.quotedPostId, ownPosts));
+    // Conversas em que a pessoa estava: se a outra já tinha saído, sobrariam sem participantes.
+    const memberOf = await tx
+      .select({ id: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.userId, userId));
+    await tx.delete(users).where(eq(users.id, userId));
+    const conversationIds = memberOf.map((row) => row.id);
+    if (conversationIds.length > 0) {
+      await tx
+        .delete(conversations)
+        .where(
+          and(
+            inArray(conversations.id, conversationIds),
+            notExists(
+              tx
+                .select({ id: conversationParticipants.id })
+                .from(conversationParticipants)
+                .where(eq(conversationParticipants.conversationId, conversations.id)),
+            ),
+          ),
+        );
+    }
+  });
+
+  // Quem ainda tem um token de acesso válido (até 15 min) não reabre a conexão: o handshake confere a conta.
+  disconnectUser(userId);
+
+  // Os arquivos saem em segundo plano: uma conta com milhares de imagens não atrasa a resposta, e
+  // uma falha aqui nunca desfaz a exclusão.
+  void Promise.allSettled([
+    deleteAvatarIfLocal(current?.avatarUrl ?? null),
+    deleteBannerIfLocal(current?.bannerUrl ?? null),
+    postsService.removeUnusedPostImageFiles(postImageUrls),
+  ]).catch((err) => console.error('[users] não foi possível limpar os arquivos da conta excluída:', err));
 }
 
 export async function updateAvatar(userId: string, buffer: Buffer) {

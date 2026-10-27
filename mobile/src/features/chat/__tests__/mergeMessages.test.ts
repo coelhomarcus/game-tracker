@@ -10,6 +10,7 @@ function message(id: string, minute: number, clientMessageId: string | null = nu
     createdAt: new Date(Date.UTC(2026, 0, 1, 12, minute)),
     clientMessageId,
     sender: { id: 'u1', username: 'ana', name: null, avatarUrl: null },
+    reactions: [],
   };
 }
 

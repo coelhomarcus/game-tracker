@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { useSession } from '@/features/auth';
+import { DM_NOT_ALLOWED_MESSAGE, useSession } from '@/features/auth';
 import { queryClient } from '@/lib/queryClient';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { newUuid } from '@/lib/uuid';
@@ -22,9 +22,27 @@ export type PendingMessage = {
   /** `uncertain`: no answer (timeout or drop); it may be stored, and is re-sent on reconnect. */
   status: PendingStatus;
   error?: string;
+  /** Set when the server refused it for good (a block, or the recipient's message policy). */
+  refusal?: string;
 };
 
-type SendAck = { message?: Record<string, unknown> | null; error?: unknown } | null | undefined;
+type SendAck =
+  | { message?: Record<string, unknown> | null; error?: unknown; code?: unknown }
+  | null
+  | undefined;
+
+/**
+ * Refusals that sending again would not change: shown as the reason the message failed. Like every
+ * failure, they are only sent again when the user asks.
+ */
+export const SEND_REFUSALS = {
+  blocked: 'Não é possível enviar mensagens para esta conta.',
+  dm_not_allowed: DM_NOT_ALLOWED_MESSAGE,
+} as const;
+
+function refusalReason(code: unknown): string | undefined {
+  return code === 'blocked' || code === 'dm_not_allowed' ? SEND_REFUSALS[code] : undefined;
+}
 
 type ChatState = {
   pending: Record<string, PendingMessage[]>;
@@ -126,7 +144,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     if (!item || inFlight.has(clientMessageId)) return;
     inFlight.add(clientMessageId);
     const run = generation;
-    updatePending(conversationId, clientMessageId, ({ error: _error, ...rest }) => ({
+    updatePending(conversationId, clientMessageId, ({ error: _error, refusal: _refusal, ...rest }) => ({
       ...rest,
       status: 'sending',
     }));
@@ -154,11 +172,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       confirmed(parseMessage(ack.message));
       return;
     }
-    const error = typeof ack?.error === 'string' ? ack.error : 'Erro desconhecido';
+    const refusal = refusalReason(ack?.code);
+    const error = refusal ?? (typeof ack?.error === 'string' ? ack.error : 'Erro desconhecido');
     updatePending(conversationId, clientMessageId, (current) => ({
       ...current,
       status: 'failed',
       error,
+      ...(refusal ? { refusal } : {}),
     }));
   }
 

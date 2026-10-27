@@ -1,8 +1,9 @@
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db';
 import { favorites, follows, gameEntries, gameEntryStatusEnum, games } from '../db/schema';
 import { AppError } from '../lib/errors';
 import * as igdb from '../lib/igdb';
+import * as moderationService from './moderation.service';
 
 type GameEntryStatus = (typeof gameEntryStatusEnum.enumValues)[number];
 
@@ -88,7 +89,8 @@ export async function getStats(gameId: string) {
 /**
  * "Quem está jogando" / "seus amigos estão jogando" — prévia limitada, sem
  * paginação. `scope: 'following'` lê os `followingId` da tabela `follows` e filtra os jogadores
- * com `inArray` (o feed de `posts.service.ts` usa uma subconsulta SQL no lugar disso).
+ * com `inArray` (o feed de `posts.service.ts` usa uma subconsulta SQL no lugar disso). Quem tem
+ * bloqueio com quem vê (em qualquer sentido) não aparece.
  */
 export async function getPlayers(
   gameId: string,
@@ -97,7 +99,11 @@ export async function getPlayers(
   scope: 'all' | 'following',
   limit: number,
 ) {
-  const conditions = [eq(gameEntries.gameId, gameId), eq(gameEntries.status, status)];
+  const conditions = [
+    eq(gameEntries.gameId, gameId),
+    eq(gameEntries.status, status),
+    notInArray(gameEntries.userId, moderationService.blockedEitherWaySql(viewerId)),
+  ];
 
   if (scope === 'following') {
     const following = await db

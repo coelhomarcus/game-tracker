@@ -149,6 +149,7 @@ function buildRows(
       mine: true,
       senderName: '',
       status: item.status,
+      reason: item.refusal,
     }));
   return [...waiting, ...rows];
 }
@@ -329,7 +330,10 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     return (
       <MessageBubble
         message={row}
-        onRetry={clientMessageId ? () => retry(conversationId, clientMessageId) : undefined}
+        // A refusal (a block, the recipient's policy) would only repeat: the reason stays, the retry goes.
+        onRetry={
+          clientMessageId && !row.reason ? () => retry(conversationId, clientMessageId) : undefined
+        }
         onDiscard={clientMessageId ? () => discard(conversationId, clientMessageId) : undefined}
       />
     );

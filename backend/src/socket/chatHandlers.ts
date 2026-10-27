@@ -2,7 +2,10 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { Server, Socket } from 'socket.io';
 import { db } from '../db';
 import { conversationParticipants, messages } from '../db/schema';
+import { AppError } from '../lib/errors';
 import { sendPushToUser } from '../push/pushService';
+import { assertCanMessage, withReactions } from '../services/conversations.service';
+import { conversationRoom, userRoom } from './realtime';
 
 const userColumns = { id: true, username: true, name: true, avatarUrl: true } as const;
 
@@ -66,6 +69,9 @@ export function registerChatHandlers(io: Server, socket: Socket) {
   const wasOffline = !isOnline(userId);
   onlineConnections.set(userId, (onlineConnections.get(userId) ?? 0) + 1);
 
+  // Sala do usuário: avisos que valem para todos os sockets dele (ex.: `message:hidden`).
+  void socket.join(userRoom(userId));
+
   async function requireParticipant(conversationId: unknown) {
     if (!isUuid(conversationId)) return false;
     const participant = await db.query.conversationParticipants.findFirst({
@@ -75,6 +81,19 @@ export function registerChatHandlers(io: Server, socket: Socket) {
       ),
     });
     return participant != null;
+  }
+
+  /** A mensagem que este usuário já gravou com este clientMessageId, com as reações. */
+  async function findByClientMessageId(conversationId: string, cid: string) {
+    const existing = await db.query.messages.findFirst({
+      where: and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.senderId, userId),
+        eq(messages.clientMessageId, cid),
+      ),
+      with: { sender: { columns: userColumns } },
+    });
+    return existing ? (await withReactions([existing]))[0] : undefined;
   }
 
   socket.on(
@@ -110,6 +129,25 @@ export function registerChatHandlers(io: Server, socket: Socket) {
 
         if (!(await requireParticipant(conversationId))) return ack?.({ error: 'Conversa não encontrada' });
 
+        const others = await db.query.conversationParticipants.findMany({
+          where: and(
+            eq(conversationParticipants.conversationId, conversationId),
+            ne(conversationParticipants.userId, userId),
+          ),
+          columns: { userId: true, muted: true },
+        });
+
+        // Bloqueio e política de mensagens de quem recebe: valem para cada envio, também numa
+        // conversa que já existe. O ACK leva o código estável (`blocked`, `dm_not_allowed`).
+        try {
+          for (const other of others) await assertCanMessage(userId, other.userId);
+        } catch (err) {
+          if (!(err instanceof AppError)) throw err;
+          // Um reenvio de algo já gravado (o ACK se perdeu) continua devolvendo a mensagem.
+          const saved = cid ? await findByClientMessageId(conversationId, cid) : undefined;
+          return ack?.(saved ? { message: saved } : { error: err.message, code: err.code });
+        }
+
         // Idempotente por (conversa, remetente, clientMessageId): repetir o envio — por exemplo,
         // porque o ACK se perdeu — devolve a mensagem já gravada, sem criar outra, sem novo evento
         // e sem novo push.
@@ -120,33 +158,23 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           .returning({ id: messages.id });
 
         if (inserted.length === 0 && cid) {
-          const existing = await db.query.messages.findFirst({
-            where: and(
-              eq(messages.conversationId, conversationId),
-              eq(messages.senderId, userId),
-              eq(messages.clientMessageId, cid),
-            ),
-            with: { sender: { columns: userColumns } },
-          });
+          const existing = await findByClientMessageId(conversationId, cid);
           return ack?.(existing ? { message: existing } : { error: 'Erro interno' });
         }
 
-        const message = await db.query.messages.findFirst({
+        const found = await db.query.messages.findFirst({
           where: eq(messages.id, inserted[0]!.id),
           with: { sender: { columns: userColumns } },
         });
+        // Mensagem nova: ainda sem reações.
+        const message = { ...found!, reactions: [] };
 
-        io.to(`conversation:${conversationId}`).emit('message:receive', message);
+        io.to(conversationRoom(conversationId)).emit('message:receive', message);
         ack?.({ message });
 
-        const others = await db.query.conversationParticipants.findMany({
-          where: and(
-            eq(conversationParticipants.conversationId, conversationId),
-            ne(conversationParticipants.userId, userId),
-          ),
-          columns: { userId: true },
-        });
+        // Quem silenciou a conversa não recebe push.
         for (const other of others) {
+          if (other.muted) continue;
           void sendPushToUser(other.userId, {
             title: message!.sender.username,
             // Texto genérico: o conteúdo da mensagem não vai no push (o app busca já autenticado).

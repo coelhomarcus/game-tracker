@@ -8,9 +8,11 @@ import { useChatStore } from './chatStore';
 import {
   addMessagesToCache,
   applyLatestMessage,
+  applyReactionToCache,
   conversationsKey,
   markReadInList,
   messagesKey,
+  removeMessageFromCache,
 } from './queries';
 import { parseMessage, type Conversation } from './types';
 
@@ -24,10 +26,10 @@ const chat = () => useChatStore.getState();
 
 /**
  * Applies socket events to the chat store and the query cache while the connection runs: new
- * messages, typing, presence, and on every (re)connect re-sends unconfirmed messages and re-joins
- * the open conversation. Every join of the open conversation is followed by a refetch of its
- * messages (whatever was sent while outside the room only reached the server) and then by one
- * read mark. Started and stopped with the connection by `SessionGate`.
+ * messages, messages deleted for me, reactions, typing, presence, and on every (re)connect re-sends
+ * unconfirmed messages and re-joins the open conversation. Every join of the open conversation is
+ * followed by a refetch of its messages (whatever was sent while outside the room only reached the
+ * server) and then by one read mark. Started and stopped with the connection by `SessionGate`.
  */
 class RealtimeBridge {
   private subscriptions: (() => void)[] = [];
@@ -48,6 +50,8 @@ class RealtimeBridge {
     this.reads.clear();
     this.subscriptions = [
       chatSocket.on('message:receive', (payload: unknown) => this.handleMessage(payload)),
+      chatSocket.on('message:hidden', (payload: unknown) => this.handleHidden(payload)),
+      chatSocket.on('message:reaction', (payload: unknown) => this.handleReaction(payload)),
       chatSocket.on('typing:start', (payload: unknown) => this.handleTyping(payload, true)),
       chatSocket.on('typing:stop', (payload: unknown) => this.handleTyping(payload, false)),
       chatSocket.on('presence:online', (payload: unknown) => this.handlePresence(payload, true)),
@@ -204,6 +208,27 @@ class RealtimeBridge {
     applyLatestMessage(queryClient, message, !mine && !open);
 
     if (open && !mine) this.markRead(conversationId);
+  }
+
+  /** I deleted a message for myself, maybe on another device: it goes away here too. */
+  private handleHidden(payload: unknown): void {
+    if (!isJson(payload) || !isString(payload.conversationId) || !isString(payload.messageId)) return;
+    removeMessageFromCache(queryClient, payload.conversationId, payload.messageId);
+  }
+
+  /** Someone in an open room reacted to a message, or took a reaction back. */
+  private handleReaction(payload: unknown): void {
+    if (!isJson(payload) || !isString(payload.conversationId) || !isString(payload.messageId)) return;
+    const { emoji, userId, action } = payload;
+    if (!isString(emoji) || !isString(userId)) return;
+    if (action !== 'add' && action !== 'remove') return;
+    applyReactionToCache(queryClient, {
+      conversationId: payload.conversationId,
+      messageId: payload.messageId,
+      emoji,
+      userId,
+      action,
+    });
   }
 
   private handleTyping(payload: unknown, typing: boolean): void {

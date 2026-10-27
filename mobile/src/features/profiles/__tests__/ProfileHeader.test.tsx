@@ -15,7 +15,13 @@ const mockRouter = { push: jest.fn(), back: jest.fn(), navigate: jest.fn(), canG
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
-jest.mock('../queries', () => ({ useToggleFollow: () => ({ mutate: mockMutate }) }));
+const mockModerate = jest.fn();
+jest.mock('../queries', () => ({
+  useToggleFollow: () => ({ mutate: mockMutate }),
+  useSetModeration: (kind: string) => ({
+    mutate: (variables: unknown) => mockModerate(kind, variables),
+  }),
+}));
 jest.mock('@/features/chat/queries', () => ({
   useStartConversation: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
@@ -38,6 +44,10 @@ const profile: UserProfile = {
   entryCount: 40,
   isFollowedByMe: false,
   followsMe: false,
+  isMutedByMe: false,
+  isBlockedByMe: false,
+  blocksMe: false,
+  canMessage: true,
 };
 
 const withImages = {
@@ -399,5 +409,148 @@ describe('ProfileHeaderSkeleton', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Voltar' })).toBeNull();
+  });
+});
+
+describe('mute and block', () => {
+  const person = { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null };
+
+  async function openMenu(overrides: Partial<UserProfile> = {}) {
+    await renderHeader(overrides);
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções do perfil' }));
+  }
+
+  it('offers Silenciar and Bloquear in the menu of somebody else', async () => {
+    await openMenu();
+
+    expect(screen.getByRole('button', { name: 'Silenciar @ana' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Bloquear @ana' })).toBeOnTheScreen();
+  });
+
+  it('offers Reativar and Desbloquear when they are muted and blocked', async () => {
+    await openMenu({ isMutedByMe: true, isBlockedByMe: true });
+
+    expect(screen.getByRole('button', { name: 'Reativar @ana' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Desbloquear @ana' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Silenciar @ana' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Bloquear @ana' })).toBeNull();
+  });
+
+  it('offers neither on the own profile', async () => {
+    await renderHeader({}, true);
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções do perfil' }));
+
+    expect(screen.getByRole('button', { name: 'Copiar @usuário' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Silenciar|Bloquear/ })).toBeNull();
+  });
+
+  it('mutes at once and says so', async () => {
+    await openMenu();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Silenciar @ana' }));
+
+    expect(mockModerate).toHaveBeenCalledWith('mutes', { person, on: true });
+    expect(showToast).toHaveBeenCalledWith('@ana silenciado');
+  });
+
+  it('unmutes at once and says so', async () => {
+    await openMenu({ isMutedByMe: true });
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Reativar @ana' }));
+
+    expect(mockModerate).toHaveBeenCalledWith('mutes', { person, on: false });
+    expect(showToast).toHaveBeenCalledWith('@ana reativado');
+  });
+
+  it('asks before blocking and blocks only on the red Bloquear', async () => {
+    await openMenu();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear @ana' }));
+
+    expect(screen.getByText('Bloquear @ana?')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Vocês não verão os posts um do outro e @ana não poderá te seguir nem mandar mensagem.'),
+    ).toBeOnTheScreen();
+    expect(mockModerate).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear' }));
+
+    expect(mockModerate).toHaveBeenCalledWith('blocks', { person, on: true });
+    expect(screen.queryByText('Bloquear @ana?')).toBeNull();
+  });
+
+  it('does not block when the confirmation is cancelled', async () => {
+    await openMenu();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear @ana' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(mockModerate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Bloquear @ana?')).toBeNull();
+  });
+
+  it('unblocks from the menu without asking', async () => {
+    await openMenu({ isBlockedByMe: true });
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Desbloquear @ana' }));
+
+    expect(screen.queryByText('Bloquear @ana?')).toBeNull();
+    expect(mockModerate).toHaveBeenCalledWith('blocks', { person, on: false });
+  });
+
+  it('shows a Silenciado chip beside the handle only while muted', async () => {
+    await renderHeader({ isMutedByMe: true });
+    expect(screen.getByText('Silenciado')).toBeOnTheScreen();
+  });
+
+  it('has no Silenciado chip when not muted', async () => {
+    await renderHeader();
+    expect(screen.queryByText('Silenciado')).toBeNull();
+  });
+});
+
+describe('blocked profiles', () => {
+  it('swaps Seguir and Mensagem for a Desbloquear button when the user blocked them', async () => {
+    await renderHeader({ isBlockedByMe: true });
+
+    const row = screen.getByTestId('profile-actions');
+    expect(within(row).getByRole('button', { name: 'Desbloquear' })).toBeOnTheScreen();
+    expect(within(row).queryByRole('button', { name: /Seguir/ })).toBeNull();
+    expect(within(row).queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
+    expect(within(row).getByRole('button', { name: 'Mais opções do perfil' })).toBeOnTheScreen();
+  });
+
+  it('unblocks at once from the Desbloquear button', async () => {
+    await renderHeader({ isBlockedByMe: true });
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Desbloquear' }));
+
+    expect(mockModerate).toHaveBeenCalledWith('blocks', {
+      person: { id: 'u1', username: 'ana', name: 'Ana Souza', avatarUrl: null },
+      on: false,
+    });
+    expect(showToast).toHaveBeenCalledWith('@ana desbloqueado');
+  });
+
+  it('offers no Seguir, Mensagem or Desbloquear when they blocked the user', async () => {
+    await renderHeader({ blocksMe: true });
+
+    const row = screen.getByTestId('profile-actions');
+    expect(within(row).queryByRole('button', { name: /Seguir/ })).toBeNull();
+    expect(within(row).queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
+    expect(within(row).queryByRole('button', { name: 'Desbloquear' })).toBeNull();
+    expect(within(row).getByRole('button', { name: 'Mais opções do perfil' })).toBeOnTheScreen();
+  });
+
+  it('hides Mensagem, keeping Seguir, when messaging is not allowed', async () => {
+    await renderHeader({ canMessage: false });
+
+    const row = screen.getByTestId('profile-actions');
+    expect(within(row).queryByRole('button', { name: /Enviar mensagem/ })).toBeNull();
+    expect(within(row).getByRole('button', { name: 'Seguir Ana Souza' })).toBeOnTheScreen();
+  });
+
+  it('shows Mensagem when messaging is allowed', async () => {
+    await renderHeader({ canMessage: true });
+    expect(screen.getByRole('button', { name: 'Enviar mensagem para Ana Souza' })).toBeOnTheScreen();
   });
 });

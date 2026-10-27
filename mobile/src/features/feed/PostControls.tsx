@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { useRouter, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import {
@@ -12,9 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { ConfirmDialog, OptionSheet, Text } from '@/components';
-import { useSession } from '@/features/auth';
-import type { IoniconName } from '@/features/library/status';
+import { OptionSheet, Text } from '@/components';
 import { haptic } from '@/lib/haptics';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
@@ -22,8 +19,8 @@ import { colors, space } from '@/theme/tokens';
 import { CountWheel } from './CountWheel';
 import { formatCount } from './formatCount';
 import { LikeIcon } from './LikeIcon';
+import { PostMoreMenu } from './PostMoreMenu';
 import {
-  useDeletePost,
   useTogglePostBookmark,
   useTogglePostLike,
   useTogglePostRepost,
@@ -51,14 +48,13 @@ export function quoteHref(post: Pick<Post, 'id'>): Href {
 }
 
 type RepostChoice = 'repost' | 'quote' | 'cancel';
-type MoreChoice = 'share' | 'copy' | 'delete';
 
 export type PostControlsProps = {
   /** The post as the parent read it from the cache, so a toggle never works on a stale copy. */
   post: Post;
   /** Opens the post to comment. Without it the comment counter is plain, e.g. on the post's own page. */
   onReply?: () => void;
-  /** Runs once the post is deleted, e.g. to leave the post's own page. */
+  /** Runs once the post is deleted or its author blocked, e.g. to leave the post's own page. */
   onDeleted?: () => void;
   /** Larger icons and counts, for the post on its own page. */
   big?: boolean;
@@ -73,14 +69,11 @@ export function PostControls({ post, onReply, onDeleted, big = false }: PostCont
   const countSize = big ? 'md' : 'sm';
   const router = useRouter();
   const narrow = useWindowDimensions().width < NARROW_WINDOW;
-  const isMine = useSession((state) => state.user?.id === post.author.id);
   const toggleLike = useTogglePostLike();
   const toggleRepost = useTogglePostRepost();
   const toggleBookmark = useTogglePostBookmark();
-  const deletePost = useDeletePost();
   const [likeToggled, setLikeToggled] = useState(false);
   const [sheet, setSheet] = useState<'repost' | 'more' | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   // A feed has many rows and most never open a menu: the sheets mount on first use, then stay
   // so they can animate out.
   const [menusUsed, setMenusUsed] = useState(false);
@@ -109,20 +102,6 @@ export function PostControls({ post, onReply, onDeleted, big = false }: PostCont
       // Dismissing or failing to open the share sheet needs no message.
     }
   };
-
-  const copy = async () => {
-    try {
-      await Clipboard.setStringAsync(post.content);
-      showToast('Texto copiado');
-    } catch {
-      showToast('Não foi possível copiar o texto.');
-    }
-  };
-
-  const moreOptions: { value: MoreChoice; label: string; icon: IoniconName }[] = [];
-  if (narrow) moreOptions.push({ value: 'share', label: 'Compartilhar', icon: 'share-outline' });
-  if (post.content) moreOptions.push({ value: 'copy', label: 'Copiar texto', icon: 'copy-outline' });
-  if (isMine) moreOptions.push({ value: 'delete', label: 'Apagar post', icon: 'trash-outline' });
 
   return (
     <View testID="post-controls" style={[styles.bar, big && styles.bigBar]}>
@@ -223,7 +202,6 @@ export function PostControls({ post, onReply, onDeleted, big = false }: PostCont
         )}
         <ControlButton
           label="Mais opções"
-          disabled={moreOptions.length === 0}
           onPress={() => openSheet('more')}
           style={styles.iconButton}
         >
@@ -256,29 +234,13 @@ export function PostControls({ post, onReply, onDeleted, big = false }: PostCont
             }}
             onClose={() => setSheet(null)}
           />
-          <OptionSheet<MoreChoice>
+          <PostMoreMenu
+            post={post}
             visible={sheet === 'more'}
-            title="Opções do post"
-            options={moreOptions}
-            onSelect={(choice) => {
-              if (choice === 'share') void share();
-              else if (choice === 'copy') void copy();
-              else setConfirmDelete(true);
-            }}
+            narrow={narrow}
+            onShare={() => void share()}
             onClose={() => setSheet(null)}
-          />
-          <ConfirmDialog
-            visible={confirmDelete}
-            title="Apagar post?"
-            message="Isso não pode ser desfeito."
-            confirmLabel="Apagar"
-            cancelLabel="Cancelar"
-            destructive
-            onConfirm={() => {
-              setConfirmDelete(false);
-              deletePost.mutate(post, { onSuccess: () => onDeleted?.() });
-            }}
-            onCancel={() => setConfirmDelete(false)}
+            onDone={onDeleted}
           />
         </>
       ) : null}

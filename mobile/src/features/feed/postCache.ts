@@ -293,3 +293,56 @@ export function findCachedPost(client: QueryClient, postId: string): Post | unde
   }
   return undefined;
 }
+
+/** Whether the list item is the user's own post or a repost by them. */
+function isFromUser(item: Post, userId: string): boolean {
+  return item.author.id === userId || item.reason?.by.id === userId;
+}
+
+function removeUserFromPages(data: PostPages, userId: string): PostPages {
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    const items = page.items.filter((item) => !isFromUser(item, userId));
+    if (items.length === page.items.length) return page;
+    changed = true;
+    return { ...page, items };
+  });
+  return changed ? { ...data, pages } : data;
+}
+
+/** A list a removal changed: what it held before, and what the removal wrote. */
+export type RemovedPosts = { queryKey: QueryKey; before: PostPages; after: PostPages }[];
+
+/**
+ * Takes the user's posts, and the posts they reposted, out of every cached feed, game, profile
+ * and bookmark list (or only out of `keys`), e.g. right after the signed-in user blocks them.
+ * Returns what changed, for `restoreRemovedPosts`.
+ */
+export function removeUserPostsEverywhere(
+  client: QueryClient,
+  userId: string,
+  keys: readonly QueryKey[] = LIST_KEYS,
+): RemovedPosts {
+  const removed: RemovedPosts = [];
+  for (const key of keys) {
+    for (const [queryKey, data] of client.getQueriesData<PostPages>({ queryKey: key })) {
+      if (data === undefined) continue;
+      const next = removeUserFromPages(data, userId);
+      if (next === data) continue;
+      client.setQueryData(queryKey, next);
+      // As stored: the cache shares structure with the previous data, so `next` itself may not be it.
+      removed.push({ queryKey, before: data, after: client.getQueryData<PostPages>(queryKey) ?? next });
+    }
+  }
+  return removed;
+}
+
+/**
+ * Puts back what `removeUserPostsEverywhere` took out, for a block or mute that failed. A list
+ * that changed since (a like, a new page, a refetch) is left alone: it is newer than the snapshot.
+ */
+export function restoreRemovedPosts(client: QueryClient, removed: RemovedPosts): void {
+  for (const { queryKey, before, after } of removed) {
+    if (client.getQueryData(queryKey) === after) client.setQueryData(queryKey, before);
+  }
+}

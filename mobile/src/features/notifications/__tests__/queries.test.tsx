@@ -25,6 +25,7 @@ const me: User = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone',
 };
 
 function notification(id: string, read = false): AppNotification {

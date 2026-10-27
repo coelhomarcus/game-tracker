@@ -14,6 +14,8 @@ export type BubbleMessage = {
   /** Who wrote it, for the screen reader label of other people's messages. */
   senderName: string;
   status: 'sent' | PendingStatus;
+  /** Why a failed message was refused for good (a block, or the recipient's message policy). */
+  reason?: string;
 };
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -35,7 +37,7 @@ const STATUS_LINES = {
 } as const;
 
 export function MessageBubble({ message, onRetry, onDiscard }: MessageBubbleProps) {
-  const { content, createdAt, mine, senderName, status } = message;
+  const { content, createdAt, mine, senderName, status, reason } = message;
   const time = formatClock(createdAt);
   const label = `${mine ? 'Você' : senderName}: ${content}, ${time}`;
   const statusLine = status === 'sending' || status === 'uncertain' ? STATUS_LINES[status] : null;
@@ -70,6 +72,11 @@ export function MessageBubble({ message, onRetry, onDiscard }: MessageBubbleProp
           </View>
         ) : null}
       </View>
+      {status === 'failed' && reason ? (
+        <Text size="xs" tone="medium" style={styles.reason}>
+          {reason}
+        </Text>
+      ) : null}
       {status === 'failed' ? (
         <View style={styles.actions}>
           {onRetry ? <Button label="Tentar de novo" variant="ghost" onPress={onRetry} /> : null}
@@ -94,6 +101,7 @@ const styles = StyleSheet.create({
   bubbleOther: { backgroundColor: colors.bgContrast50 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   status: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  reason: { maxWidth: '80%' },
 
   actions: { flexDirection: 'row', gap: space.sm },
 });

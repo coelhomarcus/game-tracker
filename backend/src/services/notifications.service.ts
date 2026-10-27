@@ -1,8 +1,9 @@
-import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { notifications, notificationTypeEnum, users } from '../db/schema';
 import { extractMentions } from '../lib/mentions';
 import { sendPushToUser } from '../push/pushService';
+import { hiddenAuthorsSql, suppressesNotification } from './moderation.service';
 
 type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
 
@@ -25,9 +26,13 @@ interface NotifyInput {
   commentId?: string;
 }
 
-/** Cria a notificação in-app e dispara o push (best-effort). Nunca notifica o próprio autor da ação. */
+/**
+ * Cria a notificação in-app e dispara o push (best-effort). Nunca notifica o próprio autor da ação,
+ * nem quem tem bloqueio (em qualquer sentido) com quem agiu, nem quem silenciou quem agiu.
+ */
 export async function notify({ userId, actorId, type, postId, commentId }: NotifyInput) {
   if (userId === actorId) return;
+  if (await suppressesNotification(userId, actorId)) return;
 
   const [[notification], actor] = await Promise.all([
     db.insert(notifications).values({ userId, actorId, type, postId, commentId }).returning(),
@@ -98,10 +103,15 @@ export function excerptOf(text: string | null | undefined): string | null {
   return graphemes.length <= EXCERPT_MAX ? flat : `${graphemes.slice(0, EXCERPT_MAX - 1).join('').trimEnd()}…`;
 }
 
+/**
+ * As 50 notificações mais recentes. As que vieram de alguém com bloqueio (em qualquer sentido) ou
+ * silenciado — criadas antes do bloqueio/silêncio — ficam de fora, também da contagem de não lidas.
+ */
 export async function list(userId: string) {
+  const visible = and(eq(notifications.userId, userId), notInArray(notifications.actorId, hiddenAuthorsSql(userId, true)));
   const [items, unreadCountRows] = await Promise.all([
     db.query.notifications.findMany({
-      where: eq(notifications.userId, userId),
+      where: visible,
       orderBy: desc(notifications.createdAt),
       limit: 50,
       with: {
@@ -114,7 +124,7 @@ export async function list(userId: string) {
     db
       .select({ value: count() })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.read, false))),
+      .where(and(visible, eq(notifications.read, false))),
   ]);
 
   return {

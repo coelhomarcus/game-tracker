@@ -62,6 +62,28 @@ describe('createApiClient', () => {
     expect(seen).toEqual(['Bearer a1', 'Bearer a2']);
   });
 
+  it('builds a function body again for the retry after a refresh', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(`${BASE}/auth/password`, async ({ request: req }) => {
+        bodies.push(await req.json());
+        return req.headers.get('authorization') === 'Bearer a2'
+          ? new HttpResponse(null, { status: 204 })
+          : unauthorized();
+      }),
+      http.post(`${BASE}/auth/refresh`, () =>
+        HttpResponse.json({ accessToken: 'a2', refreshToken: 'r2' }),
+      ),
+    );
+    const { api, session } = await setup();
+
+    await expect(
+      api.post('/auth/password', () => ({ refreshToken: session.currentRefreshToken })),
+    ).resolves.toBeUndefined();
+
+    expect(bodies).toEqual([{ refreshToken: 'r1' }, { refreshToken: 'r2' }]);
+  });
+
   it('refreshes with the in-memory token when the store never persists', async () => {
     const refreshBodies: unknown[] = [];
     server.use(
@@ -208,5 +230,24 @@ describe('createApiClient', () => {
 
     expect(calls).toEqual(['POST Bearer a1', 'PUT Bearer a1', 'PATCH Bearer a1', 'DELETE ?q=x']);
     expect(bodies).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it('sends a JSON body with a DELETE when one is given', async () => {
+    let seen: { type: string | null; body: unknown; search: string } | undefined;
+    server.use(
+      http.delete(`${BASE}/me`, async ({ request: req }) => {
+        seen = {
+          type: req.headers.get('content-type'),
+          body: await req.json(),
+          search: new URL(req.url).search,
+        };
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { api } = await setup();
+
+    await expect(api.delete('/me', { body: { password: 'x' } })).resolves.toBeUndefined();
+
+    expect(seen).toEqual({ type: 'application/json', body: { password: 'x' }, search: '' });
   });
 });

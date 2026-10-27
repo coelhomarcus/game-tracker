@@ -33,7 +33,7 @@ export function ProfileCompactHeader({ profile }: ProfileCompactHeaderProps) {
           <Layout.Header.SubtitleText>{`@${profile.username}`}</Layout.Header.SubtitleText>
         </View>
       </Layout.Header.Content>
-      {profile.isFollowedByMe ? null : (
+      {profile.isFollowedByMe || profile.isBlockedByMe || profile.blocksMe ? null : (
         <View style={styles.follow}>
           <FollowButton
             userId={profile.id}

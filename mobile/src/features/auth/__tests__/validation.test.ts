@@ -1,4 +1,4 @@
-import { validateLogin, validateRegister } from '../validation';
+import { validateChangePassword, validateLogin, validateRegister } from '../validation';
 
 const validRegister = {
   name: 'Ana',
@@ -113,5 +113,42 @@ describe('validateRegister', () => {
         password: 'longpassword',
       }),
     ).toEqual({});
+  });
+});
+
+describe('validateChangePassword', () => {
+  const valid = { current: 'senha-antiga', next: 'senha-nova-123', confirm: 'senha-nova-123' };
+
+  it('accepts a valid change', () => {
+    expect(validateChangePassword(valid)).toEqual({});
+  });
+
+  it('requires every field', () => {
+    expect(validateChangePassword({ current: '', next: '', confirm: '' })).toEqual({
+      current: 'Campo obrigatório',
+      next: 'Campo obrigatório',
+      confirm: 'Campo obrigatório',
+    });
+  });
+
+  it('applies the sign-up rules to the new password', () => {
+    expect(validateChangePassword({ ...valid, next: 'curta', confirm: 'curta' }).next).toBe(
+      'Use pelo menos 8 caracteres',
+    );
+    const long = 'a'.repeat(73);
+    expect(validateChangePassword({ ...valid, next: long, confirm: long }).next).toBe(
+      'Use no máximo 72 caracteres',
+    );
+    const max = 'a'.repeat(72);
+    expect(validateChangePassword({ ...valid, next: max, confirm: max })).toEqual({});
+  });
+
+  it('requires the confirmation to match exactly', () => {
+    expect(validateChangePassword({ ...valid, confirm: 'senha-nova-12' }).confirm).toBe(
+      'As senhas não coincidem',
+    );
+    expect(validateChangePassword({ ...valid, confirm: 'senha-nova-123 ' }).confirm).toBe(
+      'As senhas não coincidem',
+    );
   });
 });

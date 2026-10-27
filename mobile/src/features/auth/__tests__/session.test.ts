@@ -41,6 +41,7 @@ const ana = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  dmPolicy: 'everyone' as const,
 };
 const tokens = { accessToken: 'access', refreshToken: 'refresh' };
 

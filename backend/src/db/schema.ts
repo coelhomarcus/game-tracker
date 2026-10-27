@@ -31,6 +31,9 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'quote',
 ]);
 
+export const DM_POLICIES = ['everyone', 'following', 'nobody'] as const;
+export type DmPolicy = (typeof DM_POLICIES)[number];
+
 export const users = pgTable(
   'users',
   {
@@ -42,11 +45,14 @@ export const users = pgTable(
     avatarUrl: varchar('avatar_url', { length: 500 }),
     bannerUrl: varchar('banner_url', { length: 500 }),
     bio: varchar('bio', { length: 1024 }),
+    /** Quem pode mandar mensagem direta: todos, só quem a pessoa segue, ou ninguém. */
+    dmPolicy: varchar('dm_policy', { length: 16, enum: DM_POLICIES }).notNull().default('everyone'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     // A busca de menções compara `lower(username)`; sem este índice ela varre a tabela.
     usernameLowerIdx: index('users_username_lower_idx').on(sql`lower(${table.username})`),
+    dmPolicyCheck: check('users_dm_policy_check', sql`${table.dmPolicy} in ('everyone', 'following', 'nobody')`),
   }),
 );
 
@@ -299,6 +305,50 @@ export const follows = pgTable(
   }),
 );
 
+/**
+ * Silenciar é de um lado só e discreto: quem silencia deixa de ver os posts e reposts da pessoa nos
+ * feeds e de receber as notificações dela; a pessoa silenciada não percebe nada.
+ */
+export const mutes = pgTable(
+  'mutes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    muterId: uuid('muter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    mutedId: uuid('muted_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    muterMutedUnique: unique('mutes_muter_id_muted_id_unique').on(table.muterId, table.mutedId),
+    mutedIdIdx: index('mutes_muted_id_idx').on(table.mutedId),
+  }),
+);
+
+/**
+ * Bloquear vale para os dois lados no conteúdo: nenhum dos dois vê os posts, reposts e comentários
+ * do outro, e os follows entre eles são desfeitos (e recusados enquanto o bloqueio durar).
+ */
+export const blocks = pgTable(
+  'blocks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blockerId: uuid('blocker_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blockedId: uuid('blocked_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    blockerBlockedUnique: unique('blocks_blocker_id_blocked_id_unique').on(table.blockerId, table.blockedId),
+    blockedIdIdx: index('blocks_blocked_id_idx').on(table.blockedId),
+  }),
+);
+
 export const notifications = pgTable(
   'notifications',
   {
@@ -338,6 +388,13 @@ export const conversationParticipants = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Conversa silenciada por este participante: sem push para ele. */
+    muted: boolean('muted').notNull().default(false),
+    /**
+     * Quando este participante saiu da conversa (apagou para si). Ele só vê as mensagens
+     * posteriores, e a conversa some da lista dele até chegar uma nova.
+     */
+    clearedAt: timestamp('cleared_at', { withTimezone: true }),
   },
   (table) => ({
     conversationUserUnique: unique('conversation_participants_conversation_id_user_id_unique').on(
@@ -378,6 +435,50 @@ export const messages = pgTable(
     clientMessageUnique: uniqueIndex('messages_conversation_sender_client_message_unique')
       .on(table.conversationId, table.senderId, table.clientMessageId)
       .where(sql`${table.clientMessageId} is not null`),
+  }),
+);
+
+/** Mensagens que um participante apagou só para si. O outro continua vendo. */
+export const messageHides = pgTable(
+  'message_hides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    messageUserUnique: unique('message_hides_message_id_user_id_unique').on(table.messageId, table.userId),
+    // Apagar a conta remove as linhas pelo user_id; sem o índice cada exclusão varre a tabela.
+    userIdIdx: index('message_hides_user_id_idx').on(table.userId),
+  }),
+);
+
+/** Reações a mensagens: um emoji por linha; cada pessoa usa no máximo 5 emojis distintos por mensagem. */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    messageUserEmojiUnique: unique('message_reactions_message_id_user_id_emoji_unique').on(
+      table.messageId,
+      table.userId,
+      table.emoji,
+    ),
+    userIdIdx: index('message_reactions_user_id_idx').on(table.userId),
   }),
 );
 

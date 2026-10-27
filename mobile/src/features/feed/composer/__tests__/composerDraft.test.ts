@@ -172,7 +172,16 @@ describe('draft age', () => {
 });
 
 describe('drafts and the session', () => {
-  const ana = { id: 'ana', username: 'ana', name: 'Ana', email: 'a@x.com', avatarUrl: null, bannerUrl: null, bio: null };
+  const ana = {
+    id: 'ana',
+    username: 'ana',
+    name: 'Ana',
+    email: 'a@x.com',
+    avatarUrl: null,
+    bannerUrl: null,
+    bio: null,
+    dmPolicy: 'everyone' as const,
+  };
   let stop: () => void;
 
   beforeEach(() => {
