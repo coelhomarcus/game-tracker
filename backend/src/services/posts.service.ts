@@ -169,9 +169,10 @@ async function getPostById(id: string, viewerId: string) {
   return (await hydratePosts([id], viewerId)).get(id);
 }
 
+/** Um post por id. O de quem tem bloqueio com quem vê (em qualquer sentido) é 404, como se não existisse. */
 export async function getById(id: string, viewerId: string) {
   const post = await getPostById(id, viewerId);
-  if (!post) throw new AppError(404, 'not_found', 'Post não encontrado');
+  if (!post || (await moderationService.isBlockedEitherWay(viewerId, post.user.id))) throw new AppError(404, 'not_found', 'Post não encontrado');
   return post;
 }
 
@@ -230,7 +231,7 @@ export async function create(userId: string, input: CreatePostInput) {
     if (!game) throw new AppError(404, 'not_found', 'Jogo não encontrado');
   }
 
-  const quoted = input.quotedPostId ? await getPostOrThrow(input.quotedPostId) : null;
+  const quoted = input.quotedPostId ? await getInteractablePostOrThrow(userId, input.quotedPostId) : null;
   // O `imageUrl` legado é a primeira imagem: passa pela mesma validação e ganha sua linha em
   // `post_images` (o tamanho enviado aqui é só um espaço reservado; vale o do arquivo).
   const requested = input.images?.length ? input.images : input.imageUrl ? [{ url: input.imageUrl, width: 1, height: 1 }] : [];
@@ -571,8 +572,22 @@ async function getPostOrThrow(postId: string) {
   return post;
 }
 
-export async function like(userId: string, postId: string) {
+/** Com bloqueio entre quem age e o autor (em qualquer sentido), a interação é recusada (403 `blocked`). */
+async function assertNotBlocked(userId: string, authorId: string) {
+  if (await moderationService.isBlockedEitherWay(userId, authorId)) {
+    throw new AppError(403, 'blocked', 'Não é possível interagir: há um bloqueio entre vocês');
+  }
+}
+
+/** O post, se existe e se quem age pode interagir com ele (curtir, repostar, salvar, comentar, citar). */
+async function getInteractablePostOrThrow(userId: string, postId: string) {
   const post = await getPostOrThrow(postId);
+  await assertNotBlocked(userId, post.userId);
+  return post;
+}
+
+export async function like(userId: string, postId: string) {
+  const post = await getInteractablePostOrThrow(userId, postId);
 
   // `returning` vem vazio quando o like já existia (conflito ignorado): curtir de novo é
   // idempotente e não pode gerar outra notificação nem outro push.
@@ -594,7 +609,7 @@ export async function unlike(userId: string, postId: string) {
 
 /** Repostar de novo é idempotente: só o primeiro repost notifica. Repostar o próprio post vale, sem notificar. */
 export async function repost(userId: string, postId: string) {
-  const post = await getPostOrThrow(postId);
+  const post = await getInteractablePostOrThrow(userId, postId);
   const inserted = await db
     .insert(reposts)
     .values({ postId, userId })
@@ -613,7 +628,7 @@ export async function unrepost(userId: string, postId: string) {
 
 /** Salvos são privados e não geram notificação. */
 export async function bookmark(userId: string, postId: string) {
-  await getPostOrThrow(postId);
+  await getInteractablePostOrThrow(userId, postId);
   await db
     .insert(bookmarks)
     .values({ postId, userId })
@@ -700,13 +715,15 @@ async function getCommentOrThrow(commentId: string) {
   return comment;
 }
 
+/** Comentar (ou responder) é recusado com bloqueio entre quem comenta e o autor do post ou do comentário respondido. */
 export async function addComment(userId: string, postId: string, content: string, parentCommentId?: string) {
-  const post = await getPostOrThrow(postId);
+  const post = await getInteractablePostOrThrow(userId, postId);
 
   let parent: Awaited<ReturnType<typeof getCommentOrThrow>> | null = null;
   if (parentCommentId) {
     parent = await getCommentOrThrow(parentCommentId);
     if (parent.postId !== postId) throw new AppError(400, 'invalid_operation', 'Comentário pai não pertence a esse post');
+    await assertNotBlocked(userId, parent.userId);
   }
 
   const [created] = await db.insert(comments).values({ postId, userId, content, parentCommentId }).returning();

@@ -146,20 +146,26 @@ export async function follow(followerId: string, followingId: string) {
 
   const target = await db.query.users.findFirst({ where: eq(users.id, followingId) });
   if (!target) throw new AppError(404, 'not_found', 'Usuário não encontrado');
-  if (await moderationService.isBlockedEitherWay(followerId, followingId)) {
-    throw new AppError(403, 'blocked', 'Não é possível seguir: há um bloqueio entre vocês');
-  }
 
-  // Só notifica quando a relação foi realmente criada; seguir de novo é idempotente.
-  const inserted = await db
-    .insert(follows)
-    .values({ followerId, followingId })
-    .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
-    .returning({ id: follows.id });
+  // Uma instrução só: o follow entra apenas se não houver bloqueio entre os dois, sem a janela
+  // entre "checar" e "inserir" de duas consultas separadas.
+  const inserted = await db.execute<{ id: string }>(sql`
+    insert into ${follows} (follower_id, following_id)
+    select ${followerId}::uuid, ${followingId}::uuid
+    where ${followingId}::uuid not in ${moderationService.blockedEitherWaySql(followerId)}
+    on conflict (follower_id, following_id) do nothing
+    returning id
+  `);
 
-  if (inserted.length > 0) {
-    await notificationsService.notify({ userId: followingId, actorId: followerId, type: 'follow' });
+  if (inserted.rows.length === 0) {
+    // Nada entrou: ou há bloqueio (403) ou já seguia (seguir de novo é idempotente).
+    if (await moderationService.isBlockedEitherWay(followerId, followingId)) {
+      throw new AppError(403, 'blocked', 'Não é possível seguir: há um bloqueio entre vocês');
+    }
+    return;
   }
+  // Só notifica quando a relação foi realmente criada.
+  await notificationsService.notify({ userId: followingId, actorId: followerId, type: 'follow' });
 }
 
 export async function unfollow(followerId: string, followingId: string) {

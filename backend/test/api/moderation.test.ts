@@ -511,8 +511,9 @@ describe('block hides content in both directions', () => {
     const before = await notifications(a);
     assert.ok(!actorsOf(before).includes(b.user.id));
     assert.ok(!actorsOf(await notifications(b)).includes(a.user.id));
-    // Uma ação nova do outro lado durante o bloqueio não notifica.
-    await comment(b, postA, 'b comenta no post de a');
+    // Uma ação nova do outro lado durante o bloqueio não notifica (interagir com o post é recusado;
+    // mencionar continua possível, e a menção não vira notificação).
+    await createPost(b, { content: `oi @${a.user.username}` });
     const afterComment = await notifications(a);
     assert.ok(!actorsOf(afterComment).includes(b.user.id));
     assert.equal(afterComment.unreadCount, before.unreadCount);
@@ -648,5 +649,121 @@ describe('mute is one-sided and silent', () => {
     assert.ok(items.includes(postX));
     assert.ok(items.includes(`${postX}<-${y.user.id}`));
     assert.ok(actorsOf(await notifications(m)).includes(x.user.id));
+  });
+});
+
+describe('interactions across a block are refused', () => {
+  // a bloqueia b; c é um terceiro. Tudo vale nos dois sentidos.
+  let a: TestUser;
+  let b: TestUser;
+  let c: TestUser;
+  let postA: string;
+  let postB: string;
+  let postC: string;
+  let commentA: string;
+  let commentB: string;
+  let gameId: string;
+
+  const expectBlocked = async (method: string, p: string, user: TestUser, body?: unknown) => {
+    const res = await send(method, p, user, body);
+    assert.equal(res.status, 403, `${method} ${p}: ${res.status} ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.error.code, 'blocked');
+  };
+
+  before(async () => {
+    a = await registerUser(api.http, 'iba');
+    b = await registerUser(api.http, 'ibb');
+    c = await registerUser(api.http, 'ibc');
+    gameId = (await db.query.games.findFirst({ where: eq(games.igdbId, 900001) }))!.id;
+    postA = await createPost(a, { content: 'post de a' });
+    postB = await createPost(b, { content: 'post de b' });
+    postC = await createPost(c, { content: 'post de c' });
+    commentA = await comment(a, postC, 'a comenta no post de c');
+    commentB = await comment(b, postC, 'b comenta no post de c');
+    // Antes do bloqueio: a curtiu, repostou e salvou o post de b (desfazer continua valendo).
+    await ok('POST', `/posts/${postB}/like`, a);
+    await ok('POST', `/posts/${postB}/repost`, a);
+    await ok('POST', `/posts/${postB}/bookmark`, a);
+    // Os dois estão jogando o mesmo jogo.
+    await ok('POST', '/game-entries', a, { igdbId: 900001, platform: 'PC', status: 'playing' });
+    await ok('POST', '/game-entries', b, { igdbId: 900001, platform: 'PC', status: 'playing' });
+    await ok('POST', `/users/${b.user.id}/block`, a);
+  });
+
+  it("a direct link to the other side's post is 404, for both sides", async () => {
+    assert.equal(await status('GET', `/posts/${postB}`, a), 404);
+    assert.equal(await status('GET', `/posts/${postA}`, b), 404);
+    assert.equal(await status('GET', `/posts/${postB}`, c), 200);
+    assert.equal(await status('GET', `/posts/${postA}`, a), 200);
+  });
+
+  it("liking, reposting and bookmarking the other side's post is 403 blocked", async () => {
+    for (const [user, post] of [
+      [a, postB],
+      [b, postA],
+    ] as const) {
+      for (const action of ['like', 'repost', 'bookmark']) await expectBlocked('POST', `/posts/${post}/${action}`, user);
+    }
+  });
+
+  it('undoing an earlier like, repost or bookmark still works', async () => {
+    for (const action of ['like', 'repost', 'bookmark']) {
+      assert.equal(await status('DELETE', `/posts/${postB}/${action}`, a), 204);
+    }
+  });
+
+  it("commenting on the other side's post is 403 blocked", async () => {
+    await expectBlocked('POST', `/posts/${postB}/comments`, a, { content: 'oi' });
+    await expectBlocked('POST', `/posts/${postA}/comments`, b, { content: 'oi' });
+  });
+
+  it("replying to the other side's comment is 403 blocked; a third party's thread still accepts comments", async () => {
+    await expectBlocked('POST', `/posts/${postC}/comments`, a, { content: 'resposta', parentCommentId: commentB });
+    await expectBlocked('POST', `/posts/${postC}/comments`, b, { content: 'resposta', parentCommentId: commentA });
+    assert.equal((await send('POST', `/posts/${postC}/comments`, a, { content: 'no post de c' })).status, 201);
+  });
+
+  it("quoting the other side's post is 403 blocked", async () => {
+    await expectBlocked('POST', '/posts', a, { content: 'citação', quotedPostId: postB });
+    await expectBlocked('POST', '/posts', b, { content: 'citação', quotedPostId: postA });
+    assert.equal((await send('POST', '/posts', c, { content: 'citação', quotedPostId: postB })).status, 201);
+  });
+
+  it("the game players list hides the other side", async () => {
+    const players = async (user: TestUser) =>
+      ((await ok('GET', `/games/${gameId}/players?status=playing&limit=20`, user)) as unknown as Json[]).map((p) => p.user.id);
+    const forA = await players(a);
+    assert.ok(forA.includes(a.user.id));
+    assert.ok(!forA.includes(b.user.id));
+    assert.ok(!(await players(b)).includes(a.user.id));
+    const forC = await players(c);
+    assert.ok(forC.includes(a.user.id) && forC.includes(b.user.id));
+  });
+
+  it('a block row created behind the service still refuses the follow (single-statement insert)', async () => {
+    // Bloqueio gravado direto no banco, sem passar pelo serviço que apaga os follows.
+    await db.insert(blocks).values({ blockerId: c.user.id, blockedId: b.user.id });
+    await expectBlocked('POST', `/users/${c.user.id}/follow`, b);
+    await expectBlocked('POST', `/users/${b.user.id}/follow`, c);
+    assert.equal(await follows_(b, c), false);
+    assert.equal(await follows_(c, b), false);
+    await db.delete(blocks).where(and(eq(blocks.blockerId, c.user.id), eq(blocks.blockedId, b.user.id)));
+    assert.equal(await status('POST', `/users/${c.user.id}/follow`, b), 204);
+    assert.equal(await status('POST', `/users/${c.user.id}/follow`, b), 204);
+    assert.ok(await follows_(b, c));
+  });
+
+  it('unblocking allows every interaction again', async () => {
+    await ok('DELETE', `/users/${b.user.id}/block`, a);
+    assert.equal(await status('GET', `/posts/${postB}`, a), 200);
+    for (const action of ['like', 'repost', 'bookmark']) {
+      assert.equal(await status('POST', `/posts/${postB}/${action}`, a), 204);
+    }
+    assert.equal((await send('POST', `/posts/${postA}/comments`, b, { content: 'oi' })).status, 201);
+    assert.equal(
+      (await send('POST', `/posts/${postC}/comments`, a, { content: 'resposta', parentCommentId: commentB })).status,
+      201,
+    );
+    assert.equal((await send('POST', '/posts', b, { content: 'citação', quotedPostId: postA })).status, 201);
   });
 });
