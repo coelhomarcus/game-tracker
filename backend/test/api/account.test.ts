@@ -11,6 +11,7 @@ import { db } from '../../src/db';
 import {
   comments,
   conversationParticipants,
+  conversations,
   follows,
   likes,
   messageReactions,
@@ -60,6 +61,11 @@ function connect(token: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+async function waitFor(condition: () => boolean, timeoutMs = 3000) {
+  const start = Date.now();
+  while (!condition() && Date.now() - start < timeoutMs) await sleep(25);
+}
+
 before(async () => {
   api = await startApi();
 });
@@ -102,6 +108,13 @@ describe('POST /auth/password', () => {
       refreshToken: u.refreshToken,
     });
     assert.equal(tooLong.status, 400);
+    const hugeCurrent = await changePassword(u, {
+      currentPassword: 'a'.repeat(129),
+      newPassword: 'outra-senha-456',
+      refreshToken: u.refreshToken,
+    });
+    assert.equal(hugeCurrent.status, 400);
+    assert.equal(hugeCurrent.body.error.code, 'validation_error');
     assert.equal((await changePassword(u, { currentPassword: PASSWORD, refreshToken: u.refreshToken })).status, 400);
     assert.equal((await changePassword(u, { currentPassword: PASSWORD, newPassword: 'outra-senha-456' })).status, 400);
     assert.equal((await login(u, PASSWORD)).status, 200);
@@ -289,8 +302,36 @@ describe('DELETE /users/me', () => {
     assert.equal(quoteRow?.quotedPostId, null);
     assert.equal(quoteRow?.quotedPostRemoved, true);
 
-    // Arquivos removidos.
+    // Arquivos removidos (em segundo plano, depois da resposta).
+    await waitFor(() => files.every((file) => !fs.existsSync(file)));
     for (const file of files) assert.equal(fs.existsSync(file), false, `${file} deveria ter sido removido`);
+  });
+
+  it('refuses an oversized password on account deletion', async () => {
+    const u = await registerUser(api.http, 'delhuge');
+    const res = await deleteAccount(u, { password: 'a'.repeat(129) });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'validation_error');
+    assert.ok(await db.query.users.findFirst({ where: eq(users.id, u.user.id) }));
+  });
+
+  it('removes a conversation left without participants once the second person deletes the account', async () => {
+    const a = await registerUser(api.http, 'delorpha');
+    const b = await registerUser(api.http, 'delorphb');
+    const c = await registerUser(api.http, 'delorphc');
+    const shared = await ok('POST', '/conversations', a, { userId: b.user.id });
+    const other = await ok('POST', '/conversations', b, { userId: c.user.id });
+
+    assert.equal((await deleteAccount(a)).status, 204);
+    assert.ok(await db.query.conversations.findFirst({ where: eq(conversations.id, shared.id) }), 'B ainda participa');
+
+    assert.equal((await deleteAccount(b)).status, 204);
+    assert.equal(
+      await db.query.conversations.findFirst({ where: eq(conversations.id, shared.id) }),
+      undefined,
+      'sem participantes, a conversa some',
+    );
+    assert.ok(await db.query.conversations.findFirst({ where: eq(conversations.id, other.id) }), 'C ainda participa da outra');
   });
 
   it('keeps the account deleted even when the files are already gone (best effort)', async () => {

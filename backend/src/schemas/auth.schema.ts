@@ -22,14 +22,14 @@ export const loginSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1),
+  currentPassword: z.string().min(1).max(128),
   newPassword: passwordSchema,
   // A sessão que continua valendo: as outras são encerradas.
   refreshToken: z.string().min(1),
 });
 
 export const deleteAccountSchema = z.object({
-  password: z.string().min(1),
+  password: z.string().min(1).max(128),
 });
 
 export const refreshSchema = z.object({

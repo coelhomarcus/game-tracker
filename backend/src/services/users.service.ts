@@ -1,6 +1,6 @@
-import { and, count, eq, ilike, inArray, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, ilike, inArray, ne, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { type DmPolicy, follows, gameEntries, posts, users } from '../db/schema';
+import { type DmPolicy, conversationParticipants, conversations, follows, gameEntries, posts, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
 import { AppError } from '../lib/errors';
 import { getPublicBaseUrl } from '../lib/publicUrl';
@@ -229,17 +229,40 @@ export async function deleteAccount(userId: string, password: string) {
     const ownPosts = tx.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
     // Marca as citações antes: apagar zera `quoted_post_id` pela FK, e a marca é o que sobra.
     await tx.update(posts).set({ quotedPostRemoved: true }).where(inArray(posts.quotedPostId, ownPosts));
+    // Conversas em que a pessoa estava: se a outra já tinha saído, sobrariam sem participantes.
+    const memberOf = await tx
+      .select({ id: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.userId, userId));
     await tx.delete(users).where(eq(users.id, userId));
+    const conversationIds = memberOf.map((row) => row.id);
+    if (conversationIds.length > 0) {
+      await tx
+        .delete(conversations)
+        .where(
+          and(
+            inArray(conversations.id, conversationIds),
+            notExists(
+              tx
+                .select({ id: conversationParticipants.id })
+                .from(conversationParticipants)
+                .where(eq(conversationParticipants.conversationId, conversations.id)),
+            ),
+          ),
+        );
+    }
   });
 
   // Quem ainda tem um token de acesso válido (até 15 min) não reabre a conexão: o handshake confere a conta.
   disconnectUser(userId);
 
-  await Promise.allSettled([
+  // Os arquivos saem em segundo plano: uma conta com milhares de imagens não atrasa a resposta, e
+  // uma falha aqui nunca desfaz a exclusão.
+  void Promise.allSettled([
     deleteAvatarIfLocal(current?.avatarUrl ?? null),
     deleteBannerIfLocal(current?.bannerUrl ?? null),
     postsService.removeUnusedPostImageFiles(postImageUrls),
-  ]);
+  ]).catch((err) => console.error('[users] não foi possível limpar os arquivos da conta excluída:', err));
 }
 
 export async function updateAvatar(userId: string, buffer: Buffer) {

@@ -41,12 +41,14 @@ function toPublicUser(user: {
   };
 }
 
-async function issueSession(userId: string): Promise<Session> {
+type Executor = Pick<typeof db, 'insert'>;
+
+async function issueSession(userId: string, executor: Executor = db): Promise<Session> {
   const accessToken = signAccessToken(userId);
   const { secret, hash } = generateRefreshTokenSecret();
   const expiresAt = new Date(Date.now() + parseDurationMs(REFRESH_EXPIRES_IN));
 
-  const [record] = await db.insert(refreshTokens).values({ userId, tokenHash: hash, expiresAt }).returning();
+  const [record] = await executor.insert(refreshTokens).values({ userId, tokenHash: hash, expiresAt }).returning();
 
   return { accessToken, refreshToken: `${record!.id}.${secret}` };
 }
@@ -87,27 +89,49 @@ export async function refresh(rawRefreshToken: string) {
     throw new AppError(401, 'invalid_refresh_token', 'Refresh token inválido');
   }
 
-  // Validação e revogação num único UPDATE condicional: com SELECT + UPDATE separados,
-  // várias requisições simultâneas com o mesmo token passavam na checagem e cada uma
-  // emitia uma sessão nova. Só a que efetivamente revoga o registro recebe a sessão.
-  const [revoked] = await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(
-        eq(refreshTokens.id, parsed.id),
-        eq(refreshTokens.tokenHash, hashRefreshTokenSecret(parsed.secret)),
-        isNull(refreshTokens.revokedAt),
-        gt(refreshTokens.expiresAt, new Date()),
-      ),
-    )
-    .returning({ userId: refreshTokens.userId });
-
-  if (!revoked) {
-    throw new AppError(401, 'invalid_refresh_token', 'Refresh token inválido ou expirado');
+  if (!isUuid(parsed.id)) {
+    throw new AppError(401, 'invalid_refresh_token', 'Refresh token inválido');
   }
 
-  return issueSession(revoked.userId);
+  // Tudo numa transação que trava a linha do usuário (FOR UPDATE), a mesma que a troca de senha
+  // trava: assim uma renovação não emite um token novo que a revogação da troca de senha não vê.
+  // A validação e a revogação seguem num único UPDATE condicional: com SELECT + UPDATE separados,
+  // várias requisições simultâneas com o mesmo token passavam na checagem e cada uma emitia uma
+  // sessão nova. Só a que efetivamente revoga o registro recebe a sessão.
+  return db.transaction(async (tx) => {
+    const [owner] = await tx
+      .select({ userId: refreshTokens.userId })
+      .from(refreshTokens)
+      .where(eq(refreshTokens.id, parsed.id));
+    if (!owner) {
+      throw new AppError(401, 'invalid_refresh_token', 'Refresh token inválido ou expirado');
+    }
+    await lockUser(tx, owner.userId);
+
+    const [revoked] = await tx
+      .update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(refreshTokens.id, parsed.id),
+          eq(refreshTokens.tokenHash, hashRefreshTokenSecret(parsed.secret)),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date()),
+        ),
+      )
+      .returning({ userId: refreshTokens.userId });
+
+    if (!revoked) {
+      throw new AppError(401, 'invalid_refresh_token', 'Refresh token inválido ou expirado');
+    }
+
+    return issueSession(revoked.userId, tx);
+  });
+}
+
+/** Trava a linha do usuário até o fim da transação (serializa renovação de sessão e troca de senha). */
+async function lockUser(tx: Pick<typeof db, 'select'>, userId: string) {
+  await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
 }
 
 export async function me(userId: string) {
@@ -145,6 +169,9 @@ export async function changePassword(
   const kept = parseRefreshToken(keepRefreshToken);
 
   await db.transaction(async (tx) => {
+    // Trava o usuário antes de revogar: uma renovação em andamento termina antes (e seu token novo
+    // entra na revogação) ou espera e encontra o token antigo já revogado.
+    await lockUser(tx, userId);
     await tx.update(users).set({ passwordHash }).where(eq(users.id, userId));
 
     let keepId: string | null = null;
