@@ -8,6 +8,7 @@ import { useSession } from '@/features/auth';
 import { realtimeBridge } from '@/features/chat/realtimeBridge';
 import { watchSessionForDrafts } from '@/features/feed/composer/composerDraft';
 import { COMPOSER_ROUTE, COMPOSER_STACK_OPTIONS } from '@/features/feed/composer/presentation';
+import { EDIT_PROFILE_STACK_OPTIONS } from '@/features/profiles/edit/presentation';
 import { pushController } from '@/features/push/pushController';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, space } from '@/theme/tokens';
@@ -106,7 +107,7 @@ export function SessionGate() {
         />
         <Stack.Screen name="users" options={{ headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: false }} />
-        <Stack.Screen name="me" options={{ headerShown: false }} />
+        <Stack.Screen name="me" options={EDIT_PROFILE_STACK_OPTIONS} />
         <Stack.Screen name="notifications" options={{ title: '' }} />
         <Stack.Screen name="settings" options={{ title: 'Configurações' }} />
       </Stack.Protected>

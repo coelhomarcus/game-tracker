@@ -1,187 +1,235 @@
-import { usePreventRemove, useRouter } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { Stack, usePreventRemove, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
-import { Avatar, Button, ConfirmDialog, Screen, Text, TextField } from '@/components';
+import { ConfirmDialog, Screen, Text, TextField } from '@/components';
 import { authErrorMessage, useSession } from '@/features/auth';
 import { countGraphemes } from '@/lib/graphemes';
+import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { showToast } from '@/lib/toast';
-import { colors, radii, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
-import { pickImage } from './pickImage';
+import { EditImages } from './edit/EditImages';
+import { EditProfileTopBar } from './edit/EditProfileTopBar';
 import {
-  BIO_MAX,
-  exceedsImageLimit,
-  profileChanges,
-  validateProfile,
-  type ProfileErrors,
-  type ProfileFields,
-} from './profileRules';
-import { useProfile, useUpdateProfile, useUploadImage } from './queries';
-import type { ImageKind, PickedImage } from './types';
+  canRemove,
+  canSave,
+  completeStep,
+  currentFields,
+  editField,
+  EMPTY_EDITS,
+  fieldErrors,
+  isDirty,
+  pickImageEdit,
+  previewUri,
+  removeImageEdit,
+  savePlan,
+  type EditProfileState,
+  type SavedProfile,
+  type SaveStep,
+} from './edit/editProfileState';
+import { ImageEditMenu, type ImageEditAction } from './edit/ImageEditMenu';
+import { pickImage, type ImageSource } from './pickImage';
+import { BIO_MAX, exceedsImageLimit, NAME_MAX, type ProfileFields } from './profileRules';
+import { useProfile, useRemoveImage, useUpdateProfile, useUploadImage } from './queries';
+import type { ImageKind } from './types';
 
-const AVATAR_SIZE = 96;
-const WAIT_FOR_UPLOAD = 'Aguarde o envio da imagem terminar.';
-const UPLOADED_TOAST: Record<ImageKind, string> = {
-  avatar: 'Foto atualizada',
-  banner: 'Capa atualizada',
+const BIO_MIN_HEIGHT = 80;
+const FIELDS_TOP = 32;
+const FIELDS_GAP = 20;
+const FIELDS_SIDE = 20;
+
+const USERNAME_TAKEN = 'Esse username já está em uso';
+const IMAGE_TOO_BIG = 'A imagem passa de 8 MB. Escolha uma menor.';
+const IMAGE_REFUSED = 'Imagem inválida ou grande demais. Escolha outra.';
+const OPEN_FAILED: Record<ImageSource, string> = {
+  camera: 'Não foi possível abrir a câmera. Tente de novo.',
+  library: 'Não foi possível abrir a galeria. Tente de novo.',
 };
 
-/** What the photos section shows under the previews; a retry exists only for failed uploads. */
-type PhotoProblem = { message: string; retry?: () => void };
+/** Why a step of the save stopped, as the line under the top bar says it. */
+function stepErrorMessage(step: SaveStep, error: unknown): string {
+  // The server refuses the file itself (format, size): sending it again would fail again.
+  const refused =
+    error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 429;
+  if (step.type === 'upload' && refused) return IMAGE_REFUSED;
+  return authErrorMessage(error);
+}
 
-function Section({
-  title,
-  helper,
+function Field({
+  label,
+  count,
+  max,
   children,
 }: {
-  title: string;
-  helper: string;
+  label: string;
+  /** With `max`: the counter under the field. */
+  count?: number;
+  max?: number;
   children: ReactNode;
 }) {
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
-          {title}
-        </Text>
-        <Text size="sm" tone="medium">
-          {helper}
-        </Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function UploadingOverlay({ round }: { round?: boolean }) {
-  return (
-    <View
-      accessibilityLiveRegion="polite"
-      style={[styles.overlay, round ? styles.overlayRound : null]}
-    >
-      <ActivityIndicator color={colors.primary} />
-      <Text size="xs" tone="high" style={styles.overlayLabel}>
-        Enviando imagem…
+    <View style={styles.field}>
+      <Text size="sm" weight="semibold" tone="medium">
+        {label}
       </Text>
+      {children}
+      {count !== undefined && max !== undefined ? (
+        <Text size="sm" tone={count > max ? 'danger' : 'low'} style={styles.counter}>
+          {`${count}/${max}`}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
+type Menu = { open: boolean; kind: ImageKind; removable: boolean };
+
+/**
+ * "Editar perfil": a full-screen sheet. Images and fields stay on the device until Salvar, which
+ * sends the new images, then the removals, then the fields. A step that fails stops the save and
+ * keeps the rest for the next Salvar; what the server already accepted is not sent again.
+ */
 export function EditProfileScreen() {
   const router = useRouter();
   const user = useSession((state) => state.user);
   const profile = useProfile(user?.id).data;
   const update = useUpdateProfile();
   const upload = useUploadImage();
+  const remove = useRemoveImage();
 
   const source = profile ?? user;
-  const initial: ProfileFields = {
-    name: source?.name ?? '',
-    username: source?.username ?? '',
-    bio: source?.bio ?? '',
+  const saved: SavedProfile = {
+    fields: {
+      name: source?.name ?? '',
+      username: source?.username ?? '',
+      bio: source?.bio ?? '',
+    },
+    images: { avatar: source?.avatarUrl ?? null, banner: source?.bannerUrl ?? null },
   };
 
-  // Only what the user typed is kept; untouched fields follow the profile as it loads.
-  const [edits, setEdits] = useState<Partial<ProfileFields>>({});
-  const current: ProfileFields = { ...initial, ...edits };
-  const [fieldErrors, setFieldErrors] = useState<ProfileErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [edits, setEdits] = useState<EditProfileState>(EMPTY_EDITS);
+  // The latest edits, for the save loop that outlives the render it started in.
+  const latest = useRef(edits);
+  const commit = useCallback((change: (state: EditProfileState) => EditProfileState) => {
+    latest.current = change(latest.current);
+    setEdits(latest.current);
+  }, []);
+
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // Saved or discarded: the sheet is closing and must not ask again.
+  const [done, setDone] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  // The username the server refused as taken; the error shows while the field still holds it.
+  const [takenUsername, setTakenUsername] = useState<string | null>(null);
+  const [menu, setMenu] = useState<Menu>({ open: false, kind: 'avatar', removable: false });
   const [leave, setLeave] = useState<(() => void) | null>(null);
-
-  const [uploading, setUploading] = useState<ImageKind | null>(null);
-  const [problem, setProblem] = useState<PhotoProblem | null>(null);
-  // The URL an upload just returned; it shows at once, before the cache is read again.
-  const [fresh, setFresh] = useState<Partial<Record<ImageKind, string>>>({});
+  // Set synchronously, so a second tap before the next render does not save twice.
+  const sending = useRef(false);
   const picking = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  const changes = profileChanges(initial, current);
-  const dirty = Object.keys(changes).length > 0 && !saved;
+  const fields = currentFields(edits, saved);
+  const errors = fieldErrors(edits, saved);
+  const usernameTaken = takenUsername !== null && fields.username.trim() === takenUsername;
+  if (usernameTaken && !errors.username) errors.username = USERNAME_TAKEN;
+  const ready = canSave(edits, saved, saving) && !usernameTaken;
+  const dirty = isDirty(edits, saved) && !done;
+
   const disablePrevention = usePreventRemove(dirty, ({ repeat }) => {
+    // Android back while the save is going out: stay, the save decides what happens next.
+    if (sending.current) return;
     setLeave(() => repeat);
   });
 
-  const name = initial.name.trim() || initial.username;
-  const bannerUrl = resolveImageUrl(fresh.banner ?? source?.bannerUrl);
-  const avatarUrl = resolveImageUrl(fresh.avatar ?? source?.avatarUrl);
-  const busy = uploading !== null;
+  const name = fields.name.trim() || fields.username;
 
   function edit(field: keyof ProfileFields, value: string) {
-    setEdits((previous) => ({ ...previous, [field]: value }));
-    setFieldErrors((previous) => ({ ...previous, [field]: undefined }));
+    commit((state) => editField(state, field, value));
   }
 
-  async function send(kind: ImageKind, image: PickedImage) {
-    if (exceedsImageLimit(image.size)) {
-      setProblem({ message: 'A imagem passa de 8 MB. Escolha uma menor.' });
-      return;
-    }
-    setProblem(null);
-    setUploading(kind);
-    try {
-      const url = await upload.mutateAsync({ kind, image });
-      setFresh((previous) => ({ ...previous, [kind]: url }));
-      showToast(UPLOADED_TOAST[kind]);
-    } catch (error) {
-      setProblem({ message: authErrorMessage(error), retry: () => void send(kind, image) });
-    } finally {
-      setUploading(null);
-      setFormError((message) => (message === WAIT_FOR_UPLOAD ? null : message));
-    }
+  function openMenu(kind: ImageKind) {
+    setMenu({ open: true, kind, removable: canRemove(latest.current, saved, kind) });
   }
 
-  async function choose(kind: ImageKind) {
-    if (picking.current || busy) return;
+  /** The system picker or camera takes over the screen; one at a time. */
+  async function choose(kind: ImageKind, from: ImageSource) {
+    if (picking.current || sending.current) return;
     picking.current = true;
-    setProblem(null);
     try {
-      const image = await pickImage(kind, () =>
-        setProblem({ message: 'Permita o acesso às fotos para escolher uma imagem.' }),
-      );
-      if (image) await send(kind, image);
+      const image = await pickImage(kind, from);
+      if (image === null) return;
+      if (exceedsImageLimit(image.size)) {
+        showToast(IMAGE_TOO_BIG);
+        return;
+      }
+      commit((state) => pickImageEdit(state, kind, image));
+    } catch {
+      showToast(OPEN_FAILED[from]);
     } finally {
       picking.current = false;
     }
   }
 
-  async function save() {
-    if (saving) return;
-    setFormError(null);
-    if (busy) {
-      setFormError(WAIT_FOR_UPLOAD);
-      return;
-    }
-    if (Object.keys(changes).length === 0) {
-      router.back();
-      return;
-    }
-    // A field the user did not touch is never blocked by what it already held.
-    const found = validateProfile(current);
-    const errors: ProfileErrors = {};
-    for (const field of Object.keys(changes) as (keyof ProfileFields)[]) {
-      if (found[field]) errors[field] = found[field];
-    }
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+  function onMenuSelect(kind: ImageKind, action: ImageEditAction) {
+    if (action === 'remove') commit((state) => removeImageEdit(state, kind));
+    else void choose(kind, action);
+  }
 
-    setSaving(true);
-    try {
-      await update.mutateAsync(changes);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        setFieldErrors({ username: 'Esse username já está em uso' });
-      } else {
-        setFormError(authErrorMessage(error));
-      }
-      setSaving(false);
-      return;
+  async function run(step: SaveStep) {
+    switch (step.type) {
+      case 'upload':
+        await upload.mutateAsync({ kind: step.kind, image: step.image });
+        return;
+      case 'remove':
+        await remove.mutateAsync(step.kind);
+        return;
+      case 'patch':
+        await update.mutateAsync(step.changes);
+        return;
     }
-    setSaved(true);
+  }
+
+  async function save() {
+    if (sending.current || !ready) return;
+    sending.current = true;
+    setSaving(true);
+    setFormError(null);
+    for (const step of savePlan(latest.current, saved)) {
+      try {
+        await run(step);
+      } catch (error) {
+        sending.current = false;
+        if (!mounted.current) return;
+        setSaving(false);
+        const taken =
+          step.type === 'patch' &&
+          step.changes.username !== undefined &&
+          error instanceof ApiError &&
+          error.status === 409;
+        if (taken) {
+          setTakenUsername(step.changes.username ?? null);
+        } else {
+          setFormError(stepErrorMessage(step, error));
+        }
+        return;
+      }
+      // The server holds this step now: a retry leaves it out.
+      commit((state) => completeStep(state, step));
+    }
+    if (!mounted.current) return;
+    setDone(true);
     disablePrevention();
+    haptic('confirm');
     showToast('Perfil atualizado');
     router.back();
   }
@@ -189,106 +237,96 @@ export function EditProfileScreen() {
   function discard() {
     const repeat = leave;
     setLeave(null);
-    setSaved(true);
+    setDone(true);
     repeat?.();
   }
 
+  const avatarUri = resolveImageUrl(previewUri(edits, saved, 'avatar'));
+  const bannerUri = resolveImageUrl(previewUri(edits, saved, 'banner'));
+
   return (
-    <Screen scroll>
-      <View style={styles.form}>
-        <Section title="Fotos" helper="Salvas ao confirmar o recorte.">
-          <View style={styles.preview}>
-            {bannerUrl ? (
-              <Image
-                accessibilityRole="image"
-                accessibilityLabel="Capa"
-                source={{ uri: bannerUrl }}
-                style={styles.banner}
-              />
-            ) : (
-              <View
-                accessible
-                accessibilityRole="image"
-                accessibilityLabel="Sem capa"
-                style={styles.banner}
-              />
-            )}
-            {uploading === 'banner' ? <UploadingOverlay /> : null}
-          </View>
-          <Button
-            label="Alterar capa"
-            color="secondary"
-            disabled={busy}
-            onPress={() => void choose('banner')}
-          />
-          <View style={styles.avatarRow}>
-            <View style={styles.preview}>
-              <Avatar uri={avatarUrl} name={name} size={AVATAR_SIZE} />
-              {uploading === 'avatar' ? <UploadingOverlay round /> : null}
-            </View>
-            <View style={styles.avatarAction}>
-              <Button
-                label="Alterar foto"
-                color="secondary"
-                disabled={busy}
-                onPress={() => void choose('avatar')}
-              />
-            </View>
-          </View>
-          {problem ? (
-            <View style={styles.problem}>
-              <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
-                {problem.message}
-              </Text>
-              {problem.retry ? (
-                <Button label="Tentar de novo" color="secondary" onPress={problem.retry} />
-              ) : null}
-            </View>
-          ) : null}
-        </Section>
-
-        <Section title="Informações" helper="Salvas no botão Salvar alterações.">
-          <TextField
-            label="Nome"
-            value={current.name}
-            onChangeText={(text) => edit('name', text)}
-            error={fieldErrors.name}
-            autoComplete="name"
-          />
-          <TextField
-            label="Username"
-            helper="Letras, números e _"
-            value={current.username}
-            onChangeText={(text) => edit('username', text)}
-            error={fieldErrors.username}
-            autoCapitalize="none"
-            autoComplete="username"
-          />
-          <View style={styles.bio}>
-            <TextField
-              label="Bio"
-              multiline
-              placeholder="Conte um pouco sobre você"
-              value={current.bio}
-              onChangeText={(text) => edit('bio', text)}
-              error={fieldErrors.bio}
-            />
-            <Text size="xs" tone="medium" style={styles.counter}>{`${countGraphemes(current.bio.trim())}/${BIO_MAX}`}</Text>
-          </View>
-        </Section>
-
+    <Screen topInset>
+      {/* With changes, the sheet does not close with a gesture; leaving asks first. */}
+      <Stack.Screen options={{ gestureEnabled: !dirty }} />
+      <EditProfileTopBar
+        canSave={ready}
+        saving={saving}
+        onCancel={() => router.back()}
+        onSave={() => void save()}
+      >
         {formError ? (
-          <Text accessibilityLiveRegion="polite" size="sm" tone="danger">
+          <Text accessibilityLiveRegion="polite" size="sm" tone="danger" style={styles.error}>
             {formError}
           </Text>
         ) : null}
-        <Button label="Salvar alterações" loading={saving} onPress={() => void save()} />
-      </View>
+      </EditProfileTopBar>
 
+      <KeyboardAwareScrollView
+        bottomOffset={space.lg}
+        style={styles.fill}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <EditImages
+          bannerUri={bannerUri}
+          avatarUri={avatarUri}
+          name={name}
+          disabled={saving}
+          onEdit={openMenu}
+        />
+
+        <View style={styles.fields}>
+          <Field label="Nome" count={countGraphemes(fields.name.trim())} max={NAME_MAX}>
+            <TextField
+              label="Nome"
+              hideLabel
+              editable={!saving}
+              value={fields.name}
+              onChangeText={(text) => edit('name', text)}
+              error={errors.name}
+              autoComplete="name"
+            />
+          </Field>
+          <Field label="Nome de usuário">
+            <TextField
+              label="Nome de usuário"
+              hideLabel
+              editable={!saving}
+              helper="Letras, números e _"
+              value={fields.username}
+              onChangeText={(text) => edit('username', text)}
+              error={errors.username}
+              autoCapitalize="none"
+              autoComplete="username"
+            />
+          </Field>
+          <Field label="Bio" count={countGraphemes(fields.bio.trim())} max={BIO_MAX}>
+            <TextField
+              label="Bio"
+              hideLabel
+              editable={!saving}
+              multiline
+              minHeight={BIO_MIN_HEIGHT}
+              placeholder="Conte um pouco sobre você"
+              value={fields.bio}
+              onChangeText={(text) => edit('bio', text)}
+              error={errors.bio}
+            />
+          </Field>
+        </View>
+      </KeyboardAwareScrollView>
+
+      <ImageEditMenu
+        visible={menu.open}
+        kind={menu.kind}
+        canRemove={menu.removable}
+        onSelect={onMenuSelect}
+        onClose={() => setMenu((current) => ({ ...current, open: false }))}
+      />
       <ConfirmDialog
         visible={leave !== null}
         title="Descartar alterações?"
-        message="Nome, username e bio não foram salvos. Fotos que você já enviou continuam salvas."
+        message="Suas alterações não serão salvas."
         confirmLabel="Descartar"
         cancelLabel="Continuar editando"
         destructive
@@ -300,36 +338,14 @@ export function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  form: { padding: space.lg, gap: space._2xl },
-  section: { gap: space.md },
-  sectionHead: { gap: space.xs },
-  preview: { position: 'relative' },
-  banner: {
-    width: '100%',
-    aspectRatio: 3,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgContrast50,
+  fill: { flex: 1 },
+  content: { flexGrow: 1, paddingBottom: space._2xl },
+  error: { paddingHorizontal: space.lg, paddingBottom: space.sm },
+  fields: {
+    marginTop: FIELDS_TOP,
+    paddingHorizontal: FIELDS_SIDE,
+    gap: FIELDS_GAP,
   },
-  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  avatarAction: { flex: 1 },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    borderRadius: radii.md,
-    backgroundColor: `${colors.bg}CC`,
-  },
-  overlayRound: { borderRadius: AVATAR_SIZE / 2 },
-  overlayLabel: {
-    textAlign: 'center',
-    paddingHorizontal: space.xs,
-  },
-  problem: { gap: space.sm },
-  bio: { gap: space.xs },
+  field: { gap: space.xs },
   counter: { alignSelf: 'flex-end' },
 });

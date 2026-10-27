@@ -1,6 +1,39 @@
 import type { QueryClient } from '@tanstack/react-query';
 
-import { useSession } from '@/features/auth';
+import { useSession, type User } from '@/features/auth';
+
+import type { UserProfile } from './types';
+
+/** What both the session copy and the cached profile hold about the signed-in user. */
+export type OwnProfilePatch = Partial<
+  Pick<User, 'username' | 'name' | 'bio' | 'avatarUrl' | 'bannerUrl'>
+>;
+
+/**
+ * Writes what the server now holds into the signed-in user's cached profile (when cached) and
+ * session copy. `me` is who made the change: after a sign-out or an account switch nothing is
+ * written.
+ */
+export function patchOwnProfile(client: QueryClient, me: string, patch: OwnProfilePatch): void {
+  if (useSession.getState().user?.id !== me) return;
+  client.setQueryData<UserProfile>(['profile', me], (profile) =>
+    profile ? { ...profile, ...patch } : profile,
+  );
+  useSession.setState((state) => (state.user ? { user: { ...state.user, ...patch } } : state));
+}
+
+/**
+ * Stops a refetch of the own profile that started before a change, so that its older answer
+ * cannot overwrite what the change writes. A profile still loading for the first time is left
+ * alone.
+ */
+export function cancelOwnProfileRefetch(client: QueryClient, me: string): Promise<void> {
+  return client.cancelQueries({
+    queryKey: ['profile', me],
+    exact: true,
+    predicate: (query) => query.state.data !== undefined,
+  });
+}
 
 /**
  * The Perfil tab stays mounted and does not refetch on focus, so changes the user makes

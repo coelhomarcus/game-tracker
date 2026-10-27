@@ -9,7 +9,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 
-import { authErrorMessage, useSession, type User } from '@/features/auth';
+import { authErrorMessage, useSession } from '@/features/auth';
 import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
 import type { PostPage } from '@/features/feed/types';
@@ -17,6 +17,7 @@ import { showToast } from '@/lib/toast';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { profilesApi, type ProfileChanges } from './api';
+import { cancelOwnProfileRefetch, patchOwnProfile, type OwnProfilePatch } from './ownProfile';
 import type {
   FollowListPage,
   ImageKind,
@@ -268,52 +269,73 @@ export function useToggleFollow() {
   });
 }
 
-/** Writes the given fields into the signed-in user's session copy. */
-function patchSessionUser(patch: Partial<User>) {
-  useSession.setState((state) => (state.user ? { user: { ...state.user, ...patch } } : state));
-}
+type OwnChangeContext = { me: string | undefined };
 
-function patchMyProfile(client: QueryClient, me: string, patch: Partial<UserProfile>) {
-  client.setQueryData<UserProfile>(['profile', me], (profile) =>
-    profile ? { ...profile, ...patch } : profile,
-  );
+/**
+ * Remembers who makes a change to the own profile and stops a profile refetch already in flight,
+ * whose older answer would otherwise overwrite what the change writes.
+ */
+async function beginOwnChange(client: QueryClient): Promise<OwnChangeContext> {
+  const me = useSession.getState().user?.id;
+  if (me !== undefined) await cancelOwnProfileRefetch(client, me);
+  return { me };
 }
 
 /** The update answers with no body, so what was sent is what the profile now holds. */
 export function useUpdateProfile() {
   const client = useQueryClient();
-  return useMutation<void, Error, ProfileChanges, { me: string | undefined }>({
+  return useMutation<void, Error, ProfileChanges, OwnChangeContext>({
     mutationFn: (changes) => profilesApi.update(changes),
-    onMutate: () => ({ me: useSession.getState().user?.id }),
+    onMutate: () => beginOwnChange(client),
     onSuccess: (_data, changes, context) => {
       // A sign-out or account switch while the request was in flight leaves nothing to update.
       if (context?.me === undefined || useSession.getState().user?.id !== context.me) return;
-      const sent: Partial<User> = {};
+      const sent: OwnProfilePatch = {};
       if (changes.username !== undefined) sent.username = changes.username;
       if (changes.name !== undefined) sent.name = changes.name;
       if (changes.bio !== undefined) sent.bio = changes.bio;
-      patchMyProfile(client, context.me, sent);
-      patchSessionUser(sent);
+      patchOwnProfile(client, context.me, sent);
       return client.invalidateQueries({ queryKey: ['profile', context.me] });
     },
   });
 }
 
+/** The key of the profile field that holds each image's URL. */
+const IMAGE_FIELD = { avatar: 'avatarUrl', banner: 'bannerUrl' } as const satisfies Record<
+  ImageKind,
+  keyof OwnProfilePatch
+>;
+
+/**
+ * Writes an image change into the own profile and session, and marks the own posts stale: they
+ * carry the author's avatar.
+ */
+function applyImageChange(client: QueryClient, me: string, kind: ImageKind, url: string | null) {
+  patchOwnProfile(client, me, { [IMAGE_FIELD[kind]]: url });
+  if (kind === 'avatar') void client.invalidateQueries({ queryKey: ['userPosts', me] });
+}
+
 export function useUploadImage() {
   const client = useQueryClient();
-  return useMutation<
-    string,
-    Error,
-    { kind: ImageKind; image: PickedImage },
-    { me: string | undefined }
-  >({
+  return useMutation<string, Error, { kind: ImageKind; image: PickedImage }, OwnChangeContext>({
     mutationFn: ({ kind, image }) => profilesApi.upload(kind, image),
-    onMutate: () => ({ me: useSession.getState().user?.id }),
+    onMutate: () => beginOwnChange(client),
     onSuccess: (url, { kind }, context) => {
       if (context?.me === undefined || useSession.getState().user?.id !== context.me) return;
-      const patch = kind === 'avatar' ? { avatarUrl: url } : { bannerUrl: url };
-      patchMyProfile(client, context.me, patch);
-      patchSessionUser(patch);
+      applyImageChange(client, context.me, kind, url);
+    },
+  });
+}
+
+/** Removes the avatar or the banner; the profile and session then hold no URL for it. */
+export function useRemoveImage() {
+  const client = useQueryClient();
+  return useMutation<void, Error, ImageKind, OwnChangeContext>({
+    mutationFn: (kind) => profilesApi.removeImage(kind),
+    onMutate: () => beginOwnChange(client),
+    onSuccess: (_data, kind, context) => {
+      if (context?.me === undefined || useSession.getState().user?.id !== context.me) return;
+      applyImageChange(client, context.me, kind, null);
     },
   });
 }

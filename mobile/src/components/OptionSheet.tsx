@@ -6,7 +6,13 @@ import type { IoniconName } from '@/features/library/status';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 import { Text } from './Text';
 
-export type OptionSheetOption<T> = { value: T; label: string; icon?: IoniconName };
+export type OptionSheetOption<T> = {
+  value: T;
+  label: string;
+  icon?: IoniconName;
+  /** Removes or throws something away: the label and icon are red. */
+  destructive?: boolean;
+};
 
 /** A titled group of options with its own selected one, for a sheet that sets several things. */
 export type OptionSheetSection<T> = {
@@ -54,8 +60,18 @@ export function OptionSheet<T>({
         }}
         style={styles.row}
       >
-        {option.icon ? <Ionicons name={option.icon} size={22} color={colors.text} /> : null}
-        <Text weight={isSelected ? 'bold' : 'normal'} tone={isSelected ? 'high' : 'default'} style={styles.label}>
+        {option.icon ? (
+          <Ionicons
+            name={option.icon}
+            size={22}
+            color={option.destructive ? colors.danger : colors.text}
+          />
+        ) : null}
+        <Text
+          weight={isSelected ? 'bold' : 'normal'}
+          tone={option.destructive ? 'danger' : isSelected ? 'high' : 'default'}
+          style={styles.label}
+        >
           {option.label}
         </Text>
         {isSelected ? <Ionicons name="checkmark" size={22} color={colors.primary} /> : null}
