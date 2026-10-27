@@ -353,6 +353,25 @@ describe('profilesApi', () => {
     expect(seenBody).toEqual({ name: 'Ana Maria' });
   });
 
+  it('removeImage DELETEs the avatar and the banner and resolves on 204', async () => {
+    const seen: string[] = [];
+    server.use(
+      http.delete(`${apiBaseUrl}/users/me/avatar`, () => {
+        seen.push('avatar');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete(`${apiBaseUrl}/users/me/banner`, () => {
+        seen.push('banner');
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(profilesApi.removeImage('avatar')).resolves.toBeUndefined();
+    await expect(profilesApi.removeImage('banner')).resolves.toBeUndefined();
+
+    expect(seen).toEqual(['avatar', 'banner']);
+  });
+
   describe('upload', () => {
     const originalOS = Platform.OS;
     afterEach(() => {

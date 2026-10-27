@@ -109,6 +109,14 @@ describe('TextField', () => {
     expect(screen.queryByText('Comentário')).toBeNull();
     expect(screen.getByLabelText('Comentário')).toBeOnTheScreen();
   });
+
+  it('starts a multiline field at the given height', async () => {
+    const { rerender } = await render(<TextField label="Bio" multiline value="" onChangeText={() => {}} />);
+    expect(screen.getByLabelText('Bio')).toHaveStyle({ minHeight: 120 });
+
+    await rerender(<TextField label="Bio" multiline minHeight={80} value="" onChangeText={() => {}} />);
+    expect(screen.getByLabelText('Bio')).toHaveStyle({ minHeight: 80 });
+  });
 });
 
 describe('Pill', () => {

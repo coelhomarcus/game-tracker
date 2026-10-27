@@ -218,6 +218,23 @@ describe('OptionSheet', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('draws a destructive option in red', async () => {
+    await render(withInsets(
+      <OptionSheet
+        visible
+        title="Capa"
+        options={[
+          { value: 'library', label: 'Galeria' },
+          { value: 'remove', label: 'Remover capa', destructive: true },
+        ]}
+        onSelect={jest.fn()}
+        onClose={jest.fn()}
+      />),
+    );
+    expect(screen.getByText('Remover capa')).toHaveStyle({ color: colors.danger });
+    expect(screen.getByText('Galeria')).not.toHaveStyle({ color: colors.danger });
+  });
+
   it('closes from the backdrop without selecting', async () => {
     const onSelect = jest.fn();
     const onClose = jest.fn();

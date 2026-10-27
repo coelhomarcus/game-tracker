@@ -143,6 +143,25 @@ describeBackend('profiles against the test API', () => {
     expect(second).not.toBe(first);
   });
 
+  it('removing the avatar and the banner clears them in the profile; removing again is fine', async () => {
+    const a = await signUpAccount('pr');
+    await upload(a, 'avatar', tinyPng());
+    await upload(a, 'banner', tinyPng());
+    let profile = await a.profiles.get(a.user.id);
+    expect([profile.avatarUrl, profile.bannerUrl]).not.toContain(null);
+
+    await a.profiles.removeImage('avatar');
+    profile = await a.profiles.get(a.user.id);
+    expect(profile.avatarUrl).toBeNull();
+    expect(profile.bannerUrl).not.toBeNull();
+
+    await a.profiles.removeImage('banner');
+    await a.profiles.removeImage('banner'); // idempotent
+    await a.profiles.removeImage('avatar'); // idempotent
+    profile = await a.profiles.get(a.user.id);
+    expect([profile.avatarUrl, profile.bannerUrl]).toEqual([null, null]);
+  });
+
   it('a corrupted file typed as an image is rejected with 400 (not 500)', async () => {
     const a = await signUpAccount('pj');
     const bad = picked(Buffer.from('isto não é um png'), 'ruim.png', 'image/png');

@@ -13,6 +13,7 @@ import {
   useProfile,
   useToggleFollow,
   useUpdateProfile,
+  useRemoveImage,
   useUploadImage,
   useUserEntries,
   useUserFavorites,
@@ -42,6 +43,7 @@ jest.mock('@/features/profiles/api', () => ({
     setFollow: jest.fn(),
     update: jest.fn(),
     upload: jest.fn(),
+    removeImage: jest.fn(),
   },
 }));
 
@@ -803,5 +805,191 @@ describe('useUploadImage', () => {
     expect(client.getQueryData<UserProfile>(['profile', 'me'])?.bannerUrl).toBe('/uploads/b.png');
     expect(useSession.getState().user?.bannerUrl).toBe('/uploads/b.png');
     expect(useSession.getState().user?.avatarUrl).toBeNull();
+  });
+});
+
+describe('useUploadImage and useRemoveImage', () => {
+  /** A cached copy of each list that shows avatars, as the screens key them. */
+  const AVATAR_LIST_KEYS = [
+    ['feed', 'following'],
+    ['feed', 'all'],
+    ['gamePosts', 'g1'],
+    ['userPosts', 'me', 'posts'],
+    ['userPosts', 'u2', 'posts'],
+    ['bookmarks'],
+    ['post', 'p1'],
+    ['comments', 'p1', 'top'],
+    ['userReplies', 'me'],
+    ['conversations'],
+    ['messages', 'c1'],
+    ['notifications'],
+    ['people', 'an'],
+    ['follows', 'u2', 'followers'],
+    ['gamePlayers', 'g1', 'all'],
+  ];
+
+  function seedAvatarLists(client: QueryClient) {
+    for (const key of AVATAR_LIST_KEYS) client.setQueryData(key, { cached: true });
+  }
+
+  function staleLists(client: QueryClient) {
+    return AVATAR_LIST_KEYS.filter((key) => client.getQueryState(key)?.isInvalidated);
+  }
+
+  it.each([
+    ['an upload', () => mocked.upload.mockResolvedValue('/uploads/a.png'), useUploadImage],
+    ['a removal', () => mocked.removeImage.mockResolvedValue(undefined), useRemoveImage],
+  ] as const)('refreshes every list that shows the avatar after %s of it', async (_label, arrange, hook) => {
+    arrange();
+    const client = freshClient();
+    seedAvatarLists(client);
+    client.setQueryData(['userFavorites', 'me'], []);
+    const { result } = await renderHook(() => hook(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      if (hook === useUploadImage) {
+        await (result.current as ReturnType<typeof useUploadImage>).mutateAsync({ kind: 'avatar', image });
+      } else {
+        await (result.current as ReturnType<typeof useRemoveImage>).mutateAsync('avatar');
+      }
+    });
+
+    expect(staleLists(client)).toEqual(AVATAR_LIST_KEYS);
+    // Lists without avatars are left alone.
+    expect(client.getQueryState(['userFavorites', 'me'])?.isInvalidated).toBe(false);
+  });
+
+  it('leaves the lists alone after a banner change, which only the profile shows', async () => {
+    mocked.upload.mockResolvedValue('/uploads/b.png');
+    mocked.removeImage.mockResolvedValue(undefined);
+    const client = freshClient();
+    seedAvatarLists(client);
+    const upload = await renderHook(() => useUploadImage(), { wrapper: wrapperFor(client) });
+    const remove = await renderHook(() => useRemoveImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await upload.result.current.mutateAsync({ kind: 'banner', image });
+      await remove.result.current.mutateAsync('banner');
+    });
+
+    expect(staleLists(client)).toEqual([]);
+  });
+
+  it('refreshes nothing when the avatar upload fails', async () => {
+    mocked.upload.mockRejectedValue(new Error('boom'));
+    const client = freshClient();
+    seedAvatarLists(client);
+    const { result } = await renderHook(() => useUploadImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ kind: 'avatar', image })).rejects.toThrow('boom');
+    });
+
+    expect(staleLists(client)).toEqual([]);
+  });
+
+  it('keeps the new URL when a profile refetch that started before the upload ends later', async () => {
+    const stale = deferred<UserProfile>();
+    mocked.get.mockReturnValueOnce(stale.promise);
+    mocked.upload.mockResolvedValue('/uploads/new.png');
+    const client = freshClient();
+    client.setQueryData(['profile', 'me'], profile('me', { avatarUrl: '/uploads/old.png' }));
+    const { result } = await renderHook(
+      () => ({ profile: useProfile('me'), upload: useUploadImage() }),
+      { wrapper: wrapperFor(client) },
+    );
+    // Mounting the stale profile starts a refetch; it is still in flight.
+    expect(mocked.get).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.upload.mutateAsync({ kind: 'avatar', image });
+    });
+    await act(async () => {
+      stale.resolve(profile('me', { avatarUrl: '/uploads/old.png' }));
+    });
+
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.avatarUrl).toBe('/uploads/new.png');
+    await waitFor(() => expect(result.current.profile.data?.avatarUrl).toBe('/uploads/new.png'));
+  });
+
+  it('writes nothing when the account changed while the request was in flight', async () => {
+    const request = deferred<string>();
+    mocked.upload.mockReturnValue(request.promise);
+    const client = freshClient();
+    client.setQueryData(['profile', 'me'], profile('me'));
+    const { result } = await renderHook(() => useUploadImage(), { wrapper: wrapperFor(client) });
+
+    let done!: Promise<string>;
+    await act(async () => {
+      done = result.current.mutateAsync({ kind: 'avatar', image });
+    });
+    useSession.setState({ user: { ...me, id: 'other' } });
+    await act(async () => {
+      request.resolve('/uploads/a.png');
+      await done;
+    });
+
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.avatarUrl).toBeNull();
+    expect(useSession.getState().user?.avatarUrl).toBeNull();
+  });
+
+  it('clears the removed avatar from the profile and the session user', async () => {
+    useSession.setState({ user: { ...me, avatarUrl: '/uploads/a.png', bannerUrl: '/uploads/b.png' } });
+    mocked.removeImage.mockResolvedValue(undefined);
+    const client = freshClient();
+    client.setQueryData(
+      ['profile', 'me'],
+      profile('me', { avatarUrl: '/uploads/a.png', bannerUrl: '/uploads/b.png' }),
+    );
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useRemoveImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync('avatar');
+    });
+
+    expect(mocked.removeImage).toHaveBeenCalledWith('avatar');
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])).toMatchObject({
+      avatarUrl: null,
+      bannerUrl: '/uploads/b.png',
+    });
+    expect(useSession.getState().user).toMatchObject({ avatarUrl: null, bannerUrl: '/uploads/b.png' });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['userPosts'] });
+  });
+
+  it('clears the removed banner only', async () => {
+    useSession.setState({ user: { ...me, avatarUrl: '/uploads/a.png', bannerUrl: '/uploads/b.png' } });
+    mocked.removeImage.mockResolvedValue(undefined);
+    const client = freshClient();
+    client.setQueryData(
+      ['profile', 'me'],
+      profile('me', { avatarUrl: '/uploads/a.png', bannerUrl: '/uploads/b.png' }),
+    );
+    const { result } = await renderHook(() => useRemoveImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.mutateAsync('banner');
+    });
+
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])).toMatchObject({
+      avatarUrl: '/uploads/a.png',
+      bannerUrl: null,
+    });
+    expect(useSession.getState().user?.bannerUrl).toBeNull();
+  });
+
+  it('leaves the profile as it was when the removal fails', async () => {
+    useSession.setState({ user: { ...me, avatarUrl: '/uploads/a.png' } });
+    mocked.removeImage.mockRejectedValue(new Error('boom'));
+    const client = freshClient();
+    client.setQueryData(['profile', 'me'], profile('me', { avatarUrl: '/uploads/a.png' }));
+    const { result } = await renderHook(() => useRemoveImage(), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync('avatar')).rejects.toThrow('boom');
+    });
+
+    expect(client.getQueryData<UserProfile>(['profile', 'me'])?.avatarUrl).toBe('/uploads/a.png');
+    expect(useSession.getState().user?.avatarUrl).toBe('/uploads/a.png');
   });
 });

@@ -195,3 +195,15 @@ export async function updateBanner(userId: string, buffer: Buffer) {
 
   return bannerUrl;
 }
+
+export async function removeAvatar(userId: string) {
+  const current = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { avatarUrl: true } });
+  await db.update(users).set({ avatarUrl: null }).where(eq(users.id, userId));
+  void deleteAvatarIfLocal(current?.avatarUrl ?? null);
+}
+
+export async function removeBanner(userId: string) {
+  const current = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { bannerUrl: true } });
+  await db.update(users).set({ bannerUrl: null }).where(eq(users.id, userId));
+  void deleteBannerIfLocal(current?.bannerUrl ?? null);
+}

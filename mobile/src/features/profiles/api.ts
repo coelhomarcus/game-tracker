@@ -103,4 +103,9 @@ export const profilesApi = {
     );
     return (kind === 'avatar' ? json.avatarUrl : json.bannerUrl) as string;
   },
+
+  /** Removes the image; the backend answers 204 and is idempotent (nothing to remove is a 204 too). */
+  async removeImage(kind: ImageKind): Promise<void> {
+    await api.delete<void>(`/users/me/${kind}`);
+  },
 };

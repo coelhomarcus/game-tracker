@@ -27,7 +27,11 @@ export type TextFieldProps = {
   multiline?: boolean;
   /** With `multiline`: starts at one line and grows up to this many, then scrolls. */
   maxLines?: number;
+  /** With `multiline` and no `maxLines`: the field's height before it grows (120 by default). */
+  minHeight?: number;
   secureTextEntry?: boolean;
+  /** False while the value must not change, e.g. while it is being saved. */
+  editable?: boolean;
   autoComplete?: TextInputProps['autoComplete'];
   keyboardType?: TextInputProps['keyboardType'];
   autoCapitalize?: TextInputProps['autoCapitalize'];
@@ -45,6 +49,7 @@ export function TextField({
   showCounter,
   multiline,
   maxLines,
+  minHeight,
   inputRef,
   onBlur,
   ...inputProps
@@ -54,7 +59,7 @@ export function TextField({
   const multilineStyle = multiline
     ? maxLines
       ? [styles.inputGrowing, { maxHeight: LINE_HEIGHT * maxLines + (VERTICAL_PADDING + BORDER_WIDTH) * 2 }]
-      : styles.inputMultiline
+      : [styles.inputMultiline, minHeight === undefined ? null : { minHeight }]
     : null;
   const count = showCounter && maxLength !== undefined ? Array.from(value).length : null;
   const note = error ? (
