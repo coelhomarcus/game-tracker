@@ -109,7 +109,7 @@ export function SessionGate() {
         <Stack.Screen name="chat" options={{ headerShown: false }} />
         <Stack.Screen name="me" options={EDIT_PROFILE_STACK_OPTIONS} />
         <Stack.Screen name="notifications" options={{ title: '' }} />
-        <Stack.Screen name="settings" options={{ title: 'Configurações' }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack.Protected>
     </Stack>
   );

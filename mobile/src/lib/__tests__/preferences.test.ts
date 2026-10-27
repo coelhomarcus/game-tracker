@@ -18,6 +18,7 @@ describe('preferences', () => {
   it('shows replies in line, oldest first, until the user chooses', () => {
     expect(usePreferences.getState()).toMatchObject({
       hapticsEnabled: true,
+      requireAltText: false,
       threadView: 'linear',
       threadSort: 'oldest',
     });
@@ -30,6 +31,7 @@ describe('preferences', () => {
     expect(usePreferences.getState()).toMatchObject({ threadView: 'tree', threadSort: 'top' });
     await expect(stored()).resolves.toEqual({
       hapticsEnabled: true,
+      requireAltText: false,
       threadView: 'tree',
       threadSort: 'top',
     });
@@ -64,5 +66,32 @@ describe('preferences', () => {
       threadView: 'linear',
       threadSort: 'oldest',
     });
+  });
+
+  it('persists the alt text requirement', async () => {
+    usePreferences.getState().setRequireAltText(true);
+
+    expect(usePreferences.getState().requireAltText).toBe(true);
+    await expect(stored()).resolves.toMatchObject({ requireAltText: true, hapticsEnabled: true });
+  });
+
+  it('reads the stored alt text requirement back', async () => {
+    await AsyncStorage.setItem(
+      'preferences',
+      JSON.stringify({ state: { requireAltText: true }, version: 0 }),
+    );
+    await usePreferences.persist.rehydrate();
+
+    expect(usePreferences.getState().requireAltText).toBe(true);
+  });
+
+  it('ignores a stored alt text requirement that is not a boolean', async () => {
+    await AsyncStorage.setItem(
+      'preferences',
+      JSON.stringify({ state: { requireAltText: 'yes' }, version: 0 }),
+    );
+    await usePreferences.persist.rehydrate();
+
+    expect(usePreferences.getState().requireAltText).toBe(false);
   });
 });

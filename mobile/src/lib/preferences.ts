@@ -12,18 +12,22 @@ const THREAD_SORTS: readonly ThreadSort[] = ['top', 'oldest', 'newest'];
 
 type StoredPreferences = {
   hapticsEnabled: boolean;
+  /** Asks for a description before publishing a post whose images have none. */
+  requireAltText: boolean;
   threadView: ThreadView;
   threadSort: ThreadSort;
 };
 
 type PreferencesState = StoredPreferences & {
   setHapticsEnabled(enabled: boolean): void;
+  setRequireAltText(required: boolean): void;
   setThreadView(view: ThreadView): void;
   setThreadSort(sort: ThreadSort): void;
 };
 
 const DEFAULTS: StoredPreferences = {
   hapticsEnabled: true,
+  requireAltText: false,
   threadView: 'linear',
   threadSort: 'oldest',
 };
@@ -37,6 +41,7 @@ export const usePreferences = create<PreferencesState>()(
     (set) => ({
       ...DEFAULTS,
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
+      setRequireAltText: (requireAltText) => set({ requireAltText }),
       setThreadView: (threadView) => set({ threadView }),
       setThreadSort: (threadSort) => set({ threadSort }),
     }),
@@ -45,6 +50,7 @@ export const usePreferences = create<PreferencesState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state): StoredPreferences => ({
         hapticsEnabled: state.hapticsEnabled,
+        requireAltText: state.requireAltText,
         threadView: state.threadView,
         threadSort: state.threadSort,
       }),
@@ -55,6 +61,8 @@ export const usePreferences = create<PreferencesState>()(
           ...current,
           hapticsEnabled:
             typeof stored.hapticsEnabled === 'boolean' ? stored.hapticsEnabled : DEFAULTS.hapticsEnabled,
+          requireAltText:
+            typeof stored.requireAltText === 'boolean' ? stored.requireAltText : DEFAULTS.requireAltText,
           threadView: oneOf(stored.threadView, THREAD_VIEWS, DEFAULTS.threadView),
           threadSort: oneOf(stored.threadSort, THREAD_SORTS, DEFAULTS.threadSort),
         };
