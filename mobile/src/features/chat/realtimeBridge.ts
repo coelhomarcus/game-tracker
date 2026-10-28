@@ -214,6 +214,8 @@ class RealtimeBridge {
   private handleHidden(payload: unknown): void {
     if (!isJson(payload) || !isString(payload.conversationId) || !isString(payload.messageId)) return;
     removeMessageFromCache(queryClient, payload.conversationId, payload.messageId);
+    // Replies to it here, being written or pending, let go of it too.
+    chat().messageHidden(payload.conversationId, payload.messageId);
   }
 
   /** Someone in an open room reacted to a message, or took a reaction back. */

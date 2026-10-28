@@ -1,25 +1,53 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import * as Clipboard from 'expo-clipboard';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, Keyboard, StyleSheet } from 'react-native';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient, useSession, type User } from '@/features/auth';
+import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
+import { showToast } from '@/lib/toast';
+import { useSetModeration } from '@/features/profiles/queries';
 import { useChatConnection } from '@/lib/realtime/connectionStore';
+import { colors } from '@/theme/tokens';
 import { chatSocket } from '@/test-utils/fakeChatSocket';
 
 import { chatApi } from '../api';
 import { useChatStore } from '../chatStore';
 import { ChatRoomScreen } from '../ChatRoomScreen';
+import { CLUSTER_GAP, GROUP_GAP } from '../MessageBubble';
 import { conversationsKey } from '../queries';
 import { realtimeBridge } from '../realtimeBridge';
 import type { Conversation, Message, MessagePage } from '../types';
 
 jest.mock('@/lib/realtime/chatSocket', () => jest.requireActual('@/test-utils/fakeChatSocket'));
 jest.mock('@/features/chat/api', () => ({
-  chatApi: { list: jest.fn(), create: jest.fn(), messages: jest.fn(), markRead: jest.fn() },
+  chatApi: {
+    list: jest.fn(),
+    create: jest.fn(),
+    messages: jest.fn(),
+    markRead: jest.fn(),
+    setMuted: jest.fn(),
+    leave: jest.fn(),
+    hideMessage: jest.fn(),
+    addReaction: jest.fn(),
+    removeReaction: jest.fn(),
+  },
 }));
+jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
+jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
+jest.mock('@/features/profiles/queries', () => ({
+  ...jest.requireActual('@/features/profiles/queries'),
+  useSetModeration: jest.fn(),
+}));
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
+const mockBlock = jest.fn();
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn() };
 let mockParams: Record<string, string | string[]> = {};
@@ -50,14 +78,20 @@ jest.mock('expo-router', () => {
     },
     // The header is rendered in place so the tests can read and press it.
     Stack: {
-      Screen: ({ options }: { options?: { title?: string; headerTitle?: unknown } }) => {
+      Screen: ({
+        options,
+      }: {
+        options?: { title?: string; headerTitle?: unknown; headerRight?: unknown };
+      }) => {
         const { Text, View } = jest.requireActual('react-native');
         if (options && mockHeaderOptions.at(-1) !== options) mockHeaderOptions.push(options);
         const Title = options?.headerTitle as ComponentType<{ children: string }> | undefined;
+        const Right = options?.headerRight as ComponentType<{ canGoBack: boolean }> | undefined;
         return (
           <View testID="header">
             {Title ? <Title>{options?.title ?? ''}</Title> : null}
             {options?.title ? <Text testID="header-title">{options.title}</Text> : null}
+            {Right ? <Right canGoBack /> : null}
           </View>
         );
       },
@@ -67,10 +101,11 @@ jest.mock('expo-router', () => {
 
 const mocked = jest.mocked(chatApi);
 
-const metrics = {
+let metrics = {
   frame: { x: 0, y: 0, width: 390, height: 800 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
+const NO_INSETS = metrics;
 
 const CONV = '6b0f6c8e-1d2a-4c3b-9e4f-5a6b7c8d9e0f';
 const me: User = {
@@ -111,6 +146,7 @@ function message(
     clientMessageId: null,
     sender: senderId === 'u1' ? ana : { id: senderId, username: 'eu', name: 'Eu', avatarUrl: null },
     reactions: [],
+    replyTo: null,
     ...overrides,
   };
 }
@@ -152,9 +188,11 @@ function scrollEvent(y: number) {
 function ui() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider initialMetrics={metrics}>
-        <ChatRoomScreen />
-      </SafeAreaProvider>
+      <GestureHandlerRootView>
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ChatRoomScreen />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     </QueryClientProvider>
   );
 }
@@ -188,6 +226,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const RETRY_LINE = 'Não enviada. Toque para tentar de novo';
+
 const typingEvents = () =>
   chatSocket.emitted.filter((entry) => entry.event.startsWith('typing:')).map((entry) => entry.event);
 
@@ -213,6 +253,19 @@ beforeEach(() => {
   mocked.messages.mockReset().mockResolvedValue(page([]));
   mocked.markRead.mockReset().mockResolvedValue(undefined);
   mocked.create.mockReset();
+  mocked.setMuted.mockReset().mockResolvedValue(undefined);
+  mocked.leave.mockReset().mockResolvedValue(undefined);
+  mocked.hideMessage.mockReset().mockResolvedValue(undefined);
+  mocked.addReaction.mockReset().mockResolvedValue(undefined);
+  mocked.removeReaction.mockReset().mockResolvedValue(undefined);
+  jest.mocked(Clipboard.setStringAsync).mockReset().mockResolvedValue(true);
+  jest.mocked(haptic).mockReset();
+  jest.mocked(showToast).mockClear();
+  mockBlock.mockReset();
+  jest.mocked(useSetModeration).mockReturnValue({ mutate: mockBlock } as unknown as ReturnType<
+    typeof useSetModeration
+  >);
+  metrics = NO_INSETS;
   useSession.setState({ status: 'signedIn', user: me });
   realtimeBridge.start();
   chatSocket.connect();
@@ -356,6 +409,7 @@ describe('ChatRoomScreen: header', () => {
 
     const title = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
     expect(title).toHaveTextContent(/Ana Souza/);
+    expect(title).toHaveTextContent(/@ana/);
     // A real 48 dp target: hitSlop past the header column would be lost on Android.
     expect(title).toHaveStyle({ minHeight: 48 });
     expect(title.props.hitSlop).toBeUndefined();
@@ -399,6 +453,94 @@ describe('ChatRoomScreen: header', () => {
 
     expect(screen.getByTestId('header')).toHaveTextContent(/Conversa/);
     expect(screen.queryByRole('button', { name: /^Perfil de/ })).not.toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: header menu', () => {
+  const option = (name: string) => screen.getByRole('button', { name });
+
+  async function openMenu() {
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+  }
+
+  it('offers the profile, mute, block and leave, without mark-read', async () => {
+    queryClient.setQueryData(conversationsKey, [withAna]);
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+
+    for (const name of ['Ver perfil', 'Silenciar conversa', 'Bloquear @ana', 'Sair da conversa']) {
+      expect(option(name)).toBeOnTheScreen();
+    }
+    // The open room is read already.
+    expect(screen.queryByRole('button', { name: 'Marcar como lida' })).not.toBeOnTheScreen();
+    // A real 48 dp target.
+    expect(screen.getByRole('button', { name: 'Mais opções' })).toHaveStyle({ minHeight: 48, minWidth: 48 });
+  });
+
+  it('opens the profile', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Ver perfil'));
+
+    expect(mockRouter.push).toHaveBeenCalledWith('/users/u1');
+  });
+
+  it('mutes, then offers to unmute', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Silenciar conversa'));
+
+    expect(mocked.setMuted).toHaveBeenCalledWith(CONV, true);
+    await openMenu();
+    expect(option('Reativar conversa')).toBeOnTheScreen();
+    await fireEvent.press(option('Reativar conversa'));
+    expect(mocked.setMuted).toHaveBeenLastCalledWith(CONV, false);
+  });
+
+  it('blocks the person after the confirmation', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Bloquear @ana'));
+
+    expect(screen.getByText('Bloquear @ana?')).toBeOnTheScreen();
+    expect(mockBlock).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear' }));
+    expect(mockBlock).toHaveBeenCalledWith({ person: ana, on: true });
+  });
+
+  it('leaves only after the confirmation, going back to the list first', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+
+    expect(screen.getByText('Sair da conversa?')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(mocked.leave).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    expect(mockRouter.back).toHaveBeenCalled();
+    expect(mocked.leave).toHaveBeenCalledWith(CONV);
+    expect(mockRouter.back.mock.invocationCallOrder[0]).toBeLessThan(
+      mocked.leave.mock.invocationCallOrder[0],
+    );
+    expect(queryClient.getQueryData<Conversation[]>(conversationsKey)).toEqual([]);
+    // The room is still on screen while the stack pops it: the header keeps the person and "…".
+    expect(screen.getByRole('button', { name: 'Perfil de Ana Souza' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Mais opções' })).toBeOnTheScreen();
+  });
+
+  it('goes to the list when there is nothing to go back to', async () => {
+    mockRouter.canGoBack.mockReturnValue(false);
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(mockRouter.replace).toHaveBeenCalledWith('/messages');
+    expect(mocked.leave).toHaveBeenCalledWith(CONV);
   });
 });
 
@@ -496,34 +638,37 @@ describe('ChatRoomScreen: history', () => {
     expect(mocked.messages).toHaveBeenCalledTimes(3);
   });
 
-  it('separates days as Hoje, Ontem and the date, above the oldest message of each day', async () => {
+  it('puts a date divider above the oldest message and after every pause of over an hour', async () => {
     await renderLoaded([
-      message('m5', 'u1', 'Hoje tarde', today(23, 59)),
-      message('m4', 'u1', 'Hoje cedo', today(0, 1)),
-      message('m3', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m6', 'u1', 'Hoje tarde', today(23, 59)),
+      message('m5', 'u1', 'Hoje cedo', today(0, 1)),
+      message('m4', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m3', 'u1', 'Ontem logo depois', yesterday(21, 0)),
       message('m2', 'u1', 'Ontem cedo', yesterday(8, 0)),
       message('m1', 'u1', 'Faz tempo', new Date(2020, 0, 15, 10, 30)),
     ]);
 
-    expect(screen.getByText('Hoje')).toBeOnTheScreen();
-    expect(screen.getByText('Ontem')).toBeOnTheScreen();
-    expect(screen.getByText('15/01/2020')).toBeOnTheScreen();
-    // Inverted list data, newest first: a separator follows the oldest message of its day, so it
-    // shows above that day on screen.
-    type Item = { kind: 'day'; label: string } | { kind: 'message'; row: { content: string } };
+    expect(screen.getByText('Hoje às 23:59')).toBeOnTheScreen();
+    expect(screen.getByText('Ontem às 21:00')).toBeOnTheScreen();
+    // Inverted list data, newest first: a divider follows the message it shows above on screen.
+    // 21:00 → 22:00 is exactly an hour, so no divider between them.
+    type Item = { kind: 'divider'; label: string } | { kind: 'message'; message: { content: string } };
     const data = screen.getByTestId('message-list').props.data as Item[];
-    expect(data.map((item) => (item.kind === 'day' ? `[${item.label}]` : item.row.content))).toEqual(
-      [
-        'Hoje tarde',
-        'Hoje cedo',
-        '[Hoje]',
-        'Ontem à noite',
-        'Ontem cedo',
-        '[Ontem]',
-        'Faz tempo',
-        '[15/01/2020]',
-      ],
-    );
+    expect(
+      data.map((item) => (item.kind === 'divider' ? `[${item.label}]` : item.message.content)),
+    ).toEqual([
+      'Hoje tarde',
+      '[Hoje às 23:59]',
+      'Hoje cedo',
+      '[Hoje às 00:01]',
+      'Ontem à noite',
+      'Ontem logo depois',
+      '[Ontem às 21:00]',
+      'Ontem cedo',
+      '[Ontem às 08:00]',
+      'Faz tempo',
+      '[15 de jan de 2020 às 10:30]',
+    ]);
   });
 
   it('shows the empty conversation copy', async () => {
@@ -582,9 +727,14 @@ describe('ChatRoomScreen: bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
 
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
+    // The failure replaces the time line, and the retry is a real 48 dp target.
+    const retryLine = screen.getByRole('button', { name: RETRY_LINE });
+    expect(retryLine).toHaveStyle({ minHeight: 48 });
+    expect(screen.getByRole('button', { name: 'Descartar' })).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(retryLine);
     expect(screen.getByText('Enviando…')).toBeOnTheScreen();
+    expect(screen.queryByText(RETRY_LINE)).not.toBeOnTheScreen();
     expect(chatSocket.ackLog.filter((entry) => entry.event === 'message:send')).toHaveLength(2);
 
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
@@ -601,16 +751,20 @@ describe('ChatRoomScreen: bubbles', () => {
       chatSocket.pendingAck('message:send')?.resolve({ error: 'Bloqueio', code: 'blocked' }),
     );
 
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
-    expect(screen.getByText('Não é possível enviar mensagens para esta conta.')).toBeOnTheScreen();
-    expect(screen.queryByText('Bloqueio')).toBeNull();
+    expect(
+      screen.getByText('Não enviada. Não é possível enviar mensagens para esta conta.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/Bloqueio/)).toBeNull();
 
     await type('Outra');
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
 
-    expect(screen.getAllByText('Não enviada')).toHaveLength(2);
-    expect(screen.queryByText('nope')).toBeNull();
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
+    expect(
+      screen.getByText('Não enviada. Não é possível enviar mensagens para esta conta.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/nope/)).toBeNull();
   });
 
   it.each([
@@ -622,9 +776,213 @@ describe('ChatRoomScreen: bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code }));
 
-    expect(screen.getByText(reason)).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    expect(screen.getByText(`Não enviada. ${reason}`)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: RETRY_LINE })).toBeNull();
+    expect(screen.queryByText(RETRY_LINE)).toBeNull();
     expect(screen.getByRole('button', { name: 'Descartar' })).toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: grouped bubbles', () => {
+  const bubbles = () => screen.getAllByTestId('message-bubble');
+  const rows = () => screen.getAllByTestId('message-row');
+
+  it('joins one sender under 5 minutes into a group, squared on their side where bubbles meet', async () => {
+    await renderLoaded([
+      message('m3', 'u1', 'Terceira', today(9, 9)),
+      message('m2', 'u1', 'Segunda', today(9, 7)),
+      message('m1', 'u1', 'Primeira', today(9, 5)),
+    ]);
+
+    // Newest first, as the inverted list renders them: bottom of the group first.
+    const [last, middle, first] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(last).toMatchObject({ borderRadius: 20, borderTopLeftRadius: 4, borderBottomLeftRadius: 20 });
+    expect(middle).toMatchObject({ borderTopLeftRadius: 4, borderBottomLeftRadius: 4 });
+    expect(first).toMatchObject({ borderTopLeftRadius: 20, borderBottomLeftRadius: 4 });
+    for (const style of [last, middle, first]) {
+      expect(style).toMatchObject({
+        maxWidth: '85%',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        backgroundColor: colors.bgContrast50,
+      });
+      expect(style.borderTopRightRadius).toBeUndefined();
+    }
+    // 2 dp between bubbles of the group, 12 above it.
+    expect(rows().map((row) => StyleSheet.flatten(row.props.style).paddingTop)).toEqual([
+      CLUSTER_GAP,
+      CLUSTER_GAP,
+      GROUP_GAP,
+    ]);
+    expect([CLUSTER_GAP, GROUP_GAP]).toEqual([2, 12]);
+    // The time shows once, under the newest bubble.
+    expect(screen.getByText('09:09')).toBeOnTheScreen();
+    expect(screen.queryByText('09:07')).not.toBeOnTheScreen();
+    expect(screen.queryByText('09:05')).not.toBeOnTheScreen();
+  });
+
+  it('squares my bubbles on the right, in primary, with Enviada under the group', async () => {
+    await renderLoaded([
+      message('m2', 'me', 'Fechado', today(9, 6)),
+      message('m1', 'me', 'Bora', today(9, 5)),
+      message('m0', 'u1', 'Jogo hoje?', today(9, 4)),
+    ]);
+
+    const [last, first, theirs] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(last).toMatchObject({ borderTopRightRadius: 4, borderBottomRightRadius: 20, backgroundColor: colors.primary });
+    expect(first).toMatchObject({ borderTopRightRadius: 20, borderBottomRightRadius: 4, backgroundColor: colors.primary });
+    expect(last.borderTopLeftRadius).toBeUndefined();
+    // A sender change starts a new group, however close in time.
+    expect(theirs).toMatchObject({ borderTopLeftRadius: 20, borderBottomLeftRadius: 20 });
+    expect(rows().map((row) => StyleSheet.flatten(row.props.style).paddingTop)).toEqual([2, 12, 12]);
+    expect(screen.getByText('Fechado')).toHaveStyle({ color: colors.onPrimary });
+    expect(screen.getByText('Jogo hoje?')).toHaveStyle({ color: colors.text });
+    expect(screen.getAllByText('Enviada')).toHaveLength(1);
+    expect(screen.getByText('09:06')).toBeOnTheScreen();
+    expect(screen.getByText('09:04')).toBeOnTheScreen();
+  });
+
+  it('shows a pending bubble in primary at 60%, joined to my group', async () => {
+    await renderLoaded([message('m1', 'me', 'Oi', new Date(Date.now() - 60_000))]);
+    await type('Tudo bem?');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    const [pending, sent] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(pending.backgroundColor).toBe(colors.primaryPending);
+    expect(colors.primaryPending).toBe(`${colors.primary}99`);
+    expect(sent.backgroundColor).toBe(colors.primary);
+    expect(pending).toMatchObject({ borderTopRightRadius: 4 });
+    expect(screen.getByText('Enviando…')).toBeOnTheScreen();
+    expect(screen.queryByText('Enviada')).not.toBeOnTheScreen();
+  });
+
+  it('shows 1 to 3 emoji large and without a bubble', async () => {
+    await renderLoaded([
+      message('m2', 'u1', '🎮🔥', today(9, 6)),
+      message('m1', 'u1', 'Olha 🎮', today(9, 5)),
+    ]);
+
+    const emoji = screen.getByTestId('message-emoji');
+    expect(emoji).toHaveTextContent('🎮🔥');
+    expect(emoji).toHaveStyle({ fontSize: 45 });
+    expect(emoji.props.accessibilityLabel).toBe('Ana Souza: 🎮🔥, 09:06');
+    // Text with an emoji keeps its bubble.
+    expect(bubbles()).toHaveLength(1);
+    expect(screen.getByText('Olha 🎮')).toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: keyboard', () => {
+  const withInset = {
+    frame: { x: 0, y: 0, width: 390, height: 800 },
+    insets: { top: 24, left: 0, right: 0, bottom: 34 },
+  };
+
+  it('pins the composer to the keyboard, above the bottom inset while it is closed', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    // Closed: the screen pads the inset under it. Open: it rides on the keyboard, which covers
+    // that inset too, so it moves by the keyboard's height less the inset.
+    expect(screen.getByTestId('composer-sticky').props.offset).toEqual({ closed: 0, opened: 34 });
+    expect(screen.getByTestId('composer-sticky')).toContainElement(screen.getByLabelText('Mensagem'));
+  });
+
+  it('lifts the inverted list with the keyboard by as much as the composer rises', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    const list = screen.getByTestId('message-list');
+    expect(list.props.inverted).toBe(true);
+    expect(list.props.offset).toBe(34);
+    expect(list.props.keyboardLiftBehavior).toBe('always');
+  });
+
+  it('moves the new messages pill with the composer', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));
+
+    const sticky = await screen.findByTestId('new-messages-sticky');
+    expect(sticky.props.offset).toEqual({ closed: 0, opened: 34 });
+    expect(sticky).toContainElement(screen.getByRole('button', { name: 'Novas mensagens' }));
+  });
+
+  it('reports every scroll frame, so the keyboard lift never works from a stale offset', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    expect(screen.getByTestId('message-list').props.scrollEventThrottle).toBeLessThanOrEqual(16);
+  });
+
+  it('draws the fade above the connection banner, not over it', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await act(async () => useChatConnection.setState({ status: 'connecting', attempt: 0 }));
+
+    const sticky = screen.getByTestId('composer-sticky');
+    const fade = screen.getByTestId('composer-fade');
+    expect(fade.parent).toBe(sticky);
+    expect(fade).toHaveStyle({ position: 'absolute', bottom: '100%', height: 12 });
+    expect(fade.props.pointerEvents).toBe('none');
+    // First in the sticky footer, which the banner and then the composer fill.
+    const children = sticky.children.filter((child) => typeof child !== 'string');
+    expect(children[0]).toBe(fade);
+    expect(screen.getByText('Conectando…')).toBeOnTheScreen();
+  });
+
+  describe('states without a list', () => {
+    const keyboard = useReanimatedKeyboardAnimation();
+    // The types describe the web stub, which takes no argument; jest runs the native helper.
+    const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => {
+      paddingBottom?: number;
+    };
+
+    afterEach(() => {
+      keyboard.height.value = 0;
+      keyboard.progress.value = 0;
+    });
+
+    it('keeps the empty conversation above the composer when the keyboard opens', async () => {
+      metrics = withInset;
+      keyboard.height.value = -300;
+      keyboard.progress.value = 1;
+      await renderLoaded([]);
+
+      const area = screen.getByTestId('chat-state-area');
+      expect(area).toContainElement(screen.getByTestId('chat-empty'));
+      // The composer rises by 300 − 34; the state area gives up as much room.
+      expect(readAnimatedStyle(area).paddingBottom).toBe(266);
+    });
+
+    it('takes the full height while the keyboard is closed', async () => {
+      metrics = withInset;
+      await renderLoaded([]);
+
+      expect(readAnimatedStyle(screen.getByTestId('chat-state-area')).paddingBottom).toBe(0);
+    });
+
+    it('keeps loading and the load error above the composer too', async () => {
+      keyboard.height.value = -300;
+      keyboard.progress.value = 1;
+      let fail: (error: Error) => void = () => undefined;
+      mocked.messages.mockReturnValueOnce(new Promise<MessagePage>((_, reject) => (fail = reject)));
+      queryClient.setQueryData(conversationsKey, [withAna]);
+      await renderRoom();
+
+      expect(screen.getByTestId('chat-state-area')).toContainElement(screen.getByLabelText('Carregando'));
+      expect(readAnimatedStyle(screen.getByTestId('chat-state-area')).paddingBottom).toBe(300);
+      await act(async () => fail(new ApiError(500, 'server_error', 'Erro')));
+      expect(screen.getByTestId('chat-state-area')).toContainElement(
+        await screen.findByText('Não foi possível carregar as mensagens'),
+      );
+    });
+  });
+
+  it('uses no offset without a bottom inset', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    expect(screen.getByTestId('composer-sticky').props.offset).toEqual({ closed: 0, opened: 0 });
+    expect(screen.getByTestId('message-list').props.offset).toBe(0);
   });
 });
 
@@ -632,16 +990,26 @@ describe('ChatRoomScreen: composer', () => {
   it('sends only non-blank text, up to 2000 characters, and keeps the draft', async () => {
     await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
     const field = screen.getByLabelText('Mensagem');
-    expect(field.props.placeholder).toBe('Mensagem');
+    expect(field.props.placeholder).toBe('Escreva uma mensagem');
     expect(field.props.maxLength).toBe(2000);
     expect(field.props.multiline).toBe(true);
+    // Grows up to 12 lines of 20 (15 at 1.3), then scrolls.
+    expect(field).toHaveStyle({ maxHeight: 240, lineHeight: 20 });
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
+    expect(screen.getByTestId('send-circle')).toHaveStyle({ backgroundColor: colors.controlDisabled });
 
     await type('   ');
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
 
     await type('Rascunho');
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeEnabled();
+    expect(screen.getByTestId('send-circle')).toHaveStyle({
+      backgroundColor: colors.primary,
+      width: 40,
+      height: 40,
+    });
+    // A real 48 dp target around the 40 dp circle.
+    expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toHaveStyle({ width: 48, height: 48 });
     expect(useChatStore.getState().drafts[CONV]).toBe('Rascunho');
 
     await screen.unmount();
@@ -673,6 +1041,8 @@ describe('ChatRoomScreen: composer', () => {
 
     await type('E aí');
     await screen.unmount();
+    // Reanimated tears the send button's animated style down on a 0 ms frame; run only what is due.
+    await act(async () => jest.advanceTimersByTime(0));
     expect(typingEvents()).toEqual([
       'typing:start',
       'typing:stop',
@@ -767,7 +1137,7 @@ describe('ChatRoomScreen: new messages pill', () => {
     await type('Falhou');
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
 
     await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
     await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));
@@ -806,5 +1176,445 @@ describe('ChatRoomScreen: new messages pill', () => {
 
     expect(scrollTo).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Novas mensagens' })).not.toBeOnTheScreen();
+  });
+});
+
+// ---------- message interactions ----------
+
+const longPress = async (text: string) => {
+  await fireEvent(within(screen.getByTestId('message-list')).getByText(text), 'longPress');
+};
+const menu = () => within(screen.getByTestId('message-menu'));
+const pillBody = () => StyleSheet.flatten(screen.getByTestId('reactions-pill-body').props.style);
+
+/** Drags a message's row right through `path` (translationX values) and releases at the last one. */
+async function swipe(key: string, path: number[]) {
+  await act(async () => {
+    fireGestureHandler(getByGestureTestId(`reply-swipe-${key}`), [
+      { state: State.BEGAN, translationX: 0 },
+      { state: State.ACTIVE, translationX: path[0] },
+      ...path.slice(1).map((translationX) => ({ translationX })),
+      { state: State.END, translationX: path[path.length - 1] },
+    ]);
+  });
+}
+
+/** Loaded, joined and caught up: no refetch left that could race the test. */
+async function settled(items: Message[]) {
+  await renderLoaded(items);
+  await answerJoin();
+  await caughtUp();
+}
+
+describe('ChatRoomScreen: message menu', () => {
+  it('opens on a long press with a haptic: the message, the reactions and its actions', async () => {
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    await longPress('Bora jogar?');
+
+    expect(haptic).toHaveBeenCalledWith('longPress');
+    expect(screen.getByTestId('message-menu-preview')).toHaveTextContent('Bora jogar?');
+    expect(menu().getByTestId('message-menu-reactions')).toBeOnTheScreen();
+    for (const label of ['Responder', 'Copiar texto', 'Apagar para mim']) {
+      expect(menu().getByRole('button', { name: label })).toBeOnTheScreen();
+    }
+    expect(menu().queryByRole('button', { name: 'Descartar' })).not.toBeOnTheScreen();
+  });
+
+  it('opens on a long press of an emoji-only message too', async () => {
+    await settled([message('m1', 'u1', '🎮', today(9, 5))]);
+    await longPress('🎮');
+    expect(screen.getByTestId('message-menu')).toBeOnTheScreen();
+  });
+
+  it('offers only Copiar texto and Descartar on a message still pending, and Descartar throws it away', async () => {
+    await settled([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Ainda indo');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    await longPress('Ainda indo');
+
+    expect(menu().queryByTestId('message-menu-reactions')).not.toBeOnTheScreen();
+    expect(menu().queryByRole('button', { name: 'Responder' })).not.toBeOnTheScreen();
+    expect(menu().queryByRole('button', { name: 'Apagar para mim' })).not.toBeOnTheScreen();
+    await fireEvent.press(menu().getByRole('button', { name: 'Descartar' }));
+
+    expect(screen.queryByText('Ainda indo')).not.toBeOnTheScreen();
+    expect(useChatStore.getState().pending[CONV]).toBeUndefined();
+    expect(screen.queryByTestId('message-menu')).not.toBeOnTheScreen();
+  });
+
+  it('copies the text and says so', async () => {
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Copiar texto' }));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('Bora jogar?');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Texto copiado'));
+    expect(screen.queryByTestId('message-menu')).not.toBeOnTheScreen();
+  });
+
+  it('deletes a message for me only after the confirmation', async () => {
+    await settled([message('m2', 'u1', 'Fica', today(9, 6)), message('m1', 'u1', 'Some', today(9, 5))]);
+    // The server no longer sends it to me once deleted.
+    mocked.messages.mockResolvedValue(page([message('m2', 'u1', 'Fica', today(9, 6))]));
+
+    await longPress('Some');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    expect(screen.getByText('Apagar mensagem para você?')).toBeOnTheScreen();
+    expect(screen.getByText('A outra pessoa continua vendo.')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(mocked.hideMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('Some')).toBeOnTheScreen();
+
+    await longPress('Some');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    expect(mocked.hideMessage).toHaveBeenCalledWith(CONV, 'm1');
+    expect(screen.queryByText('Some')).not.toBeOnTheScreen();
+    expect(screen.getByText('Fica')).toBeOnTheScreen();
+    expect(screen.queryByText('Apagar mensagem para você?')).not.toBeOnTheScreen();
+  });
+
+  it('brings the message back and says so when deleting fails', async () => {
+    await settled([message('m1', 'u1', 'Some', today(9, 5))]);
+    mocked.hideMessage.mockRejectedValue(new Error('boom'));
+
+    await longPress('Some');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Não foi possível apagar a mensagem.'));
+    expect(await screen.findByText('Some')).toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: reactions', () => {
+  it('shows my reaction at once, outlined as mine, and keeps it when the server agrees', async () => {
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    let agree: () => void = () => undefined;
+    mocked.addReaction.mockReturnValue(new Promise<void>((done) => (agree = done)));
+
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Reagir com ❤️' }));
+
+    expect(mocked.addReaction).toHaveBeenCalledWith(CONV, 'm1', '❤️');
+    expect(screen.queryByTestId('message-menu')).not.toBeOnTheScreen();
+    expect(within(screen.getByTestId('reactions-pill')).getByText('❤️')).toBeOnTheScreen();
+    expect(pillBody().borderColor).toBe(colors.primary);
+
+    await act(async () => agree());
+    expect(screen.getByTestId('reactions-pill')).toBeOnTheScreen();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('takes the reaction back and says so when it fails', async () => {
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    mocked.addReaction.mockRejectedValue(new Error('boom'));
+
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Reagir com 🔥' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Não foi possível reagir à mensagem.'));
+    expect(screen.queryByTestId('reactions-pill')).not.toBeOnTheScreen();
+  });
+
+  it('says I used my 5 reactions when the server answers 409', async () => {
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    mocked.addReaction.mockRejectedValue(new ApiError(409, 'reaction_limit', 'limite'));
+
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Reagir com 🔥' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Você já usou 5 reações nesta mensagem.'));
+    expect(screen.queryByTestId('reactions-pill')).not.toBeOnTheScreen();
+  });
+
+  it('does not try a sixth emoji of mine', async () => {
+    const mine = ['😂', '❤️', '👍', '😮', '😢'].map((emoji) => ({ emoji, userId: 'me' }));
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5), { reactions: mine })]);
+
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Reagir com 🔥' }));
+
+    expect(mocked.addReaction).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith('Você já usou 5 reações nesta mensagem.');
+  });
+
+  it('takes back a reaction of mine chosen again in the menu', async () => {
+    await settled([
+      message('m1', 'u1', 'Bora jogar?', today(9, 5), { reactions: [{ emoji: '🔥', userId: 'me' }] }),
+    ]);
+    await longPress('Bora jogar?');
+    await fireEvent.press(menu().getByRole('button', { name: 'Remover reação 🔥' }));
+
+    expect(mocked.removeReaction).toHaveBeenCalledWith(CONV, 'm1', '🔥');
+    expect(mocked.addReaction).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('reactions-pill')).not.toBeOnTheScreen();
+  });
+
+  it('a tap on the pill takes back my first reaction, and puts it back if that fails', async () => {
+    await settled([
+      message('m1', 'u1', 'Bora jogar?', today(9, 5), {
+        reactions: [
+          { emoji: '😂', userId: 'u1' },
+          { emoji: '🔥', userId: 'me' },
+        ],
+      }),
+    ]);
+    expect(pillBody().borderColor).toBe(colors.primary);
+    mocked.removeReaction.mockRejectedValueOnce(new Error('boom'));
+
+    await fireEvent.press(screen.getByTestId('reactions-pill'));
+    expect(mocked.removeReaction).toHaveBeenCalledWith(CONV, 'm1', '🔥');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Não foi possível remover a reação.'));
+    expect(within(screen.getByTestId('reactions-pill')).getByText('🔥')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('reactions-pill'));
+    await waitFor(() =>
+      expect(within(screen.getByTestId('reactions-pill')).queryByText('🔥')).not.toBeOnTheScreen(),
+    );
+    expect(pillBody().borderColor).toBe(colors.bg);
+    expect(screen.queryByTestId('message-menu')).not.toBeOnTheScreen();
+  });
+
+  it('a tap on a pill with none of mine opens the menu', async () => {
+    await settled([
+      message('m1', 'u1', 'Bora jogar?', today(9, 5), { reactions: [{ emoji: '😂', userId: 'u1' }] }),
+    ]);
+    await fireEvent.press(screen.getByTestId('reactions-pill'));
+
+    expect(mocked.removeReaction).not.toHaveBeenCalled();
+    expect(screen.getByTestId('message-menu')).toBeOnTheScreen();
+  });
+
+  it('shows the other person reacting, and taking it back, as it happens', async () => {
+    await settled([message('m1', 'me', 'Vamos?', today(9, 5))]);
+    const event = (action: 'add' | 'remove') => ({
+      conversationId: CONV,
+      messageId: 'm1',
+      emoji: '😂',
+      userId: 'u1',
+      action,
+    });
+
+    await act(async () => chatSocket.fire('message:reaction', event('add')));
+    expect(within(await screen.findByTestId('reactions-pill')).getByText('😂')).toBeOnTheScreen();
+    expect(pillBody().borderColor).toBe(colors.bg);
+
+    await act(async () => chatSocket.fire('message:reaction', event('remove')));
+    await waitFor(() => expect(screen.queryByTestId('reactions-pill')).not.toBeOnTheScreen());
+  });
+
+  it('never brings back a message I deleted when a reaction to it arrives', async () => {
+    await settled([message('m2', 'u1', 'Fica', today(9, 6)), message('m1', 'u1', 'Some', today(9, 5))]);
+    mocked.messages.mockResolvedValue(page([message('m2', 'u1', 'Fica', today(9, 6))]));
+    await longPress('Some');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    await act(async () =>
+      chatSocket.fire('message:reaction', {
+        conversationId: CONV,
+        messageId: 'm1',
+        emoji: '😂',
+        userId: 'u1',
+        action: 'add',
+      }),
+    );
+    // Let any update it caused render before looking.
+    await act(() => new Promise<void>((done) => setTimeout(done, 10)));
+
+    expect(screen.queryByText('Some')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('reactions-pill')).not.toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: replies', () => {
+  const preview = () => within(screen.getByTestId('reply-preview'));
+
+  it('swiping a message right past 56 replies to it; the reply goes out with replyToId', async () => {
+    await settled([message('m1', 'u1', 'Qual jogo?', today(9, 5))]);
+    await swipe('m-m1', [12, 40, 60, 70]);
+
+    expect(preview().getByText('Respondendo a Ana Souza')).toBeOnTheScreen();
+    expect(preview().getByText('Qual jogo?')).toBeOnTheScreen();
+    expect(haptic).toHaveBeenCalledTimes(1);
+
+    await type('Hollow Knight');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(chatSocket.pendingAck('message:send')?.payload).toMatchObject({
+      conversationId: CONV,
+      content: 'Hollow Knight',
+      replyToId: 'm1',
+    });
+    expect(screen.queryByTestId('reply-preview')).not.toBeOnTheScreen();
+    // The pending reply already quotes the original.
+    expect(screen.getByLabelText('Em resposta a Ana Souza: Qual jogo?')).toBeOnTheScreen();
+  });
+
+  it('does nothing when the swipe is released before 56', async () => {
+    await settled([message('m1', 'u1', 'Qual jogo?', today(9, 5))]);
+    await swipe('m-m1', [12, 40, 55]);
+
+    expect(screen.queryByTestId('reply-preview')).not.toBeOnTheScreen();
+    expect(haptic).not.toHaveBeenCalled();
+  });
+
+  it('cannot swipe to reply to a message still pending', async () => {
+    await settled([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await type('Indo');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    const { clientMessageId } = chatSocket.pendingAck('message:send')?.payload as { clientMessageId: string };
+
+    const gesture = getByGestureTestId(`reply-swipe-m-${clientMessageId}`) as unknown as {
+      config: { enabled: boolean };
+    };
+    expect(gesture.config.enabled).toBe(false);
+  });
+
+  it('cancels the reply with the x, and the next message goes out without it', async () => {
+    await settled([message('m1', 'u1', 'Qual jogo?', today(9, 5))]);
+    await swipe('m-m1', [12, 70]);
+
+    const close = preview().getByRole('button', { name: 'Cancelar resposta' });
+    expect(StyleSheet.flatten(close.props.style)).toMatchObject({ width: 48, height: 48 });
+    await fireEvent.press(close);
+    expect(screen.queryByTestId('reply-preview')).not.toBeOnTheScreen();
+
+    await type('Oi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(chatSocket.pendingAck('message:send')?.payload).not.toHaveProperty('replyToId');
+  });
+
+  it('replies from the menu, and to my own message it says você', async () => {
+    await settled([message('m1', 'me', 'Minha pergunta', today(9, 5))]);
+    await longPress('Minha pergunta');
+    await fireEvent.press(menu().getByRole('button', { name: 'Responder' }));
+
+    expect(preview().getByText('Respondendo a você')).toBeOnTheScreen();
+    expect(screen.queryByTestId('message-menu')).not.toBeOnTheScreen();
+  });
+
+  it('stops replying when the message being answered is deleted for me', async () => {
+    await settled([message('m2', 'u1', 'Fica', today(9, 6)), message('m1', 'u1', 'Some', today(9, 5))]);
+    mocked.messages.mockResolvedValue(page([message('m2', 'u1', 'Fica', today(9, 6))]));
+    await swipe('m-m1', [12, 70]);
+    expect(screen.getByTestId('reply-preview')).toBeOnTheScreen();
+
+    await longPress('Some');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    expect(screen.queryByTestId('reply-preview')).not.toBeOnTheScreen();
+  });
+
+  it('shows the quote above a reply and goes to the original when it is loaded', async () => {
+    const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex').mockImplementation(() => undefined);
+    await settled([
+      message('m3', 'u1', 'Antiga demais', today(9, 7), {
+        replyTo: { id: 'm0', content: 'Não carregada', senderId: 'u1' },
+      }),
+      message('m2', 'u1', 'Hollow Knight', today(9, 6), {
+        replyTo: { id: 'm1', content: 'Qual jogo?', senderId: 'me' },
+      }),
+      message('m1', 'me', 'Qual jogo?', today(9, 5)),
+    ]);
+
+    const quote = screen.getByLabelText('Em resposta a você: Qual jogo?');
+    expect(StyleSheet.flatten(quote.props.style).minHeight).toBe(48);
+    await fireEvent.press(quote);
+    // Newest first: m3, m2, m1.
+    expect(scrollToIndex).toHaveBeenCalledWith(expect.objectContaining({ index: 2, animated: true }));
+
+    scrollToIndex.mockClear();
+    await fireEvent.press(screen.getByLabelText('Em resposta a Ana Souza: Não carregada'));
+    expect(scrollToIndex).not.toHaveBeenCalled();
+  });
+
+  it('forgets the reply when the room closes', async () => {
+    await settled([message('m1', 'u1', 'Qual jogo?', today(9, 5))]);
+    await swipe('m-m1', [12, 70]);
+    expect(useChatStore.getState().replying[CONV]?.id).toBe('m1');
+
+    await cleanup();
+    expect(useChatStore.getState().replying[CONV]).toBeUndefined();
+  });
+});
+
+describe('ChatRoomScreen: final fixes', () => {
+  it('drops the quote of loaded and pending replies when their original is deleted for me', async () => {
+    await settled([
+      message('m2', 'u1', 'Respondi', today(9, 6), {
+        replyTo: { id: 'm1', content: 'Segredo', senderId: 'me' },
+      }),
+      message('m1', 'me', 'Segredo', today(9, 5)),
+    ]);
+    await swipe('m-m1', [12, 70]);
+    await type('Mais uma');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(screen.getAllByLabelText('Em resposta a você: Segredo')).toHaveLength(2);
+    // The server shows the replies without the quote from now on.
+    mocked.messages.mockResolvedValue(
+      page([message('m2', 'u1', 'Respondi', today(9, 6), { replyTo: null })]),
+    );
+
+    await fireEvent(screen.getByLabelText('Você: Segredo, 09:05'), 'longPress');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    expect(screen.queryByLabelText('Em resposta a você: Segredo')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Segredo')).not.toBeOnTheScreen();
+    expect(screen.getByText('Respondi')).toBeOnTheScreen();
+    expect(screen.getByText('Mais uma')).toBeOnTheScreen();
+    // The pending reply still goes out as a reply; the server decides.
+    expect(chatSocket.pendingAck('message:send')?.payload).toMatchObject({ replyToId: 'm1' });
+  });
+
+  it('drops the quote when the original is deleted for me on another device', async () => {
+    await settled([
+      message('m2', 'u1', 'Respondi', today(9, 6), {
+        replyTo: { id: 'm1', content: 'Segredo', senderId: 'me' },
+      }),
+      message('m1', 'me', 'Segredo', today(9, 5)),
+    ]);
+
+    await act(async () => chatSocket.fire('message:hidden', { conversationId: CONV, messageId: 'm1' }));
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Em resposta a você: Segredo')).not.toBeOnTheScreen(),
+    );
+    expect(screen.getByText('Respondi')).toBeOnTheScreen();
+  });
+
+  it('closes the keyboard before the menu opens', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    await longPress('Bora jogar?');
+
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('message-menu')).toBeOnTheScreen();
+  });
+
+  it('gives a short quote a real 48 wide target', async () => {
+    await settled([
+      message('m2', 'u1', 'Sim', today(9, 6), { replyTo: { id: 'm1', content: 'ok', senderId: 'me' } }),
+      message('m1', 'me', 'ok', today(9, 5)),
+    ]);
+    const quote = screen.getByLabelText('Em resposta a você: ok');
+    expect(StyleSheet.flatten(quote.props.style)).toMatchObject({ minWidth: 48, minHeight: 48 });
+  });
+
+  it('tucks the time line under the pill of the last bubble only', async () => {
+    const reactions = [{ emoji: '😂', userId: 'u1' }];
+    await settled([
+      message('m2', 'me', 'Segunda', today(9, 6), { reactions }),
+      message('m1', 'me', 'Primeira', today(9, 5), { reactions }),
+    ]);
+    const [last, first] = screen
+      .getAllByTestId('reactions-pill')
+      .map((pill) => StyleSheet.flatten(pill.props.style));
+    expect(last.marginBottom).toBeLessThan(0);
+    expect(first.marginBottom).toBeUndefined();
   });
 });

@@ -10,6 +10,8 @@ import {
 } from '@tanstack/react-query';
 
 import { useSession } from '@/features/auth';
+import { ApiError } from '@/lib/http/errors';
+import { showToast } from '@/lib/toast';
 
 import { chatApi } from './api';
 import { mergeIntoPages } from './mergeMessages';
@@ -153,21 +155,29 @@ function pagesHold(data: MessagePages | undefined, messageId: string): boolean {
 }
 
 /**
- * A message I deleted for myself (here or on another device) leaves the loaded pages. If it was
- * the conversation's last message the list is read again: the server knows the new last one.
+ * A message I deleted for myself (here or on another device) leaves the loaded pages, and the
+ * loaded replies to it lose its quote. If it was the conversation's last message the list is read
+ * again: the server knows the new last one.
  */
 export function removeMessageFromCache(
   client: QueryClient,
   conversationId: string,
   messageId: string,
 ): void {
+  // Replies to it lose its quote too, as the server shows them to me from now on.
+  const touches = (item: Message) => item.id === messageId || item.replyTo?.id === messageId;
   updateNowAndAfterFetch<MessagePages>(client, messagesKey(conversationId), (data) =>
-    data && pagesHold(data, messageId)
+    data?.pages.some((page) => page.items.some(touches))
       ? {
           ...data,
           pages: data.pages.map((page) =>
-            page.items.some((item) => item.id === messageId)
-              ? { ...page, items: page.items.filter((item) => item.id !== messageId) }
+            page.items.some(touches)
+              ? {
+                  ...page,
+                  items: page.items
+                    .filter((item) => item.id !== messageId)
+                    .map((item) => (item.replyTo?.id === messageId ? { ...item, replyTo: null } : item)),
+                }
               : page,
           ),
         }
@@ -221,5 +231,261 @@ export function applyReactionToCache(client: QueryClient, change: ReactionChange
         };
       }),
     };
+  });
+}
+
+// ---------- list actions ----------
+
+/** Sets fields of one conversation in the list, now and on top of a list response on its way. */
+function patchInList(client: QueryClient, conversationId: string, patch: Partial<Conversation>): void {
+  updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) => {
+    const current = data?.find((item) => item.id === conversationId);
+    if (!data || !current) return data;
+    const changes = (Object.keys(patch) as (keyof Conversation)[]).some(
+      (key) => current[key] !== patch[key],
+    );
+    return changes
+      ? data.map((item) => (item.id === conversationId ? { ...item, ...patch } : item))
+      : data;
+  });
+}
+
+/** The list says again what the server holds; used when an optimistic change failed. */
+function refetchList(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: conversationsKey });
+}
+
+/** Puts `unread: true` back on these conversations (an optimistic mark-read that failed). */
+function restoreUnread(client: QueryClient, ids: ReadonlySet<string>): void {
+  if (ids.size === 0) return;
+  updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
+    data?.some((item) => ids.has(item.id) && !item.unread)
+      ? data.map((item) => (ids.has(item.id) ? { ...item, unread: true } : item))
+      : data,
+  );
+}
+
+/** The ids of the listed conversations that are unread now (`only`: just that one). */
+function unreadIds(client: QueryClient, only?: string): Set<string> {
+  const list = client.getQueryData<Conversation[]>(conversationsKey) ?? [];
+  return new Set(
+    list.filter((item) => item.unread && (only === undefined || item.id === only)).map((item) => item.id),
+  );
+}
+
+/**
+ * Marks one conversation read: the list at once, the server after. A failure puts the unread flag
+ * back (also while offline, when reading the list again fails too) and reads the list again.
+ */
+export function useMarkRead() {
+  const client = useQueryClient();
+  return useMutation<void, Error, string, Set<string>>({
+    mutationFn: (conversationId) => chatApi.markRead(conversationId),
+    onMutate: (conversationId) => {
+      const before = unreadIds(client, conversationId);
+      markReadInList(client, conversationId);
+      return before;
+    },
+    onError: (_error, _conversationId, before) => {
+      if (before) restoreUnread(client, before);
+      refetchList(client);
+      showToast('Não foi possível marcar a conversa como lida');
+    },
+  });
+}
+
+/** Marks every conversation read (muted ones too), optimistically; a failure puts them back. */
+export function useMarkAllRead() {
+  const client = useQueryClient();
+  return useMutation<void, Error, void, Set<string>>({
+    mutationFn: () => chatApi.markAllRead(),
+    onMutate: () => {
+      const before = unreadIds(client);
+      updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
+        data?.some((item) => item.unread)
+          ? data.map((item) => (item.unread ? { ...item, unread: false } : item))
+          : data,
+      );
+      return before;
+    },
+    onError: (_error, _variables, before) => {
+      if (before) restoreUnread(client, before);
+      refetchList(client);
+      showToast('Não foi possível marcar as conversas como lidas');
+    },
+  });
+}
+
+export type MuteVariables = { conversationId: string; muted: boolean };
+
+/** Mutes or unmutes a conversation, optimistically; a failure puts it back as it was. */
+export function useMuteConversation() {
+  const client = useQueryClient();
+  return useMutation<void, Error, MuteVariables>({
+    mutationFn: ({ conversationId, muted }) => chatApi.setMuted(conversationId, muted),
+    onMutate: ({ conversationId, muted }) => patchInList(client, conversationId, { muted }),
+    onSuccess: (_data, { muted }) => {
+      showToast(muted ? 'Conversa silenciada' : 'Conversa reativada');
+    },
+    onError: (_error, { conversationId, muted }) => {
+      patchInList(client, conversationId, { muted: !muted });
+      refetchList(client);
+      showToast(muted ? 'Não foi possível silenciar a conversa' : 'Não foi possível reativar a conversa');
+    },
+  });
+}
+
+/** What leaving took away, to put back if the server says no. */
+type LeaveSnapshot = { item: Conversation; index: number; messages: MessagePages | undefined } | null;
+
+/**
+ * Leaves a conversation: it leaves the list at once and its loaded messages are forgotten (a new
+ * message brings it back with only what comes after). A failure puts the conversation back where
+ * it was (also while offline) and reads the list again.
+ */
+export function useLeaveConversation() {
+  const client = useQueryClient();
+  return useMutation<void, Error, string, LeaveSnapshot>({
+    mutationFn: (conversationId) => chatApi.leave(conversationId),
+    onMutate: (conversationId) => {
+      const list = client.getQueryData<Conversation[]>(conversationsKey) ?? [];
+      const index = list.findIndex((item) => item.id === conversationId);
+      const snapshot: LeaveSnapshot =
+        index < 0
+          ? null
+          : {
+              item: list[index],
+              index,
+              messages: client.getQueryData<MessagePages>(messagesKey(conversationId)),
+            };
+      updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) =>
+        data?.some((item) => item.id === conversationId)
+          ? data.filter((item) => item.id !== conversationId)
+          : data,
+      );
+      client.removeQueries({ queryKey: messagesKey(conversationId), exact: true });
+      return snapshot;
+    },
+    onError: (_error, conversationId, snapshot) => {
+      if (snapshot) {
+        updateNowAndAfterFetch<Conversation[]>(client, conversationsKey, (data) => {
+          if (!data || data.some((item) => item.id === conversationId)) return data;
+          const at = Math.min(snapshot.index, data.length);
+          return [...data.slice(0, at), snapshot.item, ...data.slice(at)];
+        });
+        if (snapshot.messages && client.getQueryData(messagesKey(conversationId)) === undefined) {
+          client.setQueryData(messagesKey(conversationId), snapshot.messages);
+        }
+      }
+      refetchList(client);
+      showToast('Não foi possível sair da conversa');
+    },
+  });
+}
+
+// ---------- message actions ----------
+
+/** Each person may use up to this many different emoji on one message (the server says 409). */
+export const MAX_REACTIONS_PER_USER = 5;
+export const REACTION_LIMIT_MESSAGE = 'Você já usou 5 reações nesta mensagem.';
+
+export type ReactionVariables = { conversationId: string; messageId: string; emoji: string };
+
+/** The loaded copy of a message, if any. */
+function findLoaded(client: QueryClient, conversationId: string, messageId: string): Message | undefined {
+  const data = client.getQueryData<MessagePages>(messagesKey(conversationId));
+  for (const page of data?.pages ?? []) {
+    const found = page.items.find((item) => item.id === messageId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function hasReaction(client: QueryClient, { conversationId, messageId, emoji }: ReactionVariables, userId: string) {
+  return (
+    findLoaded(client, conversationId, messageId)?.reactions.some(
+      (item) => item.emoji === emoji && item.userId === userId,
+    ) ?? false
+  );
+}
+
+/** What an optimistic reaction change did, so a failure undoes exactly that. */
+type ReactionContext = { userId: string; changed: boolean };
+
+/**
+ * Reacts to a message with an emoji: it shows at once and goes away again if the server refuses
+ * (409 past 5 emoji per person: "Você já usou 5 reações nesta mensagem."). Someone else's
+ * reactions arrive through the realtime bridge.
+ */
+export function useReact() {
+  const client = useQueryClient();
+  return useMutation<void, Error, ReactionVariables, ReactionContext>({
+    mutationFn: ({ conversationId, messageId, emoji }) =>
+      chatApi.addReaction(conversationId, messageId, emoji),
+    onMutate: (variables) => {
+      const userId = useSession.getState().user?.id ?? '';
+      const changed = userId !== '' && !hasReaction(client, variables, userId);
+      if (changed) applyReactionToCache(client, { ...variables, userId, action: 'add' });
+      return { userId, changed };
+    },
+    onError: (error, variables, context) => {
+      if (context?.changed) {
+        applyReactionToCache(client, { ...variables, userId: context.userId, action: 'remove' });
+      }
+      showToast(
+        error instanceof ApiError && error.code === 'reaction_limit'
+          ? REACTION_LIMIT_MESSAGE
+          : 'Não foi possível reagir à mensagem.',
+      );
+    },
+  });
+}
+
+/** Takes my reaction back, at once; a failure puts it back. */
+export function useUnreact() {
+  const client = useQueryClient();
+  return useMutation<void, Error, ReactionVariables, ReactionContext>({
+    mutationFn: ({ conversationId, messageId, emoji }) =>
+      chatApi.removeReaction(conversationId, messageId, emoji),
+    onMutate: (variables) => {
+      const userId = useSession.getState().user?.id ?? '';
+      const changed = userId !== '' && hasReaction(client, variables, userId);
+      if (changed) applyReactionToCache(client, { ...variables, userId, action: 'remove' });
+      return { userId, changed };
+    },
+    onError: (_error, variables, context) => {
+      if (context?.changed) {
+        applyReactionToCache(client, { ...variables, userId: context.userId, action: 'add' });
+      }
+      showToast('Não foi possível remover a reação.');
+    },
+  });
+}
+
+/** Whether I may still add `emoji` to the message: at most 5 different ones of mine. */
+export function canAddReaction(message: Pick<Message, 'reactions'>, userId: string, emoji: string): boolean {
+  const mine = message.reactions.filter((item) => item.userId === userId);
+  return mine.some((item) => item.emoji === emoji) || mine.length < MAX_REACTIONS_PER_USER;
+}
+
+export type HideVariables = { conversationId: string; messageId: string };
+
+/**
+ * Deletes a message for me: it leaves the room at once (and the list's last message is read
+ * again). A failure reads the conversation again, which brings it back, since it is still there.
+ */
+export function useHideMessage() {
+  const client = useQueryClient();
+  return useMutation<void, Error, HideVariables>({
+    mutationFn: ({ conversationId, messageId }) => chatApi.hideMessage(conversationId, messageId),
+    onMutate: ({ conversationId, messageId }) =>
+      removeMessageFromCache(client, conversationId, messageId),
+    // A fetch that read the server before the hide landed may still hold it.
+    onSuccess: (_data, { conversationId, messageId }) =>
+      removeMessageFromCache(client, conversationId, messageId),
+    onError: (_error, { conversationId }) => {
+      void client.invalidateQueries({ queryKey: messagesKey(conversationId), exact: true });
+      showToast('Não foi possível apagar a mensagem.');
+    },
   });
 }

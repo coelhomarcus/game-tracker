@@ -42,6 +42,11 @@ export type PersonResult = {
   avatarUrl: string | null;
   bio: string | null;
   isFollowedByMe: boolean;
+  /**
+   * Whether the signed-in user may message this person now (blocks and their message policy).
+   * Only the people search says; absent where the server does not.
+   */
+  canMessage?: boolean;
 };
 
 /** One row of a followers/following list: a search result plus whether they follow the viewer. */
@@ -106,6 +111,7 @@ export function parsePersonResult(json: Json): PersonResult {
     avatarUrl: nullableString(json.avatarUrl),
     bio: nullableString(json.bio),
     isFollowedByMe: json.isFollowedByMe === true,
+    ...(typeof json.canMessage === 'boolean' ? { canMessage: json.canMessage } : {}),
   };
 }
 

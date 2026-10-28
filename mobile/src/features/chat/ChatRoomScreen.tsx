@@ -1,46 +1,64 @@
-import {
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
-  type Href,
-} from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ScrollViewProps,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardChatScrollView,
+  KeyboardStickyView,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatar, Button, EmptyState, Screen, Text } from '@/components';
+import { Button, ConfirmDialog, EmptyState, Screen, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
-import type { UserSummary } from '@/features/games/types';
+import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
-import { useHeaderHeight } from '@/lib/useHeaderHeight';
-import { resolveImageUrl } from '@/lib/imageUrl';
+import { showToast } from '@/lib/toast';
 import { colors, radii, space } from '@/theme/tokens';
 
 import { ChatComposer, useTypingSignal } from './ChatComposer';
+import { ChatHeaderMenu, ChatHeaderTitle } from './ChatHeader';
 import { useChatStore, type PendingMessage } from './chatStore';
 import { ConnectionBanner } from './ConnectionBanner';
+import { DateDivider } from './DateDivider';
+import { groupMessages, type GroupedItem } from './groupMessages';
 import { MessageBubble, type BubbleMessage } from './MessageBubble';
-import { useConversation, useMessages } from './queries';
-import type { Message } from './types';
+import { MessageContextMenu, type MessageMenuAction } from './MessageContextMenu';
+import {
+  canAddReaction,
+  REACTION_LIMIT_MESSAGE,
+  useConversation,
+  useHideMessage,
+  useMessages,
+  useReact,
+  useUnreact,
+} from './queries';
+import { summarizeReactions } from './ReactionsPill';
+import { SwipeToReply } from './SwipeToReply';
+import type { Message, Reaction } from './types';
 
 // The API answers 500 to an id that is not a UUID, so such an address is simply not a conversation.
 const CONVERSATION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Up to this far (px) from the newest message the person is following the conversation. */
 const NEAR_BOTTOM = 80;
-const HEADER_AVATAR_SIZE = 32;
 const NO_PENDING: PendingMessage[] = [];
-const NOT_FOUND_OPTIONS = { title: '', headerTitle: '' };
+/** After jumping near a quoted message that was not rendered yet, when to scroll to it exactly. */
+const SCROLL_RETRY_MS = 100;
+// Also clears the room's title and "…" when its first page answers 404.
+const NOT_FOUND_OPTIONS = { title: '', headerTitle: '', headerRight: undefined };
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -86,32 +104,19 @@ function ChatRoomLoader({ conversationId }: { conversationId: string }) {
 
 type MessageRow = BubbleMessage & {
   key: string;
+  /** The server's id; `null` while the message is still pending here. */
+  id: string | null;
+  senderId: string;
   /** Set while the message is still pending here. */
   clientMessageId: string | null;
+  reactions: Reaction[];
 };
 
-type RoomItem =
-  | { kind: 'message'; key: string; row: MessageRow }
-  | { kind: 'day'; key: string; label: string };
-
-const pad = (value: number) => String(value).padStart(2, '0');
-
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
-/** `Hoje`, `Ontem` or `dd/mm/aaaa`, in local time. */
-function dayLabel(date: Date, now: Date): string {
-  const day = startOfDay(date);
-  if (day === startOfDay(now)) return 'Hoje';
-  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
-  if (day === yesterday) return 'Ontem';
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
-}
+type RoomItem = GroupedItem<MessageRow>;
 
 /**
- * Newest first, for the inverted list: pending messages (they go out last) above the server's,
- * and a day separator after the oldest message of each day, so it shows above that day.
+ * Newest first, for the inverted list: pending messages (they go out last) above the server's.
+ * A server copy of a pending message (same clientMessageId) replaces it, under the same key.
  */
 function buildRows(
   server: Message[],
@@ -119,6 +124,7 @@ function buildRows(
   selfId: string | undefined,
   otherName: string,
 ): MessageRow[] {
+  const nameOf = (senderId: string) => (senderId === selfId ? 'você' : otherName);
   const rows: MessageRow[] = [];
   const seen = new Set<string>();
   const confirmed = new Set<string>();
@@ -130,12 +136,17 @@ function buildRows(
     rows.push({
       // The same key before and after confirmation, so the bubble is not recreated.
       key: `m-${message.clientMessageId ?? message.id}`,
+      id: message.id,
+      senderId: message.senderId,
       clientMessageId: null,
       content: message.content,
       createdAt: message.createdAt,
       mine,
       senderName: mine ? '' : displayName(message.sender) || otherName,
       status: 'sent',
+      reactions: message.reactions,
+      replyTo: message.replyTo,
+      replyToName: message.replyTo ? nameOf(message.replyTo.senderId) : undefined,
     });
   }
   const waiting = pending
@@ -143,6 +154,8 @@ function buildRows(
     .reverse()
     .map<MessageRow>((item) => ({
       key: `m-${item.clientMessageId}`,
+      id: null,
+      senderId: selfId ?? '',
       clientMessageId: item.clientMessageId,
       content: item.content,
       createdAt: item.createdAt,
@@ -150,73 +163,26 @@ function buildRows(
       senderName: '',
       status: item.status,
       reason: item.refusal,
+      reactions: [],
+      replyTo: item.replyTo ?? null,
+      replyToName: item.replyTo ? nameOf(item.replyTo.senderId) : undefined,
     }));
   return [...waiting, ...rows];
 }
 
-function withDays(rows: MessageRow[], now: Date): RoomItem[] {
-  const items: RoomItem[] = [];
-  rows.forEach((row, index) => {
-    items.push({ kind: 'message', key: row.key, row });
-    const older = rows[index + 1];
-    if (!older || startOfDay(older.createdAt) !== startOfDay(row.createdAt)) {
-      items.push({ kind: 'day', key: `day-${row.key}`, label: dayLabel(row.createdAt, now) });
-    }
-  });
-  return items;
-}
-
 const keyExtractor = (item: RoomItem) => item.key;
 
-function DaySeparator({ label }: { label: string }) {
+/**
+ * The loading, error and empty states: they shrink by as much as the composer rises with the
+ * keyboard (its height less the bottom inset), so their centred content stays above it.
+ */
+function AboveComposer({ inset, children }: { inset: number; children: ReactNode }) {
+  const { height } = useReanimatedKeyboardAnimation();
+  const keyboardStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -height.value - inset) }));
   return (
-    <View style={styles.day}>
-      <Text size="xs" style={styles.dayText}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-// ---------- header ----------
-
-type HeaderTitleProps = { conversationId: string; otherUser: UserSummary | null };
-
-function ChatHeaderTitle({ conversationId, otherUser }: HeaderTitleProps) {
-  const router = useRouter();
-  const typing = useChatStore((state) => state.typing[conversationId] === true);
-  const online = useChatStore((state) =>
-    otherUser ? state.online[otherUser.id] === true : false,
-  );
-  const name = otherUser ? displayName(otherUser) : 'Conversa';
-  const status = typing ? 'digitando…' : online ? 'online' : null;
-
-  const content = (
-    <>
-      <Avatar uri={resolveImageUrl(otherUser?.avatarUrl)} name={name} size={HEADER_AVATAR_SIZE} />
-      <View style={styles.headerText}>
-        <Text numberOfLines={1} weight="bold" tone="high">
-          {name}
-        </Text>
-        {status ? (
-          <Text size="xs" tone="medium">
-            {status}
-          </Text>
-        ) : null}
-      </View>
-    </>
-  );
-
-  if (!otherUser) return <View style={styles.headerTitle}>{content}</View>;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Perfil de ${name}${status ? `, ${status}` : ''}`}
-      onPress={() => router.push(`/users/${otherUser.id}` as Href)}
-      style={styles.headerTitle}
-    >
-      {content}
-    </Pressable>
+    <Animated.View testID="chat-state-area" style={[styles.fill, keyboardStyle]}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -228,16 +194,34 @@ type ChatRoomProps = {
 };
 
 function ChatRoom({ conversationId, messages }: ChatRoomProps) {
-  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const selfId = useSession((state) => state.user?.id);
   const conversation = useConversation(conversationId).data;
-  const otherUser = conversation?.otherUser ?? null;
+  // Leaving drops the conversation from the list while the room is still on screen (the stack
+  // pops it): the header keeps the last person known instead of flashing "Conversa".
+  const [lastOtherUser, setLastOtherUser] = useState(conversation?.otherUser ?? null);
+  if (conversation?.otherUser && conversation.otherUser !== lastOtherUser) {
+    setLastOtherUser(conversation.otherUser);
+  }
+  const otherUser = conversation?.otherUser ?? lastOtherUser;
   const otherName = otherUser ? displayName(otherUser) : 'Conversa';
   const pending = useChatStore((state) => state.pending[conversationId] ?? NO_PENDING);
   const retry = useChatStore((state) => state.retry);
   const discard = useChatStore((state) => state.discard);
   const typing = useTypingSignal(conversationId);
   const stopTyping = typing.stop;
+  const startReply = useChatStore((state) => state.startReply);
+  const messageHidden = useChatStore((state) => state.messageHidden);
+  const react = useReact();
+  const unreact = useUnreact();
+  const hide = useHideMessage();
+  /** The message whose menu is open (by row key, so it follows the message as it changes). */
+  const [menuKey, setMenuKey] = useState<string | null>(null);
+  /** The message waiting for the "Apagar para mim" confirmation. */
+  const [hideId, setHideId] = useState<string | null>(null);
+
+  // A reply being written belongs to this visit of the room.
+  useEffect(() => () => useChatStore.getState().cancelReply(conversationId), [conversationId]);
 
   const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = messages;
   // Opened only once the conversation is known to exist: the first page loaded, or failed with
@@ -260,10 +244,11 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   );
 
   // Stable across scrolls and new messages, so the header is not set again on each render. The
-  // title reads typing and presence from the store itself.
+  // title reads typing and presence from the store itself, the menu the conversation.
   const headerOptions = useMemo(
     () => ({
       headerTitle: () => <ChatHeaderTitle conversationId={conversationId} otherUser={otherUser} />,
+      headerRight: () => <ChatHeaderMenu conversationId={conversationId} />,
     }),
     [conversationId, otherUser],
   );
@@ -273,7 +258,13 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
       buildRows(data?.pages.flatMap((item) => item.items) ?? [], pending, selfId, otherName),
     [data, pending, selfId, otherName],
   );
-  const items = useMemo(() => withDays(rows, new Date()), [rows]);
+  const items = useMemo(() => groupMessages(rows, new Date()), [rows]);
+  // Closes by itself when its message goes away (deleted for me on another device).
+  const menuRow = menuKey === null ? null : (rows.find((row) => row.key === menuKey) ?? null);
+  const menuTarget = useMemo(
+    () => (menuRow ? { message: menuRow, sent: menuRow.id !== null } : null),
+    [menuRow],
+  );
 
   const listRef = useRef<FlatList<RoomItem>>(null);
   // Pending rows sit above the server's, so the newest incoming message is looked up on its own.
@@ -316,6 +307,94 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     }
   }
 
+  // ---------- message actions ----------
+
+  function openMenu(row: MessageRow) {
+    haptic('longPress');
+    // The menu's actions would sit under an open keyboard.
+    Keyboard.dismiss();
+    setMenuKey(row.key);
+  }
+
+  /** Adds my `emoji` to the message, or takes it back when it is already mine. */
+  function toggleReaction(row: MessageRow, emoji: string) {
+    if (row.id === null || !selfId) return;
+    const variables = { conversationId, messageId: row.id, emoji };
+    if (row.reactions.some((item) => item.userId === selfId && item.emoji === emoji)) {
+      unreact.mutate(variables);
+    } else if (!canAddReaction(row, selfId, emoji)) {
+      showToast(REACTION_LIMIT_MESSAGE);
+    } else {
+      react.mutate(variables);
+    }
+  }
+
+  /** The pill: takes back my first reaction, or opens the menu when none is mine. */
+  function pressReactions(row: MessageRow) {
+    const { myFirst } = summarizeReactions(row.reactions, selfId);
+    if (myFirst !== null && row.id !== null) {
+      unreact.mutate({ conversationId, messageId: row.id, emoji: myFirst });
+    } else {
+      openMenu(row);
+    }
+  }
+
+  function replyTo(row: MessageRow) {
+    if (row.id === null) return;
+    startReply(conversationId, { id: row.id, content: row.content, senderId: row.senderId });
+  }
+
+  async function copy(row: MessageRow) {
+    try {
+      await Clipboard.setStringAsync(row.content);
+      showToast('Texto copiado');
+    } catch {
+      showToast('Não foi possível copiar o texto.');
+    }
+  }
+
+  function menuAction(action: MessageMenuAction) {
+    const row = menuRow;
+    if (!row) return;
+    if (action === 'reply') replyTo(row);
+    else if (action === 'copy') void copy(row);
+    else if (action === 'hide' && row.id !== null) setHideId(row.id);
+    else if (action === 'discard' && row.clientMessageId) discard(conversationId, row.clientMessageId);
+  }
+
+  function confirmHide() {
+    const messageId = hideId;
+    setHideId(null);
+    if (messageId === null) return;
+    messageHidden(conversationId, messageId);
+    hide.mutate({ conversationId, messageId });
+  }
+
+  // A quote goes to its original when that is loaded. An item far from the rendered window is
+  // first approached by its estimated offset, then scrolled to once it has rendered.
+  const scrollRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (scrollRetry.current) clearTimeout(scrollRetry.current);
+    },
+    [],
+  );
+
+  function scrollToMessage(messageId: string) {
+    const index = items.findIndex((item) => item.kind === 'message' && item.message.id === messageId);
+    if (index < 0) return;
+    listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+  }
+
+  function onScrollToIndexFailed(info: { index: number; averageItemLength: number }) {
+    listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+    if (scrollRetry.current) return;
+    scrollRetry.current = setTimeout(() => {
+      scrollRetry.current = null;
+      listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+    }, SCROLL_RETRY_MS);
+  }
+
   function loadOlder() {
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
       // A second call while this one runs joins it instead of starting over.
@@ -324,18 +403,28 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   }
 
   const renderItem = ({ item }: { item: RoomItem }) => {
-    if (item.kind === 'day') return <DaySeparator label={item.label} />;
-    const { row } = item;
+    if (item.kind === 'divider') return <DateDivider label={item.label} />;
+    const row = item.message;
     const clientMessageId = row.clientMessageId;
+    const quoted = row.replyTo;
     return (
-      <MessageBubble
-        message={row}
-        // A refusal (a block, the recipient's policy) would only repeat: the reason stays, the retry goes.
-        onRetry={
-          clientMessageId && !row.reason ? () => retry(conversationId, clientMessageId) : undefined
-        }
-        onDiscard={clientMessageId ? () => discard(conversationId, clientMessageId) : undefined}
-      />
+      // Only a confirmed message can be replied to.
+      <SwipeToReply id={row.key} enabled={row.id !== null} onReply={() => replyTo(row)}>
+        <MessageBubble
+          message={row}
+          isFirstInGroup={item.isFirstInGroup}
+          isLastInGroup={item.isLastInGroup}
+          selfId={selfId}
+          // A refusal (a block, the recipient's policy) would only repeat: the reason stays, the retry goes.
+          onRetry={
+            clientMessageId && !row.reason ? () => retry(conversationId, clientMessageId) : undefined
+          }
+          onDiscard={clientMessageId ? () => discard(conversationId, clientMessageId) : undefined}
+          onLongPress={() => openMenu(row)}
+          onReactionsPress={() => pressReactions(row)}
+          onQuotePress={quoted ? () => scrollToMessage(quoted.id) : undefined}
+        />
+      </SwipeToReply>
     );
   };
 
@@ -371,26 +460,46 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     );
   }
 
+  // The list lifts its newest messages with the keyboard by as much as the composer rises: the
+  // keyboard's height less the bottom inset the composer already sits above.
+  const renderScrollComponent = useCallback(
+    (props: ScrollViewProps) => (
+      <KeyboardChatScrollView {...props} inverted keyboardLiftBehavior="always" offset={insets.bottom} />
+    ),
+    [insets.bottom],
+  );
+  // Closed, the composer sits above the bottom inset (the screen pads it); open, on the keyboard,
+  // which covers that inset too. This relies on the root KeyboardProvider's
+  // `navigationBarTranslucent`: with it the keyboard height is measured from the screen's bottom
+  // edge, nav bar included, so the inset is not counted twice.
+  const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom }), [insets.bottom]);
+
   let body: ReactElement;
   if (data === undefined) {
     // A failed background refetch keeps the loaded messages: the error shows only without them.
     body = messages.isError ? (
-      <View style={styles.center}>
-        <EmptyState
-          title="Não foi possível carregar as mensagens"
-          action={{ label: 'Tentar de novo', onPress: () => void messages.refetch() }}
-        />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View style={styles.center}>
+          <EmptyState
+            title="Não foi possível carregar as mensagens"
+            action={{ label: 'Tentar de novo', onPress: () => void messages.refetch() }}
+          />
+        </View>
+      </AboveComposer>
     ) : (
-      <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View style={styles.center}>
+          <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
+        </View>
+      </AboveComposer>
     );
   } else if (items.length === 0 && !hasNextPage) {
     body = (
-      <View testID="chat-empty" style={styles.center}>
-        <EmptyState title={`Diga oi para ${otherName}`} message="As mensagens aparecem aqui." />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View testID="chat-empty" style={styles.center}>
+          <EmptyState title={`Diga oi para ${otherName}`} message="As mensagens aparecem aqui." />
+        </View>
+      </AboveComposer>
     );
   } else {
     body = (
@@ -402,11 +511,16 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
           data={items}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
+          renderScrollComponent={renderScrollComponent}
           ListFooterComponent={older ?? undefined}
           onEndReached={loadOlder}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
-          scrollEventThrottle={100}
+          onScrollToIndexFailed={onScrollToIndexFailed}
+          // Every frame: KeyboardChatScrollView tracks the offset from these events, and Android
+          // drops any event within the throttle of the last one, the final one of a keyboard
+          // animation included. A stale offset would leave the newest message under the composer.
+          scrollEventThrottle={16}
           // Keeps the reader's place when messages arrive; follows them near the bottom.
           maintainVisibleContentPosition={{
             minIndexForVisible: 0,
@@ -417,7 +531,12 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
           style={styles.fill}
         />
         {newBelow ? (
-          <View pointerEvents="box-none" style={styles.pillArea}>
+          <KeyboardStickyView
+            testID="new-messages-sticky"
+            pointerEvents="box-none"
+            offset={stickyOffset}
+            style={styles.pillArea}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Novas mensagens"
@@ -428,7 +547,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
                 Novas mensagens
               </Text>
             </Pressable>
-          </View>
+          </KeyboardStickyView>
         ) : null}
       </View>
     );
@@ -437,19 +556,37 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   return (
     <Screen>
       <Stack.Screen options={headerOptions} />
-      <KeyboardAvoidingView
-        behavior="padding"
-        keyboardVerticalOffset={headerHeight}
-        style={styles.fill}
-      >
-        {body}
+      {body}
+      <KeyboardStickyView testID="composer-sticky" offset={stickyOffset} style={styles.footer}>
+        {/* The messages fade out above the banner and composer instead of meeting an edge. */}
+        <View testID="composer-fade" pointerEvents="none" style={styles.fade} />
         <ConnectionBanner />
         <ChatComposer
           conversationId={conversationId}
+          otherName={otherName}
           onChangeText={typing.keystroke}
           onSent={stopTyping}
         />
-      </KeyboardAvoidingView>
+      </KeyboardStickyView>
+      <MessageContextMenu
+        target={menuTarget}
+        selfId={selfId}
+        onReact={(emoji) => {
+          if (menuRow) toggleReaction(menuRow, emoji);
+        }}
+        onAction={menuAction}
+        onClose={() => setMenuKey(null)}
+      />
+      <ConfirmDialog
+        visible={hideId !== null}
+        title="Apagar mensagem para você?"
+        message="A outra pessoa continua vendo."
+        confirmLabel="Apagar"
+        cancelLabel="Cancelar"
+        destructive
+        onConfirm={confirmHide}
+        onCancel={() => setHideId(null)}
+      />
     </Screen>
   );
 }
@@ -457,22 +594,17 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  content: { paddingVertical: space.sm },
-  headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    minHeight: 48,
-    flexShrink: 1,
-  },
-  headerText: { flexShrink: 1 },
-  day: { alignItems: 'center', paddingVertical: space.md },
-  dayText: {
-    backgroundColor: colors.bgContrast50,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
-    borderRadius: radii.full,
-    overflow: 'hidden',
+  // Inverted: the top padding is under the newest message, clear of the composer's fade.
+  content: { paddingTop: space.md, paddingBottom: space.sm },
+  // Above the list, so the fade draws over the messages under it.
+  footer: { zIndex: 1 },
+  fade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    height: space.md,
+    backgroundImage: `linear-gradient(to bottom, ${colors.bgTransparent}, ${colors.bg})`,
   },
   older: { alignItems: 'center', gap: space.xs, padding: space.lg },
   olderText: { textAlign: 'center' },

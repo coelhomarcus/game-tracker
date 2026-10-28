@@ -5,6 +5,9 @@ export type { DmPolicy } from '@/features/auth';
 /** One person's emoji on a message; a person may use up to 5 different ones per message. */
 export type Reaction = { emoji: string; userId: string };
 
+/** The earlier message a reply quotes, as the signed-in user sees it. */
+export type ReplyTo = { id: string; content: string; senderId: string };
+
 export type Message = {
   id: string;
   conversationId: string;
@@ -16,6 +19,11 @@ export type Message = {
   sender: UserSummary;
   /** Oldest first. */
   reactions: Reaction[];
+  /**
+   * The message this one replies to; `null` when it replies to nothing, or when the original is
+   * gone or no longer visible to me (deleted for me, or from before I left the conversation).
+   */
+  replyTo: ReplyTo | null;
 };
 
 export type Conversation = {
@@ -23,9 +31,17 @@ export type Conversation = {
   otherUser: UserSummary | null;
   lastMessage: Message | null;
   unread: boolean;
-  /** Muted: its messages send no push to me; it still shows as unread. */
+  /**
+   * Muted: its messages send no push to me. The server still keeps it unread (`unread`), but the
+   * list never shows it as unread nor counts it in the badge (see `showsUnread`).
+   */
   muted: boolean;
 };
+
+/** Unread as the list shows it: a muted conversation never looks unread nor counts in the badge. */
+export function showsUnread(conversation: Conversation): boolean {
+  return conversation.unread && !conversation.muted;
+}
 
 /** Newest first; `nextCursor` points at the older messages. */
 export type MessagePage = {
@@ -39,6 +55,14 @@ type Json = Record<string, any>;
 function isReaction(value: unknown): value is Reaction {
   const item = value as Partial<Reaction> | null;
   return typeof item?.emoji === 'string' && typeof item.userId === 'string';
+}
+
+/** The quoted message of a payload; `null` when it is missing or malformed. */
+export function parseReplyTo(value: unknown): ReplyTo | null {
+  const item = value as Partial<ReplyTo> | null;
+  if (typeof item?.id !== 'string' || typeof item.content !== 'string') return null;
+  if (typeof item.senderId !== 'string') return null;
+  return { id: item.id, content: item.content, senderId: item.senderId };
 }
 
 /** Reactions from a payload; anything malformed is left out. */
@@ -69,6 +93,7 @@ export function parseMessage(json: Json, fallbackSender?: UserSummary | null): M
     clientMessageId: typeof json.clientMessageId === 'string' ? json.clientMessageId : null,
     sender,
     reactions: parseReactions(json.reactions),
+    replyTo: parseReplyTo(json.replyTo),
   };
 }
 

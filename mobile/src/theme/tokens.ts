@@ -50,6 +50,8 @@ export const negative400 = '#F65A7F';
 export const colors = {
   /** Screen background; bars (headers, tab bar, composers) use it too, over a hairline. */
   bg: contrast[0],
+  /** `bg` fully transparent: the far end of fades into the background. */
+  bgTransparent: '#16181c00',
   /** Body text: the palette's grey (contrast[900]) rather than the design reference's white. */
   text: contrast[900],
   /** Headings, names and other text that must stand out from the body. */
@@ -63,16 +65,24 @@ export const colors = {
   bgContrast25: contrast[25],
   /** Controls: secondary buttons, fields, chips. */
   bgContrast50: contrast[50],
+  /** A control that cannot be used right now (the chat send button with nothing to send). */
+  controlDisabled: contrast[100],
   /** Selected chips and tabs, my chat bubbles, avatar fallbacks. */
   selected: '#3f4b64',
   primary: primary[500],
+  /** `primary` at 60%: my chat bubble while it is not confirmed yet. */
+  primaryPending: '#ea377a99',
   onPrimary: '#ffffff',
+  /** `bg` at 60% behind dialogs, sheets and menus. */
+  backdrop: '#16181c99',
   /** Half-transparent black behind controls drawn over images (the back button on a banner). */
   scrim: '#00000080',
   like: primary[500],
   repost: positive500,
   /** Light red that reads at 4.5:1 on every tone; negative500/400 do not on dark surfaces. */
   danger: '#ff7a7a',
+  /** A destructive fill under white (the leave swipe): `danger` is too light for white on it. */
+  dangerFill: negative500,
 
   status: {
     playing: '#5cb8ff',

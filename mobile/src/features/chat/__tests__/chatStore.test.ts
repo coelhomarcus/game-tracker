@@ -44,6 +44,7 @@ function cachedMessage(id: string, minute: number): Message {
     clientMessageId: null,
     sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
     reactions: [],
+    replyTo: null,
   };
 }
 
@@ -159,6 +160,7 @@ describe('send', () => {
   it.each([
     ['blocked', 'Não é possível enviar mensagens para esta conta.'],
     ['dm_not_allowed', 'Esta pessoa não aceita mensagens suas.'],
+    ['reply_not_found', 'A mensagem respondida não está mais disponível.'],
   ])('marks a send refused with %s failed with its reason, and never re-sends it', async (code, reason) => {
     const id = store().send('c1', 'oi');
 
@@ -339,12 +341,14 @@ describe('sign-out', () => {
     store().setOpenConversation('c1');
     const id = store().send('c1', 'oi');
     const ack = chatSocket.pendingAck('message:send');
+    store().startReply('c2', { id: 'm9', content: 'antiga', senderId: 'u2' });
 
     useSession.setState({ status: 'signedOut', user: null });
 
     expect(store()).toMatchObject({
       pending: {},
       drafts: {},
+      replying: {},
       typing: {},
       online: {},
       openConversationId: null,
@@ -358,5 +362,102 @@ describe('sign-out', () => {
     ack?.resolve({ message: serverJson('m1', id) });
     await flush();
     expect(cachedIds()).toEqual(['m0']);
+  });
+});
+
+describe('replies', () => {
+  const original = { id: 'm5', content: 'qual jogo?', senderId: 'u2' };
+  const payloadOf = () => chatSocket.pendingAck('message:send')?.payload;
+
+  it('sends the reply being written with replyToId, keeps it on the pending message and clears it', () => {
+    store().startReply('c1', original);
+    store().startReply('c2', { ...original, id: 'm6' });
+    expect(store().replying.c1).toEqual(original);
+
+    const id = store().send('c1', 'Hollow Knight');
+
+    expect(payloadOf()).toEqual({
+      conversationId: 'c1',
+      content: 'Hollow Knight',
+      clientMessageId: id,
+      replyToId: 'm5',
+    });
+    expect(pendingOf()).toEqual([expect.objectContaining({ clientMessageId: id, replyTo: original })]);
+    expect(store().replying.c1).toBeUndefined();
+    // Another conversation's reply is its own.
+    expect(store().replying.c2?.id).toBe('m6');
+  });
+
+  it('sends without replyToId when not replying, and a blank send keeps the reply', () => {
+    store().startReply('c1', original);
+    expect(store().send('c1', '   ')).toBeNull();
+    expect(store().replying.c1).toEqual(original);
+
+    store().cancelReply('c1');
+    store().send('c1', 'oi');
+    expect(payloadOf()).not.toHaveProperty('replyToId');
+  });
+
+  it('keeps replyToId on a retry and on every re-send after a reconnect', async () => {
+    store().startReply('c1', original);
+    const id = store().send('c1', 'resposta') ?? '';
+    chatSocket.pendingAck('message:send')?.reject(new Error('timeout'));
+    await flush();
+
+    store().resendPending();
+    expect(payloadOf()).toEqual({ conversationId: 'c1', content: 'resposta', clientMessageId: id, replyToId: 'm5' });
+    chatSocket.pendingAck('message:send')?.resolve({ error: 'Erro interno' });
+    await flush();
+
+    store().retry('c1', id);
+    expect(payloadOf()).toEqual({ conversationId: 'c1', content: 'resposta', clientMessageId: id, replyToId: 'm5' });
+  });
+
+  it('cancels a reply, or only the one to a given message', () => {
+    store().startReply('c1', original);
+    store().cancelReply('c1', 'other');
+    expect(store().replying.c1).toEqual(original);
+
+    store().cancelReply('c1', 'm5');
+    expect(store().replying.c1).toBeUndefined();
+
+    store().startReply('c1', original);
+    store().cancelReply('c1');
+    expect(store().replying.c1).toBeUndefined();
+  });
+});
+
+describe('a message hidden for me', () => {
+  const original = { id: 'm5', content: 'segredo', senderId: 'u2' };
+
+  it('stops a reply being written to it and drops the quote of pending replies, keeping replyToId', async () => {
+    store().startReply('c1', original);
+    const quoted = store().send('c1', 'sobre aquilo') ?? '';
+    chatSocket.pendingAck('message:send')?.reject(new Error('timeout'));
+    await flush();
+    store().startReply('c1', { ...original, id: 'm6' });
+    store().send('c1', 'outra');
+    store().startReply('c1', original);
+
+    store().messageHidden('c1', 'm5');
+
+    expect(store().replying.c1).toBeUndefined();
+    const [first, second] = pendingOf();
+    expect(first.replyTo).toBeUndefined();
+    expect(first.replyToId).toBe('m5');
+    expect(second.replyTo?.id).toBe('m6');
+
+    // It still goes out as the same reply: the server decides, and a repeat stays idempotent.
+    chatSocket.ackLog = [];
+    store().resendPending();
+    expect(chatSocket.ackLog.find((entry) => (entry.payload as { clientMessageId: string }).clientMessageId === quoted)?.payload).toMatchObject({
+      replyToId: 'm5',
+    });
+  });
+
+  it('leaves a reply to another message alone', () => {
+    store().startReply('c1', { ...original, id: 'm6' });
+    store().messageHidden('c1', 'm5');
+    expect(store().replying.c1?.id).toBe('m6');
   });
 });

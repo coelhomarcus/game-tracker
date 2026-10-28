@@ -13,7 +13,10 @@ import * as moderationService from './moderation.service';
 import * as notificationsService from './notifications.service';
 import * as postsService from './posts.service';
 
-/** Pessoas pelo username ou nome. Quem tem bloqueio com quem busca (em qualquer sentido) não aparece. */
+/**
+ * Pessoas pelo username ou nome. Quem tem bloqueio com quem busca (em qualquer sentido) não aparece.
+ * `canMessage` diz, na mesma consulta, se quem busca pode mandar mensagem para cada pessoa agora.
+ */
 export async function search(viewerId: string, term: string) {
   return db
     .select({
@@ -23,6 +26,7 @@ export async function search(viewerId: string, term: string) {
       avatarUrl: users.avatarUrl,
       bio: users.bio,
       isFollowedByMe: sql<boolean>`${follows.id} is not null`,
+      canMessage: conversationsService.canMessageSql(viewerId),
     })
     .from(users)
     .leftJoin(follows, and(eq(follows.followerId, viewerId), eq(follows.followingId, users.id)))

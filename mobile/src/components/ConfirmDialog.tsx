@@ -15,8 +15,6 @@ export type ConfirmDialogProps = {
   onCancel: () => void;
 };
 
-/** Two-digit hex alpha for 60% opacity, appended to a 6-digit hex token. */
-const ALPHA_60 = '99';
 
 export function ConfirmDialog({
   visible,
@@ -69,7 +67,7 @@ export function ConfirmDialog({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'center', padding: space._2xl },
-  backdrop: { flex: 1, backgroundColor: `${colors.bg}${ALPHA_60}` },
+  backdrop: { flex: 1, backgroundColor: colors.backdrop },
   dialog: {
     backgroundColor: colors.bgContrast50,
     borderWidth: hairline,

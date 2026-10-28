@@ -187,6 +187,30 @@ describe('DM policy enforcement', () => {
     assert.equal((await ok('GET', `/users/${s.user.id}`, s)).canMessage, false, 'no próprio perfil');
   });
 
+  it('GET /users/search reports canMessage for each result', async () => {
+    const prefix = `cq${randomUUID().slice(0, 6)}`;
+    const s = await registerUser(api.http, `${prefix}s`);
+    const open = await registerUser(api.http, `${prefix}o`);
+    const picky = await registerUser(api.http, `${prefix}p`);
+    const friend = await registerUser(api.http, `${prefix}f`);
+    const closed = await registerUser(api.http, `${prefix}c`);
+    await setPolicy(picky, 'following');
+    await setPolicy(friend, 'following');
+    await ok('POST', `/users/${s.user.id}/follow`, friend);
+    await setPolicy(closed, 'nobody');
+    // Seguir a pessoa não basta: a política `following` olha quem ela segue.
+    await ok('POST', `/users/${picky.user.id}/follow`, s);
+
+    const results = (await ok('GET', `/users/search?q=${prefix}`, s)) as Json[];
+    const byId = new Map(results.map((u) => [u.id, u.canMessage]));
+    assert.equal(byId.get(open.user.id), true);
+    assert.equal(byId.get(picky.user.id), false);
+    assert.equal(byId.get(friend.user.id), true);
+    assert.equal(byId.get(closed.user.id), false);
+    assert.ok(!byId.has(s.user.id), 'quem busca não aparece');
+    assert.equal(results.find((u) => u.id === picky.user.id)?.isFollowedByMe, true);
+  });
+
   it('every send obeys the current policy, also in an existing conversation', async () => {
     const r = await registerUser(api.http, 'spr');
     const s = await registerUser(api.http, 'sps');

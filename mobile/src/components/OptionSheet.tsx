@@ -12,6 +12,8 @@ export type OptionSheetOption<T> = {
   icon?: IoniconName;
   /** Removes or throws something away: the label and icon are red. */
   destructive?: boolean;
+  /** Dimmed and not pressable, e.g. an action with nothing to act on right now. */
+  disabled?: boolean;
 };
 
 /** A titled group of options with its own selected one, for a sheet that sets several things. */
@@ -32,8 +34,6 @@ export type OptionSheetProps<T> = {
   onClose: () => void;
 };
 
-/** Two-digit hex alpha for 60% opacity, appended to a 6-digit hex token. */
-const ALPHA_60 = '99';
 
 export function OptionSheet<T>({
   visible,
@@ -53,12 +53,13 @@ export function OptionSheet<T>({
         key={String(option.value)}
         accessibilityRole="button"
         accessibilityLabel={option.label}
-        accessibilityState={{ selected: isSelected }}
+        accessibilityState={{ selected: isSelected, disabled: option.disabled === true }}
+        disabled={option.disabled}
         onPress={() => {
           onSelect(option.value);
           onClose();
         }}
-        style={styles.row}
+        style={[styles.row, option.disabled && styles.disabled]}
       >
         {option.icon ? (
           <Ionicons
@@ -116,7 +117,7 @@ export function OptionSheet<T>({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: `${colors.bg}${ALPHA_60}` },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgContrast50,
     borderTopLeftRadius: radii.md,
@@ -135,6 +136,7 @@ const styles = StyleSheet.create({
     gap: space.md,
   },
   label: { flex: 1 },
+  disabled: { opacity: 0.5 },
   sectionDivider: {
     borderTopWidth: hairline,
     borderTopColor: colors.borderLow,

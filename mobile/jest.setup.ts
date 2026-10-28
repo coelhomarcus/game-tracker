@@ -27,3 +27,10 @@ afterEach(() => {
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+// The gesture handler hands its gestures the UI worklet runtime once it loads; jest runs worklets
+// on the JS thread (the worklets' web build), which has no UI runtime to hand over.
+jest.mock('react-native-worklets', () => ({
+  ...jest.requireActual('react-native-worklets'),
+  getUIRuntimeHolder: () => ({}),
+}));

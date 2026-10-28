@@ -37,6 +37,7 @@ describe('parseMessage', () => {
       clientMessageId: '11111111-2222-4333-8444-555555555555',
       sender: bia,
       reactions: [],
+      replyTo: null,
     });
   });
 
@@ -53,6 +54,18 @@ describe('parseMessage', () => {
       }).reactions,
     ).toEqual([{ emoji: '👍', userId: 'u1' }]);
     expect(parseMessage({ ...message, reactions: null }).reactions).toEqual([]);
+  });
+
+  it('parses the quoted message of a reply, and null when missing or malformed', () => {
+    const replyTo = { id: 'm0', content: 'qual jogo?', senderId: 'u1' };
+    expect(parseMessage({ ...message, replyToId: 'm0', replyTo }).replyTo).toEqual(replyTo);
+    expect(parseMessage({ ...message, replyTo: { ...replyTo, extra: 1 } }).replyTo).toEqual(replyTo);
+    // The original is gone, or I no longer see it.
+    expect(parseMessage({ ...message, replyToId: 'm0', replyTo: null }).replyTo).toBeNull();
+    expect(parseMessage(message).replyTo).toBeNull();
+    for (const bad of [{ id: 'm0' }, { ...replyTo, content: 3 }, { ...replyTo, senderId: null }, 'x']) {
+      expect(parseMessage({ ...message, replyTo: bad }).replyTo).toBeNull();
+    }
   });
 
   it('turns a missing or null clientMessageId into null', () => {

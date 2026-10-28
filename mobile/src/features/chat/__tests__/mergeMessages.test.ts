@@ -11,6 +11,7 @@ function message(id: string, minute: number, clientMessageId: string | null = nu
     clientMessageId,
     sender: { id: 'u1', username: 'ana', name: null, avatarUrl: null },
     reactions: [],
+    replyTo: null,
   };
 }
 

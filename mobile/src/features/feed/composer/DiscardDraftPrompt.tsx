@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Text } from '@/components';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
-/** Two-digit hex alpha for 60% opacity, appended to a 6-digit hex token. */
-const ALPHA_60 = '99';
 
 export type DiscardDraftPromptProps = {
   visible: boolean;
@@ -56,7 +54,7 @@ export function DiscardDraftPrompt({ visible, onSave, onDiscard, onKeepEditing }
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: `${colors.bg}${ALPHA_60}` },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgContrast50,
     borderTopLeftRadius: radii.md,

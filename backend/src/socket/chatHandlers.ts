@@ -4,8 +4,8 @@ import { db } from '../db';
 import { conversationParticipants, messages } from '../db/schema';
 import { AppError } from '../lib/errors';
 import { sendPushToUser } from '../push/pushService';
-import { assertCanMessage, withReactions } from '../services/conversations.service';
-import { conversationRoom, userRoom } from './realtime';
+import { assertCanMessage, replyAudience, withReactions, withReplyTo } from '../services/conversations.service';
+import { conversationRoom, conversationUserRoom, userRoom } from './realtime';
 
 const userColumns = { id: true, username: true, name: true, avatarUrl: true } as const;
 
@@ -83,7 +83,7 @@ export function registerChatHandlers(io: Server, socket: Socket) {
     return participant != null;
   }
 
-  /** A mensagem que este usuário já gravou com este clientMessageId, com as reações. */
+  /** A mensagem que este usuário já gravou com este clientMessageId, com as reações e a citação. */
   async function findByClientMessageId(conversationId: string, cid: string) {
     const existing = await db.query.messages.findFirst({
       where: and(
@@ -93,7 +93,7 @@ export function registerChatHandlers(io: Server, socket: Socket) {
       ),
       with: { sender: { columns: userColumns } },
     });
-    return existing ? (await withReactions([existing]))[0] : undefined;
+    return existing ? (await withReplyTo(userId, await withReactions([existing])))[0] : undefined;
   }
 
   socket.on(
@@ -103,21 +103,27 @@ export function registerChatHandlers(io: Server, socket: Socket) {
       if (!isUuid(conversationId)) return ack?.({ error: 'conversationId inválido' });
       if (!(await requireParticipant(conversationId))) return ack?.({ error: 'Conversa não encontrada' });
 
-      await socket.join(`conversation:${conversationId}`);
+      await socket.join([conversationRoom(conversationId), conversationUserRoom(conversationId, userId)]);
       ack?.({ ok: true });
     }),
   );
 
   socket.on('conversation:leave', (payload: { conversationId?: unknown }) => {
-    if (isUuid(payload?.conversationId)) socket.leave(`conversation:${payload.conversationId}`);
+    const conversationId = payload?.conversationId;
+    if (!isUuid(conversationId)) return;
+    void socket.leave(conversationRoom(conversationId));
+    void socket.leave(conversationUserRoom(conversationId, userId));
   });
 
   socket.on(
     'message:send',
     safe(
       'message:send',
-      async (payload: { conversationId?: unknown; content?: unknown; clientMessageId?: unknown }, ack) => {
-        const { conversationId, content, clientMessageId } = payload ?? {};
+      async (
+        payload: { conversationId?: unknown; content?: unknown; clientMessageId?: unknown; replyToId?: unknown },
+        ack,
+      ) => {
+        const { conversationId, content, clientMessageId, replyToId } = payload ?? {};
         if (!isUuid(conversationId) || typeof content !== 'string') return ack?.({ error: 'Payload inválido' });
         const text = content.trim();
         if (!text || text.length > MAX_MESSAGE_LENGTH) return ack?.({ error: 'Payload inválido' });
@@ -126,6 +132,11 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           return ack?.({ error: 'clientMessageId inválido' });
         }
         const cid = isUuid(clientMessageId) ? clientMessageId : undefined;
+        // Opcional: a mensagem a que esta responde. Nulo é o mesmo que não responder.
+        if (replyToId !== undefined && replyToId !== null && !isUuid(replyToId)) {
+          return ack?.({ error: 'replyToId inválido' });
+        }
+        const replyId = isUuid(replyToId) ? replyToId : undefined;
 
         if (!(await requireParticipant(conversationId))) return ack?.({ error: 'Conversa não encontrada' });
 
@@ -148,12 +159,21 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           return ack?.(saved ? { message: saved } : { error: err.message, code: err.code });
         }
 
+        // Só se responde a uma mensagem desta conversa que quem envia ainda vê.
+        const reply = replyId ? await replyAudience(conversationId, replyId) : null;
+        if (replyId && !reply?.visibleTo.has(userId)) {
+          // Um reenvio de algo já gravado continua devolvendo a mensagem (com a citação de agora).
+          const saved = cid ? await findByClientMessageId(conversationId, cid) : undefined;
+          if (saved) return ack?.({ message: saved });
+          return ack?.({ error: 'A mensagem respondida não está mais disponível', code: 'reply_not_found' });
+        }
+
         // Idempotente por (conversa, remetente, clientMessageId): repetir o envio — por exemplo,
         // porque o ACK se perdeu — devolve a mensagem já gravada, sem criar outra, sem novo evento
         // e sem novo push.
         const inserted = await db
           .insert(messages)
-          .values({ conversationId, senderId: userId, content: text, clientMessageId: cid })
+          .values({ conversationId, senderId: userId, content: text, clientMessageId: cid, replyToId: replyId })
           .onConflictDoNothing()
           .returning({ id: messages.id });
 
@@ -166,10 +186,21 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           where: eq(messages.id, inserted[0]!.id),
           with: { sender: { columns: userColumns } },
         });
-        // Mensagem nova: ainda sem reações.
-        const message = { ...found!, reactions: [] };
+        // Mensagem nova: ainda sem reações. A citação é a que quem envia vê (conferida acima).
+        const message = { ...found!, reactions: [], replyTo: reply?.replyTo ?? null };
 
-        io.to(conversationRoom(conversationId)).emit('message:receive', message);
+        // Quem não vê mais a original (apagou para si, ou saiu depois dela) recebe a resposta sem
+        // a citação, como o histórico vai mostrá-la.
+        const room = conversationRoom(conversationId);
+        const blindRooms = others
+          .filter((o) => reply && !reply.visibleTo.has(o.userId))
+          .map((o) => conversationUserRoom(conversationId, o.userId));
+        if (blindRooms.length === 0) {
+          io.to(room).emit('message:receive', message);
+        } else {
+          io.to(room).except(blindRooms).emit('message:receive', message);
+          io.to(blindRooms).emit('message:receive', { ...message, replyTo: null });
+        }
         ack?.({ message });
 
         // Quem silenciou a conversa não recebe push.

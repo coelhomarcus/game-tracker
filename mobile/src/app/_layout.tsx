@@ -9,7 +9,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -38,11 +38,12 @@ export default function RootLayout() {
         {/* The app always draws edge-to-edge (Android 16). Without these flags the keyboard
             controller cannot always detect it and pads the content under the system bars. */}
         <KeyboardProvider statusBarTranslucent navigationBarTranslucent preserveEdgeToEdge>
-          <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {/* Swipeable rows (the conversation list) need the gesture handler's root. */}
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
             <StatusBar style="light" />
             <SessionGate />
             <ToastHost />
-          </View>
+          </GestureHandlerRootView>
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
