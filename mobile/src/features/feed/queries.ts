@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   skipToken,
   useInfiniteQuery,
   useMutation,
@@ -15,7 +16,9 @@ import {
   invalidateOwnProfile,
   invalidateOwnReplies,
 } from "@/features/profiles/ownProfile";
+import { SEARCH_STALE_MS } from "@/lib/searchQuery";
 import { showToast } from "@/lib/toast";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 import { feedApi, type CreatePostInput } from "./api";
 import {
@@ -78,6 +81,33 @@ export function useGamePosts(gameId?: string) {
         : ({ pageParam }) => feedApi.gamePosts(gameId, pageParam),
     initialPageParam: undefined,
     getNextPageParam: nextPage,
+  });
+}
+
+const SEARCH_DEBOUNCE_MS = 300;
+/** The server needs at least this many characters after trimming. */
+const SEARCH_MIN_LENGTH = 2;
+
+/**
+ * Posts whose text contains `term`, newest first, one page at a time (Explorar's Posts tab).
+ * Typing is debounced; a shorter term makes no request.
+ */
+export function usePostSearch(term: string) {
+  const debounced = useDebouncedValue(term.trim(), SEARCH_DEBOUNCE_MS);
+  return useInfiniteQuery<
+    PostPage,
+    Error,
+    PostPages,
+    readonly unknown[],
+    string | undefined
+  >({
+    queryKey: ["postSearch", debounced],
+    queryFn: ({ pageParam }) => feedApi.searchPosts(debounced, pageParam),
+    initialPageParam: undefined,
+    getNextPageParam: nextPage,
+    enabled: debounced.length >= SEARCH_MIN_LENGTH,
+    placeholderData: keepPreviousData,
+    staleTime: SEARCH_STALE_MS,
   });
 }
 

@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 
 import { authErrorMessage, useSession } from '@/features/auth';
+import { useRecentSearches } from '@/features/explore/recentSearches';
 import { feedApi } from '@/features/feed/api';
 import { createLanes } from '@/features/feed/likeLanes';
 import {
@@ -19,6 +20,7 @@ import {
 } from '@/features/feed/postCache';
 import type { PostPage } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
+import { SEARCH_STALE_MS } from '@/lib/searchQuery';
 import { showToast } from '@/lib/toast';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
@@ -35,6 +37,7 @@ import type {
   ModerationPage,
   PersonResult,
   PickedImage,
+  SuggestedPerson,
   UserProfile,
   UserReplyPage,
 } from './types';
@@ -45,6 +48,8 @@ type ReplyPages = InfiniteData<UserReplyPage, string | undefined>;
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_MIN_LENGTH = 2;
+/** Explorar shows 5 suggestions and "Ver mais" opens up to this many. */
+const SUGGESTIONS_LIMIT = 10;
 
 export function useProfile(id?: string) {
   return useQuery({
@@ -60,6 +65,15 @@ export function usePeopleSearch(term: string) {
     queryFn: () => profilesApi.search(debounced),
     enabled: debounced.length >= SEARCH_MIN_LENGTH,
     placeholderData: keepPreviousData,
+    staleTime: SEARCH_STALE_MS,
+  });
+}
+
+/** People to follow (Explorar's "Sugestões para seguir"), best first. */
+export function useFollowSuggestions() {
+  return useQuery({
+    queryKey: ['suggestions'],
+    queryFn: () => profilesApi.suggestions(SUGGESTIONS_LIMIT),
   });
 }
 
@@ -150,9 +164,11 @@ function cachedFollowState(client: QueryClient, id: string): boolean | undefined
       if (person) return person.isFollowedByMe;
     }
   }
-  for (const [, results] of client.getQueriesData<PersonResult[]>({ queryKey: ['people'] })) {
-    const person = results?.find((p) => p.id === id);
-    if (person) return person.isFollowedByMe;
+  for (const key of [['people'], ['suggestions']]) {
+    for (const [, results] of client.getQueriesData<PersonResult[]>({ queryKey: key })) {
+      const person = results?.find((p) => p.id === id);
+      if (person) return person.isFollowedByMe;
+    }
   }
   return undefined;
 }
@@ -189,11 +205,13 @@ function setFollowEverywhere(client: QueryClient, id: string, followed: boolean)
   client.setQueryData<UserProfile>(['profile', id], (profile) =>
     profile ? withFollow(followed)(profile) : profile,
   );
-  client.setQueriesData<PersonResult[]>({ queryKey: ['people'] }, (results) =>
+  const withRow = <T extends PersonResult>(results: T[] | undefined) =>
     results?.some((p) => p.id === id && p.isFollowedByMe !== followed)
       ? results.map((p) => (p.id === id ? { ...p, isFollowedByMe: followed } : p))
-      : results,
-  );
+      : results;
+  client.setQueriesData<PersonResult[]>({ queryKey: ['people'] }, withRow);
+  // A followed suggestion keeps its row (now "Seguindo") until the list is read again.
+  client.setQueriesData<SuggestedPerson[]>({ queryKey: ['suggestions'] }, withRow);
   client.setQueriesData<FollowPages>({ queryKey: ['follows'] }, (pages) =>
     withFollowedRow(pages, id, followed),
   );
@@ -267,6 +285,10 @@ export function useToggleFollow() {
         }),
         client.cancelQueries({
           queryKey: ['follows'],
+          predicate: (query) => query.state.data !== undefined,
+        }),
+        client.cancelQueries({
+          queryKey: ['suggestions'],
           predicate: (query) => query.state.data !== undefined,
         }),
       ]);
@@ -488,7 +510,9 @@ const BLOCK_KEYS: readonly (readonly string[])[] = [
   ['post'],
   ['comments'],
   ['people'],
+  ['suggestions'],
   ['gameSearch'],
+  ['postSearch'],
   ['gamePlayers'],
   ['notifications'],
   ['userPosts'],
@@ -509,18 +533,21 @@ function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: s
   // not refetched: the row is already right, and a refetch could race another undo on its way.
   if (added) void client.invalidateQueries({ queryKey: moderationKey(kind) });
   if (kind === 'blocks') {
+    // A blocked person leaves the recent searches too, once the server has the block.
+    const me = useSession.getState().user?.id;
+    if (added && me !== undefined) useRecentSearches.getState().removePerson(me, id);
     // A block (or its undo) changes what the server shows everywhere: the open lists, threads,
     // searches and notifications are read again now, the rest on the next visit.
     for (const key of BLOCK_KEYS) void client.invalidateQueries({ queryKey: key });
-    const me = useSession.getState().user?.id;
     if (me !== undefined) {
       void client.invalidateQueries({ queryKey: ['profile', me], exact: true });
       void client.invalidateQueries({ queryKey: ['follows'], refetchType: 'none' });
     }
     return;
   }
-  // The feeds and notifications filter the person in or out; read again on the next visit.
-  for (const key of [['feed'], ['notifications']]) {
+  // The feeds, notifications and suggestions filter the person in or out; read again on the next
+  // visit.
+  for (const key of [['feed'], ['notifications'], ['suggestions']]) {
     void client.invalidateQueries({ queryKey: key, refetchType: 'none' });
   }
 }
