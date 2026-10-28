@@ -1,25 +1,41 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient, useSession, type User } from '@/features/auth';
 import { ApiError } from '@/lib/http/errors';
+import { useSetModeration } from '@/features/profiles/queries';
 import { useChatConnection } from '@/lib/realtime/connectionStore';
+import { colors, contrast } from '@/theme/tokens';
 import { chatSocket } from '@/test-utils/fakeChatSocket';
 
 import { chatApi } from '../api';
 import { useChatStore } from '../chatStore';
 import { ChatRoomScreen } from '../ChatRoomScreen';
+import { CLUSTER_GAP, GROUP_GAP, PENDING_BUBBLE_COLOR } from '../MessageBubble';
 import { conversationsKey } from '../queries';
 import { realtimeBridge } from '../realtimeBridge';
 import type { Conversation, Message, MessagePage } from '../types';
 
 jest.mock('@/lib/realtime/chatSocket', () => jest.requireActual('@/test-utils/fakeChatSocket'));
 jest.mock('@/features/chat/api', () => ({
-  chatApi: { list: jest.fn(), create: jest.fn(), messages: jest.fn(), markRead: jest.fn() },
+  chatApi: {
+    list: jest.fn(),
+    create: jest.fn(),
+    messages: jest.fn(),
+    markRead: jest.fn(),
+    setMuted: jest.fn(),
+    leave: jest.fn(),
+  },
 }));
+jest.mock('@/features/profiles/queries', () => ({
+  ...jest.requireActual('@/features/profiles/queries'),
+  useSetModeration: jest.fn(),
+}));
+jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
+const mockBlock = jest.fn();
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn() };
 let mockParams: Record<string, string | string[]> = {};
@@ -50,14 +66,20 @@ jest.mock('expo-router', () => {
     },
     // The header is rendered in place so the tests can read and press it.
     Stack: {
-      Screen: ({ options }: { options?: { title?: string; headerTitle?: unknown } }) => {
+      Screen: ({
+        options,
+      }: {
+        options?: { title?: string; headerTitle?: unknown; headerRight?: unknown };
+      }) => {
         const { Text, View } = jest.requireActual('react-native');
         if (options && mockHeaderOptions.at(-1) !== options) mockHeaderOptions.push(options);
         const Title = options?.headerTitle as ComponentType<{ children: string }> | undefined;
+        const Right = options?.headerRight as ComponentType<{ canGoBack: boolean }> | undefined;
         return (
           <View testID="header">
             {Title ? <Title>{options?.title ?? ''}</Title> : null}
             {options?.title ? <Text testID="header-title">{options.title}</Text> : null}
+            {Right ? <Right canGoBack /> : null}
           </View>
         );
       },
@@ -67,10 +89,11 @@ jest.mock('expo-router', () => {
 
 const mocked = jest.mocked(chatApi);
 
-const metrics = {
+let metrics = {
   frame: { x: 0, y: 0, width: 390, height: 800 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
+const NO_INSETS = metrics;
 
 const CONV = '6b0f6c8e-1d2a-4c3b-9e4f-5a6b7c8d9e0f';
 const me: User = {
@@ -188,6 +211,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const RETRY_LINE = 'Não enviada. Toque para tentar de novo';
+
 const typingEvents = () =>
   chatSocket.emitted.filter((entry) => entry.event.startsWith('typing:')).map((entry) => entry.event);
 
@@ -213,6 +238,13 @@ beforeEach(() => {
   mocked.messages.mockReset().mockResolvedValue(page([]));
   mocked.markRead.mockReset().mockResolvedValue(undefined);
   mocked.create.mockReset();
+  mocked.setMuted.mockReset().mockResolvedValue(undefined);
+  mocked.leave.mockReset().mockResolvedValue(undefined);
+  mockBlock.mockReset();
+  jest.mocked(useSetModeration).mockReturnValue({ mutate: mockBlock } as unknown as ReturnType<
+    typeof useSetModeration
+  >);
+  metrics = NO_INSETS;
   useSession.setState({ status: 'signedIn', user: me });
   realtimeBridge.start();
   chatSocket.connect();
@@ -356,6 +388,7 @@ describe('ChatRoomScreen: header', () => {
 
     const title = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
     expect(title).toHaveTextContent(/Ana Souza/);
+    expect(title).toHaveTextContent(/@ana/);
     // A real 48 dp target: hitSlop past the header column would be lost on Android.
     expect(title).toHaveStyle({ minHeight: 48 });
     expect(title.props.hitSlop).toBeUndefined();
@@ -399,6 +432,91 @@ describe('ChatRoomScreen: header', () => {
 
     expect(screen.getByTestId('header')).toHaveTextContent(/Conversa/);
     expect(screen.queryByRole('button', { name: /^Perfil de/ })).not.toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: header menu', () => {
+  const option = (name: string) => screen.getByRole('button', { name });
+
+  async function openMenu() {
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais opções' }));
+  }
+
+  it('offers the profile, mute, block and leave, without mark-read', async () => {
+    queryClient.setQueryData(conversationsKey, [withAna]);
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+
+    for (const name of ['Ver perfil', 'Silenciar conversa', 'Bloquear @ana', 'Sair da conversa']) {
+      expect(option(name)).toBeOnTheScreen();
+    }
+    // The open room is read already.
+    expect(screen.queryByRole('button', { name: 'Marcar como lida' })).not.toBeOnTheScreen();
+    // A real 48 dp target.
+    expect(screen.getByRole('button', { name: 'Mais opções' })).toHaveStyle({ minHeight: 48, minWidth: 48 });
+  });
+
+  it('opens the profile', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Ver perfil'));
+
+    expect(mockRouter.push).toHaveBeenCalledWith('/users/u1');
+  });
+
+  it('mutes, then offers to unmute', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Silenciar conversa'));
+
+    expect(mocked.setMuted).toHaveBeenCalledWith(CONV, true);
+    await openMenu();
+    expect(option('Reativar conversa')).toBeOnTheScreen();
+    await fireEvent.press(option('Reativar conversa'));
+    expect(mocked.setMuted).toHaveBeenLastCalledWith(CONV, false);
+  });
+
+  it('blocks the person after the confirmation', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Bloquear @ana'));
+
+    expect(screen.getByText('Bloquear @ana?')).toBeOnTheScreen();
+    expect(mockBlock).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bloquear' }));
+    expect(mockBlock).toHaveBeenCalledWith({ person: ana, on: true });
+  });
+
+  it('leaves only after the confirmation, going back to the list first', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+
+    expect(screen.getByText('Sair da conversa?')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(mocked.leave).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    expect(mockRouter.back).toHaveBeenCalled();
+    expect(mocked.leave).toHaveBeenCalledWith(CONV);
+    expect(mockRouter.back.mock.invocationCallOrder[0]).toBeLessThan(
+      mocked.leave.mock.invocationCallOrder[0],
+    );
+    expect(queryClient.getQueryData<Conversation[]>(conversationsKey)).toEqual([]);
+  });
+
+  it('goes to the list when there is nothing to go back to', async () => {
+    mockRouter.canGoBack.mockReturnValue(false);
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await openMenu();
+    await fireEvent.press(option('Sair da conversa'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    expect(mockRouter.replace).toHaveBeenCalledWith('/messages');
+    expect(mocked.leave).toHaveBeenCalledWith(CONV);
   });
 });
 
@@ -496,34 +614,37 @@ describe('ChatRoomScreen: history', () => {
     expect(mocked.messages).toHaveBeenCalledTimes(3);
   });
 
-  it('separates days as Hoje, Ontem and the date, above the oldest message of each day', async () => {
+  it('puts a date divider above the oldest message and after every pause of over an hour', async () => {
     await renderLoaded([
-      message('m5', 'u1', 'Hoje tarde', today(23, 59)),
-      message('m4', 'u1', 'Hoje cedo', today(0, 1)),
-      message('m3', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m6', 'u1', 'Hoje tarde', today(23, 59)),
+      message('m5', 'u1', 'Hoje cedo', today(0, 1)),
+      message('m4', 'u1', 'Ontem à noite', yesterday(22, 0)),
+      message('m3', 'u1', 'Ontem logo depois', yesterday(21, 0)),
       message('m2', 'u1', 'Ontem cedo', yesterday(8, 0)),
       message('m1', 'u1', 'Faz tempo', new Date(2020, 0, 15, 10, 30)),
     ]);
 
-    expect(screen.getByText('Hoje')).toBeOnTheScreen();
-    expect(screen.getByText('Ontem')).toBeOnTheScreen();
-    expect(screen.getByText('15/01/2020')).toBeOnTheScreen();
-    // Inverted list data, newest first: a separator follows the oldest message of its day, so it
-    // shows above that day on screen.
-    type Item = { kind: 'day'; label: string } | { kind: 'message'; row: { content: string } };
+    expect(screen.getByText('Hoje às 23:59')).toBeOnTheScreen();
+    expect(screen.getByText('Ontem às 21:00')).toBeOnTheScreen();
+    // Inverted list data, newest first: a divider follows the message it shows above on screen.
+    // 21:00 → 22:00 is exactly an hour, so no divider between them.
+    type Item = { kind: 'divider'; label: string } | { kind: 'message'; message: { content: string } };
     const data = screen.getByTestId('message-list').props.data as Item[];
-    expect(data.map((item) => (item.kind === 'day' ? `[${item.label}]` : item.row.content))).toEqual(
-      [
-        'Hoje tarde',
-        'Hoje cedo',
-        '[Hoje]',
-        'Ontem à noite',
-        'Ontem cedo',
-        '[Ontem]',
-        'Faz tempo',
-        '[15/01/2020]',
-      ],
-    );
+    expect(
+      data.map((item) => (item.kind === 'divider' ? `[${item.label}]` : item.message.content)),
+    ).toEqual([
+      'Hoje tarde',
+      '[Hoje às 23:59]',
+      'Hoje cedo',
+      '[Hoje às 00:01]',
+      'Ontem à noite',
+      'Ontem logo depois',
+      '[Ontem às 21:00]',
+      'Ontem cedo',
+      '[Ontem às 08:00]',
+      'Faz tempo',
+      '[15 de jan de 2020 às 10:30]',
+    ]);
   });
 
   it('shows the empty conversation copy', async () => {
@@ -582,9 +703,14 @@ describe('ChatRoomScreen: bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
 
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
+    // The failure replaces the time line, and the retry is a real 48 dp target.
+    const retryLine = screen.getByRole('button', { name: RETRY_LINE });
+    expect(retryLine).toHaveStyle({ minHeight: 48 });
+    expect(screen.getByRole('button', { name: 'Descartar' })).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(retryLine);
     expect(screen.getByText('Enviando…')).toBeOnTheScreen();
+    expect(screen.queryByText(RETRY_LINE)).not.toBeOnTheScreen();
     expect(chatSocket.ackLog.filter((entry) => entry.event === 'message:send')).toHaveLength(2);
 
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
@@ -601,16 +727,20 @@ describe('ChatRoomScreen: bubbles', () => {
       chatSocket.pendingAck('message:send')?.resolve({ error: 'Bloqueio', code: 'blocked' }),
     );
 
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
-    expect(screen.getByText('Não é possível enviar mensagens para esta conta.')).toBeOnTheScreen();
-    expect(screen.queryByText('Bloqueio')).toBeNull();
+    expect(
+      screen.getByText('Não enviada. Não é possível enviar mensagens para esta conta.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/Bloqueio/)).toBeNull();
 
     await type('Outra');
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
 
-    expect(screen.getAllByText('Não enviada')).toHaveLength(2);
-    expect(screen.queryByText('nope')).toBeNull();
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
+    expect(
+      screen.getByText('Não enviada. Não é possível enviar mensagens para esta conta.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/nope/)).toBeNull();
   });
 
   it.each([
@@ -622,9 +752,144 @@ describe('ChatRoomScreen: bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'x', code }));
 
-    expect(screen.getByText(reason)).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    expect(screen.getByText(`Não enviada. ${reason}`)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: RETRY_LINE })).toBeNull();
+    expect(screen.queryByText(RETRY_LINE)).toBeNull();
     expect(screen.getByRole('button', { name: 'Descartar' })).toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: grouped bubbles', () => {
+  const bubbles = () => screen.getAllByTestId('message-bubble');
+  const rows = () => screen.getAllByTestId('message-row');
+
+  it('joins one sender under 5 minutes into a group, squared on their side where bubbles meet', async () => {
+    await renderLoaded([
+      message('m3', 'u1', 'Terceira', today(9, 9)),
+      message('m2', 'u1', 'Segunda', today(9, 7)),
+      message('m1', 'u1', 'Primeira', today(9, 5)),
+    ]);
+
+    // Newest first, as the inverted list renders them: bottom of the group first.
+    const [last, middle, first] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(last).toMatchObject({ borderRadius: 20, borderTopLeftRadius: 4, borderBottomLeftRadius: 20 });
+    expect(middle).toMatchObject({ borderTopLeftRadius: 4, borderBottomLeftRadius: 4 });
+    expect(first).toMatchObject({ borderTopLeftRadius: 20, borderBottomLeftRadius: 4 });
+    for (const style of [last, middle, first]) {
+      expect(style).toMatchObject({
+        maxWidth: '85%',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        backgroundColor: colors.bgContrast50,
+      });
+      expect(style.borderTopRightRadius).toBeUndefined();
+    }
+    // 2 dp between bubbles of the group, 12 above it.
+    expect(rows().map((row) => StyleSheet.flatten(row.props.style).paddingTop)).toEqual([
+      CLUSTER_GAP,
+      CLUSTER_GAP,
+      GROUP_GAP,
+    ]);
+    expect([CLUSTER_GAP, GROUP_GAP]).toEqual([2, 12]);
+    // The time shows once, under the newest bubble.
+    expect(screen.getByText('09:09')).toBeOnTheScreen();
+    expect(screen.queryByText('09:07')).not.toBeOnTheScreen();
+    expect(screen.queryByText('09:05')).not.toBeOnTheScreen();
+  });
+
+  it('squares my bubbles on the right, in primary, with Enviada under the group', async () => {
+    await renderLoaded([
+      message('m2', 'me', 'Fechado', today(9, 6)),
+      message('m1', 'me', 'Bora', today(9, 5)),
+      message('m0', 'u1', 'Jogo hoje?', today(9, 4)),
+    ]);
+
+    const [last, first, theirs] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(last).toMatchObject({ borderTopRightRadius: 4, borderBottomRightRadius: 20, backgroundColor: colors.primary });
+    expect(first).toMatchObject({ borderTopRightRadius: 20, borderBottomRightRadius: 4, backgroundColor: colors.primary });
+    expect(last.borderTopLeftRadius).toBeUndefined();
+    // A sender change starts a new group, however close in time.
+    expect(theirs).toMatchObject({ borderTopLeftRadius: 20, borderBottomLeftRadius: 20 });
+    expect(rows().map((row) => StyleSheet.flatten(row.props.style).paddingTop)).toEqual([2, 12, 12]);
+    expect(screen.getByText('Fechado')).toHaveStyle({ color: colors.onPrimary });
+    expect(screen.getByText('Jogo hoje?')).toHaveStyle({ color: colors.text });
+    expect(screen.getAllByText('Enviada')).toHaveLength(1);
+    expect(screen.getByText('09:06')).toBeOnTheScreen();
+    expect(screen.getByText('09:04')).toBeOnTheScreen();
+  });
+
+  it('shows a pending bubble in primary at 60%, joined to my group', async () => {
+    await renderLoaded([message('m1', 'me', 'Oi', new Date(Date.now() - 60_000))]);
+    await type('Tudo bem?');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    const [pending, sent] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
+    expect(pending.backgroundColor).toBe(PENDING_BUBBLE_COLOR);
+    expect(PENDING_BUBBLE_COLOR).toBe(`${colors.primary}99`);
+    expect(sent.backgroundColor).toBe(colors.primary);
+    expect(pending).toMatchObject({ borderTopRightRadius: 4 });
+    expect(screen.getByText('Enviando…')).toBeOnTheScreen();
+    expect(screen.queryByText('Enviada')).not.toBeOnTheScreen();
+  });
+
+  it('shows 1 to 3 emoji large and without a bubble', async () => {
+    await renderLoaded([
+      message('m2', 'u1', '🎮🔥', today(9, 6)),
+      message('m1', 'u1', 'Olha 🎮', today(9, 5)),
+    ]);
+
+    const emoji = screen.getByTestId('message-emoji');
+    expect(emoji).toHaveTextContent('🎮🔥');
+    expect(emoji).toHaveStyle({ fontSize: 45 });
+    expect(emoji.props.accessibilityLabel).toBe('Ana Souza: 🎮🔥, 09:06');
+    // Text with an emoji keeps its bubble.
+    expect(bubbles()).toHaveLength(1);
+    expect(screen.getByText('Olha 🎮')).toBeOnTheScreen();
+  });
+});
+
+describe('ChatRoomScreen: keyboard', () => {
+  const withInset = {
+    frame: { x: 0, y: 0, width: 390, height: 800 },
+    insets: { top: 24, left: 0, right: 0, bottom: 34 },
+  };
+
+  it('pins the composer to the keyboard, above the bottom inset while it is closed', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    // Closed: the screen pads the inset under it. Open: it rides on the keyboard, which covers
+    // that inset too, so it moves by the keyboard's height less the inset.
+    expect(screen.getByTestId('composer-sticky').props.offset).toEqual({ closed: 0, opened: 34 });
+    expect(screen.getByTestId('composer-sticky')).toContainElement(screen.getByLabelText('Mensagem'));
+  });
+
+  it('lifts the inverted list with the keyboard by as much as the composer rises', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    const list = screen.getByTestId('message-list');
+    expect(list.props.inverted).toBe(true);
+    expect(list.props.offset).toBe(34);
+    expect(list.props.keyboardLiftBehavior).toBe('always');
+  });
+
+  it('moves the new messages pill with the composer', async () => {
+    metrics = withInset;
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
+    await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));
+
+    const sticky = await screen.findByTestId('new-messages-sticky');
+    expect(sticky.props.offset).toEqual({ closed: 0, opened: 34 });
+    expect(sticky).toContainElement(screen.getByRole('button', { name: 'Novas mensagens' }));
+  });
+
+  it('uses no offset without a bottom inset', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    expect(screen.getByTestId('composer-sticky').props.offset).toEqual({ closed: 0, opened: 0 });
+    expect(screen.getByTestId('message-list').props.offset).toBe(0);
   });
 });
 
@@ -632,16 +897,26 @@ describe('ChatRoomScreen: composer', () => {
   it('sends only non-blank text, up to 2000 characters, and keeps the draft', async () => {
     await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
     const field = screen.getByLabelText('Mensagem');
-    expect(field.props.placeholder).toBe('Mensagem');
+    expect(field.props.placeholder).toBe('Escreva uma mensagem');
     expect(field.props.maxLength).toBe(2000);
     expect(field.props.multiline).toBe(true);
+    // Grows up to 12 lines of 20 (15 at 1.3), then scrolls.
+    expect(field).toHaveStyle({ maxHeight: 240, lineHeight: 20 });
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
+    expect(screen.getByTestId('send-circle')).toHaveStyle({ backgroundColor: contrast[100] });
 
     await type('   ');
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
 
     await type('Rascunho');
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeEnabled();
+    expect(screen.getByTestId('send-circle')).toHaveStyle({
+      backgroundColor: colors.primary,
+      width: 40,
+      height: 40,
+    });
+    // A real 48 dp target around the 40 dp circle.
+    expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toHaveStyle({ width: 48, height: 48 });
     expect(useChatStore.getState().drafts[CONV]).toBe('Rascunho');
 
     await screen.unmount();
@@ -673,6 +948,8 @@ describe('ChatRoomScreen: composer', () => {
 
     await type('E aí');
     await screen.unmount();
+    // Reanimated tears the send button's animated style down on a 0 ms frame; run only what is due.
+    await act(async () => jest.advanceTimersByTime(0));
     expect(typingEvents()).toEqual([
       'typing:start',
       'typing:stop',
@@ -767,7 +1044,7 @@ describe('ChatRoomScreen: new messages pill', () => {
     await type('Falhou');
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
     await act(async () => chatSocket.pendingAck('message:send')?.resolve({ error: 'nope' }));
-    expect(screen.getByText('Não enviada')).toBeOnTheScreen();
+    expect(screen.getByText(RETRY_LINE)).toBeOnTheScreen();
 
     await fireEvent.scroll(screen.getByTestId('message-list'), scrollEvent(600));
     await act(async () => chatSocket.fire('message:receive', payload('m2', 'u1', 'Chegou')));

@@ -219,11 +219,20 @@ export type ConversationMenuProps = {
   onClose: () => void;
   /** "Sair da conversa": the screen asks for confirmation (shared with the swipe). */
   onLeave: (conversation: Conversation) => void;
+  /** Offers "Marcar como lida" on an unread conversation; the open room is read already. */
+  offerMarkRead?: boolean;
 };
 
 type MenuSheetProps = ConversationMenuProps & { moderation: ModerationMenu | null };
 
-function MenuSheet({ conversation, visible, onClose, onLeave, moderation }: MenuSheetProps) {
+function MenuSheet({
+  conversation,
+  visible,
+  onClose,
+  onLeave,
+  offerMarkRead = true,
+  moderation,
+}: MenuSheetProps) {
   const router = useRouter();
   const markRead = useMarkRead();
   const mute = useMuteConversation();
@@ -231,7 +240,7 @@ function MenuSheet({ conversation, visible, onClose, onLeave, moderation }: Menu
 
   const options: OptionSheetOption<MenuChoice>[] = [];
   if (person) options.push({ value: 'profile', label: 'Ver perfil', icon: 'person-outline' });
-  if (showsUnread(conversation)) {
+  if (offerMarkRead && showsUnread(conversation)) {
     options.push({ value: 'read', label: 'Marcar como lida', icon: 'checkmark-done-outline' });
   }
   options.push(

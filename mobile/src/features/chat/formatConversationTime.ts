@@ -1,12 +1,12 @@
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+export const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-function pad(value: number): string {
+export function pad(value: number): string {
   return String(value).padStart(2, '0');
 }
 
 /** Calendar-day number of a local date, so DST shifts never skew the day difference. */
-function localDayNumber(date: Date): number {
+export function localDayNumber(date: Date): number {
   return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / MS_PER_DAY);
 }
 
