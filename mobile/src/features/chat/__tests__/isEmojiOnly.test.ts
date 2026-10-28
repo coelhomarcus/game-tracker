@@ -15,7 +15,9 @@ describe('isEmojiOnly', () => {
     ['a subdivision flag', '🏴󠁧󠁢󠁳󠁣󠁴󠁿'],
     ['a keycap', '1️⃣'],
     ['a text-style symbol with the emoji selector', '❤️'],
-    ['an emoji without the selector', '❤'],
+    ['the heart without the selector, kept on purpose', '❤'],
+    ['a text-style symbol made emoji by the selector', '©️'],
+    ['an arrow made emoji by the selector', '↔️'],
   ])('is true for %s', (_name, text) => {
     expect(isEmojiOnly(text)).toBe(true);
   });
@@ -34,6 +36,12 @@ describe('isEmojiOnly', () => {
     ['a lone skin tone', '🏽'],
     ['a lone joiner', '‍'],
     ['emoji on two lines with text', '😀\nok'],
+    ['the copyright sign', '©'],
+    ['the trade mark sign', '™'],
+    ['the registered sign', '®'],
+    ['an arrow', '↔'],
+    ['a card suit', '♠'],
+    ['a smiley forced to text', '☺︎'],
   ])('is false for %s', (_name, text) => {
     expect(isEmojiOnly(text)).toBe(false);
   });

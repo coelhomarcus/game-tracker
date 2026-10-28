@@ -2,19 +2,21 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
 import { FlatList, StyleSheet } from 'react-native';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient, useSession, type User } from '@/features/auth';
 import { ApiError } from '@/lib/http/errors';
 import { useSetModeration } from '@/features/profiles/queries';
 import { useChatConnection } from '@/lib/realtime/connectionStore';
-import { colors, contrast } from '@/theme/tokens';
+import { colors } from '@/theme/tokens';
 import { chatSocket } from '@/test-utils/fakeChatSocket';
 
 import { chatApi } from '../api';
 import { useChatStore } from '../chatStore';
 import { ChatRoomScreen } from '../ChatRoomScreen';
-import { CLUSTER_GAP, GROUP_GAP, PENDING_BUBBLE_COLOR } from '../MessageBubble';
+import { CLUSTER_GAP, GROUP_GAP } from '../MessageBubble';
 import { conversationsKey } from '../queries';
 import { realtimeBridge } from '../realtimeBridge';
 import type { Conversation, Message, MessagePage } from '../types';
@@ -506,6 +508,9 @@ describe('ChatRoomScreen: header menu', () => {
       mocked.leave.mock.invocationCallOrder[0],
     );
     expect(queryClient.getQueryData<Conversation[]>(conversationsKey)).toEqual([]);
+    // The room is still on screen while the stack pops it: the header keeps the person and "…".
+    expect(screen.getByRole('button', { name: 'Perfil de Ana Souza' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Mais opções' })).toBeOnTheScreen();
   });
 
   it('goes to the list when there is nothing to go back to', async () => {
@@ -824,8 +829,8 @@ describe('ChatRoomScreen: grouped bubbles', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
     const [pending, sent] = bubbles().map((bubble) => StyleSheet.flatten(bubble.props.style));
-    expect(pending.backgroundColor).toBe(PENDING_BUBBLE_COLOR);
-    expect(PENDING_BUBBLE_COLOR).toBe(`${colors.primary}99`);
+    expect(pending.backgroundColor).toBe(colors.primaryPending);
+    expect(colors.primaryPending).toBe(`${colors.primary}99`);
     expect(sent.backgroundColor).toBe(colors.primary);
     expect(pending).toMatchObject({ borderTopRightRadius: 4 });
     expect(screen.getByText('Enviando…')).toBeOnTheScreen();
@@ -885,6 +890,75 @@ describe('ChatRoomScreen: keyboard', () => {
     expect(sticky).toContainElement(screen.getByRole('button', { name: 'Novas mensagens' }));
   });
 
+  it('reports every scroll frame, so the keyboard lift never works from a stale offset', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+
+    expect(screen.getByTestId('message-list').props.scrollEventThrottle).toBeLessThanOrEqual(16);
+  });
+
+  it('draws the fade above the connection banner, not over it', async () => {
+    await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
+    await act(async () => useChatConnection.setState({ status: 'connecting', attempt: 0 }));
+
+    const sticky = screen.getByTestId('composer-sticky');
+    const fade = screen.getByTestId('composer-fade');
+    expect(fade.parent).toBe(sticky);
+    expect(fade).toHaveStyle({ position: 'absolute', bottom: '100%', height: 12 });
+    expect(fade.props.pointerEvents).toBe('none');
+    // First in the sticky footer, which the banner and then the composer fill.
+    const children = sticky.children.filter((child) => typeof child !== 'string');
+    expect(children[0]).toBe(fade);
+    expect(screen.getByText('Conectando…')).toBeOnTheScreen();
+  });
+
+  describe('states without a list', () => {
+    const keyboard = useReanimatedKeyboardAnimation();
+    // The types describe the web stub, which takes no argument; jest runs the native helper.
+    const readAnimatedStyle = getAnimatedStyle as unknown as (element: unknown) => {
+      paddingBottom?: number;
+    };
+
+    afterEach(() => {
+      keyboard.height.value = 0;
+      keyboard.progress.value = 0;
+    });
+
+    it('keeps the empty conversation above the composer when the keyboard opens', async () => {
+      metrics = withInset;
+      keyboard.height.value = -300;
+      keyboard.progress.value = 1;
+      await renderLoaded([]);
+
+      const area = screen.getByTestId('chat-state-area');
+      expect(area).toContainElement(screen.getByTestId('chat-empty'));
+      // The composer rises by 300 − 34; the state area gives up as much room.
+      expect(readAnimatedStyle(area).paddingBottom).toBe(266);
+    });
+
+    it('takes the full height while the keyboard is closed', async () => {
+      metrics = withInset;
+      await renderLoaded([]);
+
+      expect(readAnimatedStyle(screen.getByTestId('chat-state-area')).paddingBottom).toBe(0);
+    });
+
+    it('keeps loading and the load error above the composer too', async () => {
+      keyboard.height.value = -300;
+      keyboard.progress.value = 1;
+      let fail: (error: Error) => void = () => undefined;
+      mocked.messages.mockReturnValueOnce(new Promise<MessagePage>((_, reject) => (fail = reject)));
+      queryClient.setQueryData(conversationsKey, [withAna]);
+      await renderRoom();
+
+      expect(screen.getByTestId('chat-state-area')).toContainElement(screen.getByLabelText('Carregando'));
+      expect(readAnimatedStyle(screen.getByTestId('chat-state-area')).paddingBottom).toBe(300);
+      await act(async () => fail(new ApiError(500, 'server_error', 'Erro')));
+      expect(screen.getByTestId('chat-state-area')).toContainElement(
+        await screen.findByText('Não foi possível carregar as mensagens'),
+      );
+    });
+  });
+
   it('uses no offset without a bottom inset', async () => {
     await renderLoaded([message('m1', 'u1', 'Oi', today(9, 5))]);
 
@@ -903,7 +977,7 @@ describe('ChatRoomScreen: composer', () => {
     // Grows up to 12 lines of 20 (15 at 1.3), then scrolls.
     expect(field).toHaveStyle({ maxHeight: 240, lineHeight: 20 });
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
-    expect(screen.getByTestId('send-circle')).toHaveStyle({ backgroundColor: contrast[100] });
+    expect(screen.getByTestId('send-circle')).toHaveStyle({ backgroundColor: colors.controlDisabled });
 
     await type('   ');
     expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();

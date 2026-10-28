@@ -50,6 +50,8 @@ export const negative400 = '#F65A7F';
 export const colors = {
   /** Screen background; bars (headers, tab bar, composers) use it too, over a hairline. */
   bg: contrast[0],
+  /** `bg` fully transparent: the far end of fades into the background. */
+  bgTransparent: '#16181c00',
   /** Body text: the palette's grey (contrast[900]) rather than the design reference's white. */
   text: contrast[900],
   /** Headings, names and other text that must stand out from the body. */
@@ -63,9 +65,13 @@ export const colors = {
   bgContrast25: contrast[25],
   /** Controls: secondary buttons, fields, chips. */
   bgContrast50: contrast[50],
+  /** A control that cannot be used right now (the chat send button with nothing to send). */
+  controlDisabled: contrast[100],
   /** Selected chips and tabs, my chat bubbles, avatar fallbacks. */
   selected: '#3f4b64',
   primary: primary[500],
+  /** `primary` at 60%: my chat bubble while it is not confirmed yet. */
+  primaryPending: '#ea377a99',
   onPrimary: '#ffffff',
   /** Half-transparent black behind controls drawn over images (the back button on a banner). */
   scrim: '#00000080',

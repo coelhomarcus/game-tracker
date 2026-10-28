@@ -80,7 +80,11 @@ export function ChatHeaderTitle({ conversationId, otherUser }: ChatHeaderTitlePr
  */
 export function ChatHeaderMenu({ conversationId }: { conversationId: string }) {
   const router = useRouter();
-  const conversation = useConversation(conversationId).data ?? null;
+  const current = useConversation(conversationId).data ?? null;
+  // Leaving drops it from the list while the room is still popping: keep the last one known.
+  const [last, setLast] = useState(current);
+  if (current && current !== last) setLast(current);
+  const conversation = current ?? last;
   const leave = useLeaveConversation();
   const [open, setOpen] = useState(false);
   const [leaving, setLeaving] = useState<Conversation | null>(null);

@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { PressableScale } from '@/components';
 import { fontFamily } from '@/components/Text';
 import { chatSocket } from '@/lib/realtime/chatSocket';
-import { colors, contrast, lineHeight, radii, space, type } from '@/theme/tokens';
+import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
 
 import { MAX_MESSAGE_LENGTH, useChatStore } from './chatStore';
 
@@ -17,9 +17,6 @@ const INPUT_MAX_HEIGHT = LINE_HEIGHT * COMPOSER_MAX_LINES;
 const PILL_MIN_HEIGHT = 40;
 const PILL_VERTICAL_PADDING = 10;
 const SEND_SIZE = 40;
-const FADE_HEIGHT = space.md;
-/** Two-digit hex alpha appended to a 6-digit hex token: fully transparent. */
-const ALPHA_0 = '00';
 
 /** Without a keystroke for this long, the other side is told typing stopped. */
 export const TYPING_IDLE_MS = 3000;
@@ -96,8 +93,6 @@ export function ChatComposer({ conversationId, onChangeText, onSent }: ChatCompo
 
   return (
     <View style={styles.container}>
-      {/* The messages fade out under the composer instead of being cut by an edge. */}
-      <View pointerEvents="none" style={styles.fade} />
       {/* A 48 dp target around the 40 dp pill: a tap on its padding focuses the field too. */}
       <Pressable
         accessible={false}
@@ -147,14 +142,6 @@ const styles = StyleSheet.create({
     paddingRight: space.sm,
     paddingVertical: space.xs,
   },
-  fade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: '100%',
-    height: FADE_HEIGHT,
-    backgroundImage: `linear-gradient(to bottom, ${colors.bg}${ALPHA_0}, ${colors.bg})`,
-  },
   /** 4 + 40 + 4: a 48 dp target, and the pill's bottom stays level with the send circle's. */
   pillTouch: { flex: 1, paddingVertical: (48 - PILL_MIN_HEIGHT) / 2 },
   pill: {
@@ -183,5 +170,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendOn: { backgroundColor: colors.primary },
-  sendOff: { backgroundColor: contrast[100] },
+  sendOff: { backgroundColor: colors.controlDisabled },
 });

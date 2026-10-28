@@ -4,6 +4,7 @@ import { Text } from '@/components';
 import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
 
 import type { PendingStatus } from './chatStore';
+import { pad } from './formatConversationTime';
 import { isEmojiOnly } from './isEmojiOnly';
 
 /** A message as the room shows it: from the server (`sent`) or still pending here. */
@@ -18,8 +19,6 @@ export type BubbleMessage = {
   reason?: string;
 };
 
-const pad = (value: number) => String(value).padStart(2, '0');
-
 /** `HH:mm` in local time. */
 export function formatClock(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -31,9 +30,6 @@ export const CLUSTER_GAP = space._2xs;
 export const BUBBLE_RADIUS = radii.xl;
 /** The corners where bubbles of one group meet, on the sender's side. */
 export const JOINED_RADIUS = radii.xs;
-/** Two-digit hex alpha for 60% opacity: a pending bubble is `primary` at 0.6. */
-const ALPHA_60 = '99';
-export const PENDING_BUBBLE_COLOR = `${colors.primary}${ALPHA_60}`;
 const EMOJI_SIZE = type.size.md * 3;
 
 export const FAILED_RETRY_LABEL = 'Não enviada. Toque para tentar de novo';
@@ -184,7 +180,7 @@ const styles = StyleSheet.create({
     borderRadius: BUBBLE_RADIUS,
   },
   bubbleMine: { backgroundColor: colors.primary },
-  bubblePending: { backgroundColor: PENDING_BUBBLE_COLOR },
+  bubblePending: { backgroundColor: colors.primaryPending },
   bubbleOther: { backgroundColor: colors.bgContrast50 },
   emoji: { maxWidth: '85%', fontSize: EMOJI_SIZE, lineHeight: lineHeight(EMOJI_SIZE, 'snug') },
   pendingEmoji: { opacity: 0.6 },

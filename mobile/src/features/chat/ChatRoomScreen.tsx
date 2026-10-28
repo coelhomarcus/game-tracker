@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,7 +10,12 @@ import {
   type NativeSyntheticEvent,
   type ScrollViewProps,
 } from 'react-native';
-import { KeyboardChatScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import {
+  KeyboardChatScrollView,
+  KeyboardStickyView,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, EmptyState, Screen, Text } from '@/components';
@@ -138,6 +143,20 @@ function buildRows(
 
 const keyExtractor = (item: RoomItem) => item.key;
 
+/**
+ * The loading, error and empty states: they shrink by as much as the composer rises with the
+ * keyboard (its height less the bottom inset), so their centred content stays above it.
+ */
+function AboveComposer({ inset, children }: { inset: number; children: ReactNode }) {
+  const { height } = useReanimatedKeyboardAnimation();
+  const keyboardStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -height.value - inset) }));
+  return (
+    <Animated.View testID="chat-state-area" style={[styles.fill, keyboardStyle]}>
+      {children}
+    </Animated.View>
+  );
+}
+
 // ---------- room ----------
 
 type ChatRoomProps = {
@@ -149,7 +168,13 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const insets = useSafeAreaInsets();
   const selfId = useSession((state) => state.user?.id);
   const conversation = useConversation(conversationId).data;
-  const otherUser = conversation?.otherUser ?? null;
+  // Leaving drops the conversation from the list while the room is still on screen (the stack
+  // pops it): the header keeps the last person known instead of flashing "Conversa".
+  const [lastOtherUser, setLastOtherUser] = useState(conversation?.otherUser ?? null);
+  if (conversation?.otherUser && conversation.otherUser !== lastOtherUser) {
+    setLastOtherUser(conversation.otherUser);
+  }
+  const otherUser = conversation?.otherUser ?? lastOtherUser;
   const otherName = otherUser ? displayName(otherUser) : 'Conversa';
   const pending = useChatStore((state) => state.pending[conversationId] ?? NO_PENDING);
   const retry = useChatStore((state) => state.retry);
@@ -301,29 +326,37 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     [insets.bottom],
   );
   // Closed, the composer sits above the bottom inset (the screen pads it); open, on the keyboard,
-  // which covers that inset too.
+  // which covers that inset too. This relies on the root KeyboardProvider's
+  // `navigationBarTranslucent`: with it the keyboard height is measured from the screen's bottom
+  // edge, nav bar included, so the inset is not counted twice.
   const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom }), [insets.bottom]);
 
   let body: ReactElement;
   if (data === undefined) {
     // A failed background refetch keeps the loaded messages: the error shows only without them.
     body = messages.isError ? (
-      <View style={styles.center}>
-        <EmptyState
-          title="Não foi possível carregar as mensagens"
-          action={{ label: 'Tentar de novo', onPress: () => void messages.refetch() }}
-        />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View style={styles.center}>
+          <EmptyState
+            title="Não foi possível carregar as mensagens"
+            action={{ label: 'Tentar de novo', onPress: () => void messages.refetch() }}
+          />
+        </View>
+      </AboveComposer>
     ) : (
-      <View style={styles.center}>
-        <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View style={styles.center}>
+          <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
+        </View>
+      </AboveComposer>
     );
   } else if (items.length === 0 && !hasNextPage) {
     body = (
-      <View testID="chat-empty" style={styles.center}>
-        <EmptyState title={`Diga oi para ${otherName}`} message="As mensagens aparecem aqui." />
-      </View>
+      <AboveComposer inset={insets.bottom}>
+        <View testID="chat-empty" style={styles.center}>
+          <EmptyState title={`Diga oi para ${otherName}`} message="As mensagens aparecem aqui." />
+        </View>
+      </AboveComposer>
     );
   } else {
     body = (
@@ -340,7 +373,10 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
           onEndReached={loadOlder}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
-          scrollEventThrottle={100}
+          // Every frame: KeyboardChatScrollView tracks the offset from these events, and Android
+          // drops any event within the throttle of the last one, the final one of a keyboard
+          // animation included. A stale offset would leave the newest message under the composer.
+          scrollEventThrottle={16}
           // Keeps the reader's place when messages arrive; follows them near the bottom.
           maintainVisibleContentPosition={{
             minIndexForVisible: 0,
@@ -378,6 +414,8 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
       <Stack.Screen options={headerOptions} />
       {body}
       <KeyboardStickyView testID="composer-sticky" offset={stickyOffset} style={styles.footer}>
+        {/* The messages fade out above the banner and composer instead of meeting an edge. */}
+        <View testID="composer-fade" pointerEvents="none" style={styles.fade} />
         <ConnectionBanner />
         <ChatComposer
           conversationId={conversationId}
@@ -394,8 +432,16 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   // Inverted: the top padding is under the newest message, clear of the composer's fade.
   content: { paddingTop: space.md, paddingBottom: space.sm },
-  // Above the list, so the composer's fade draws over the messages under it.
+  // Above the list, so the fade draws over the messages under it.
   footer: { zIndex: 1 },
+  fade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    height: space.md,
+    backgroundImage: `linear-gradient(to bottom, ${colors.bgTransparent}, ${colors.bg})`,
+  },
   older: { alignItems: 'center', gap: space.xs, padding: space.lg },
   olderText: { textAlign: 'center' },
   pillArea: { position: 'absolute', left: 0, right: 0, bottom: space.sm, alignItems: 'center' },
