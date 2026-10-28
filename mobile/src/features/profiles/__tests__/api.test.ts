@@ -20,6 +20,16 @@ import {
 // React Native's FormData type lacks the readers that Node's implementation has.
 type ServerForm = { get(name: string): unknown; has(name: string): boolean };
 
+// The device's File reads the picked file by its uri.
+jest.mock('expo-file-system', () => ({
+  File: class {
+    uri: string;
+    constructor(uri: string) {
+      this.uri = uri;
+    }
+  },
+}));
+
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -563,7 +573,7 @@ describe('profilesApi', () => {
       expect(seenContentType).toMatch(/^multipart\/form-data/);
     });
 
-    it('avatar on native appends the uri descriptor under the avatar field', async () => {
+    it('avatar on native appends the picked file under the avatar field', async () => {
       Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
       const appended: unknown[][] = [];
       jest.spyOn(FormData.prototype, 'append').mockImplementation((...args: unknown[]) => {
@@ -584,9 +594,9 @@ describe('profilesApi', () => {
       expect(url).toBe('https://img/avatar.jpg');
       expect(seenPath.endsWith('/users/me/avatar')).toBe(true);
       expect(timeoutSpy.mock.calls.some(([, ms]) => ms === 120_000)).toBe(true);
-      expect(appended).toEqual([
-        ['avatar', { uri: image.uri, name: 'photo.jpg', type: 'image/jpeg' }],
-      ]);
+      expect(appended).toHaveLength(1);
+      expect(appended[0]?.[0]).toBe('avatar');
+      expect(appended[0]?.[1]).toMatchObject({ uri: image.uri });
     });
   });
 });

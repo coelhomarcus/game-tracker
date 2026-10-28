@@ -78,42 +78,6 @@ export function picked(bytes: Uint8Array, fileName: string, mimeType: string): P
 
 export const tinyPng = () => picked(TINY_PNG, 'eu.png', 'image/png');
 
-type NativeFilePart = { uri: string; name: string; type: string };
-
-function isNativeFilePart(value: unknown): value is NativeFilePart {
-  return typeof value === 'object' && value !== null && 'uri' in value && 'name' in value;
-}
-
-/**
- * Node's FormData taught what React Native's does: a `{ uri, name, type }` part is sent as the
- * file at `uri` (here always a data: URI) instead of as the text "[object Object]".
- */
-export class NativeFormData extends FormData {
-  override append(name: string, value: string | Blob, fileName?: string): void {
-    const part: unknown = value;
-    if (!isNativeFilePart(part)) {
-      if (typeof value === 'string') super.append(name, value);
-      else super.append(name, value, fileName);
-      return;
-    }
-    const base64 = /^data:[^;,]*;base64,(.*)$/s.exec(part.uri)?.[1];
-    if (base64 === undefined) throw new Error(`only data: URIs are readable here: ${part.uri}`);
-    super.append(name, new Blob([Buffer.from(base64, 'base64')], { type: part.type }), part.name);
-  }
-}
-
-
-/** Runs `fn` with the runtime's FormData swapped for one that reads a file part's uri like React Native does. */
-export async function withNativeFormData<T>(fn: () => Promise<T>): Promise<T> {
-  const original = globalThis.FormData;
-  globalThis.FormData = NativeFormData;
-  try {
-    return await fn();
-  } finally {
-    globalThis.FormData = original;
-  }
-}
-
 /** Fetches an uploaded image the way the app's <Image> does: without credentials. */
 export async function served(url: string): Promise<{ type: string | null; bytes: Uint8Array }> {
   const response = await fetch(url);

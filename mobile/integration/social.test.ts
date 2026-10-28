@@ -11,7 +11,7 @@ import {
   uniqueSuffix,
   type Account,
 } from './backend';
-import { gradientPng, picked, served, withNativeFormData } from './images';
+import { gradientPng, picked, served } from './images';
 import { threadComments } from './threadComments';
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
@@ -34,7 +34,7 @@ const commentOrder = (tree: Comment[]) => threadComments(tree).map((comment) => 
 
 async function uploadPostImage(account: Account, width: number, height: number) {
   const image = picked(gradientPng(width, height), 'foto.png', 'image/png');
-  return withNativeFormData(() => account.feed.uploadPostImage(image));
+  return account.feed.uploadPostImage(image);
 }
 
 describeBackend('reposts against the test API', () => {
@@ -249,7 +249,7 @@ describeBackend('post images against the test API', () => {
 
     const text = picked(Buffer.from('isto não é uma imagem'), 'ruim.png', 'image/png');
     expect(
-      await apiErrorOf(withNativeFormData(() => a.feed.uploadPostImage(text))),
+      await apiErrorOf(a.feed.uploadPostImage(text)),
     ).toMatchObject({ status: 400 });
   });
 

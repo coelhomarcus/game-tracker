@@ -17,7 +17,7 @@ import {
   signUpAccount,
   type Account,
 } from './backend';
-import { gradientPng, jpegSize, picked, served, TINY_PNG, tinyPng, withNativeFormData } from './images';
+import { gradientPng, jpegSize, picked, served, TINY_PNG, tinyPng } from './images';
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
 /** The server's answer when the multipart body carries no file part. */
@@ -35,7 +35,7 @@ const SAVED_SIZE: Record<ImageKind, { width: number; height: number }> = {
  * runtime's FormData swapped for one that reads the file part's uri like React Native does.
  */
 async function upload(account: Account, kind: ImageKind, image: PickedImage): Promise<string> {
-  return withNativeFormData(() => account.profiles.upload(kind, image));
+  return account.profiles.upload(kind, image);
 }
 
 describeBackend('profiles against the test API', () => {
@@ -296,7 +296,7 @@ describeBackend('follows lists, media and likes against the test API', () => {
     const a = await signUpAccount('mf');
     const b = await signUpAccount('mg');
     const image = picked(gradientPng(60, 40), 'foto.png', 'image/png');
-    const uploaded = await withNativeFormData(() => a.feed.uploadPostImage(image));
+    const uploaded = await a.feed.uploadPostImage(image);
     await a.feed.create({ content: 'só texto' });
     const withImage = await a.feed.create({ content: 'com foto', images: [uploaded] });
     const other = await b.feed.create({ content: 'de outra pessoa' });
