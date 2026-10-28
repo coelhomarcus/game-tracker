@@ -51,6 +51,18 @@ jest.mock('expo-secure-store', () => ({
   },
 }));
 
+// The device's File reads the picked file by its uri; here the uri is a data: URI holding the bytes.
+jest.mock('expo-file-system', () => ({
+  File: class extends Blob {
+    name = 'image';
+    constructor(uri: string) {
+      const match = /^data:([^;,]*);base64,(.*)$/s.exec(uri);
+      if (!match) throw new Error(`only data: URIs are readable here: ${uri}`);
+      super([Buffer.from(match[2] ?? '', 'base64')], { type: match[1] ?? '' });
+    }
+  },
+}));
+
 // Node 26 warns when the global `localStorage` getter is touched without --localstorage-file.
 // Native has no localStorage.
 Object.defineProperty(globalThis, 'localStorage', { value: undefined, configurable: true });

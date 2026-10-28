@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 /** An image chosen with the system picker, ready to upload. */
@@ -15,12 +16,9 @@ export async function imageForm(field: string, image: UploadableImage): Promise<
     const blob = await (await fetch(image.uri)).blob();
     form.append(field, blob, image.fileName);
   } else {
-    // React Native reads the file itself from this descriptor.
-    form.append(field, {
-      uri: image.uri,
-      name: image.fileName,
-      type: image.mimeType,
-    } as unknown as Blob);
+    // Expo's fetch (the global one) cannot read React Native's `{ uri, name, type }` descriptor and
+    // fails the request; a File reads the picked file itself and brings its own name and type.
+    form.append(field, new File(image.uri));
   }
   return form;
 }
