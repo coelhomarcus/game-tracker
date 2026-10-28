@@ -36,6 +36,9 @@ import { TabBar } from './TabBar';
 /** How far the focused list scrolls before the compact header fades in. */
 export const COMPACT_HEADER_AFTER = 100;
 const COMPACT_HEADER_FADE_MS = 75;
+/** A tab press cuts to the page and fades it in from this opacity over `PAGE_FADE_MS`. */
+const PAGE_FADE_FROM = 0.35;
+const PAGE_FADE_MS = 160;
 /** Until they are measured: a profile header and the 48 dp tab bar. */
 const HEADER_ESTIMATE = 320;
 const TAB_BAR_ESTIMATE = 48;
@@ -287,6 +290,8 @@ export function PagerWithHeader({
   const focusedIndex = useSharedValue(initialIndex);
   const headerShared = useSharedValue(HEADER_ESTIMATE);
   const compactShared = useSharedValue(compactHeight);
+  const pageOpacity = useSharedValue(1);
+  const pageStyle = useAnimatedStyle(() => ({ opacity: pageOpacity.get() }));
 
   useEffect(() => {
     headerShared.set(headerHeight);
@@ -362,9 +367,12 @@ export function PagerWithHeader({
       syncOtherPages();
       mountPages([index]);
       focus(index);
-      pagerRef.current?.scrollTo({ x: index * size.width, animated: true });
+      // Sliding across the pages in between shows their lists passing by; jump and fade in.
+      pageOpacity.set(PAGE_FADE_FROM);
+      pagerRef.current?.scrollTo({ x: index * size.width, animated: false });
+      pageOpacity.set(withTiming(1, { duration: PAGE_FADE_MS }));
     },
-    [focus, mountPages, size.width, syncOtherPages, tabs],
+    [focus, mountPages, pageOpacity, size.width, syncOtherPages, tabs],
   );
 
   const scrollFocusedToTop = useCallback(() => {
@@ -435,7 +443,7 @@ export function PagerWithHeader({
         contentOffset={{ x: initialIndex * size.width, y: 0 }}
         onScrollBeginDrag={onBeginDrag}
         onMomentumScrollEnd={onPageSettled}
-        style={[styles.pager, !headerMeasured && styles.hidden]}
+        style={[styles.pager, headerMeasured ? pageStyle : styles.hidden]}
       >
         {tabs.map((tab, index) =>
           tab.key in mounted ? (

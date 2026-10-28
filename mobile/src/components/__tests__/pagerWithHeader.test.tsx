@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createRef } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated, { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -182,6 +182,17 @@ describe('PagerWithHeader', () => {
     await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
     expect(screen.getByTestId('list-b')).toBeOnTheScreen();
     expect(screen.getByRole('tab', { name: 'Segunda', selected: true })).toBeOnTheScreen();
+  });
+
+  it('cuts to the page on a tab press instead of sliding across the pages in between', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo');
+    await renderPager();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ x: 360, animated: false });
+    expect(scrollTo).not.toHaveBeenCalledWith(expect.objectContaining({ animated: true }));
+    scrollTo.mockRestore();
   });
 
   it('moves the header with the list and stops with the tab bar under the compact header', async () => {

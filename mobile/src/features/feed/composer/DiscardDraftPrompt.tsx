@@ -1,7 +1,7 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Text } from '@/components';
+import { Button, SheetModal, Text } from '@/components';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
 
@@ -19,42 +19,32 @@ export type DiscardDraftPromptProps = {
 export function DiscardDraftPrompt({ visible, onSave, onDiscard, onKeepEditing }: DiscardDraftPromptProps) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onKeepEditing}>
-      <View style={styles.root}>
-        <Pressable
-          testID="discard-backdrop"
-          accessible={false}
-          style={styles.backdrop}
-          onPress={onKeepEditing}
-        />
-        <View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: space.lg + insets.bottom }]}>
-          <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
-            Descartar rascunho?
-          </Text>
-          <Text tone="medium">Você pode salvar o rascunho e continuar depois.</Text>
-          <View style={styles.actions}>
-            <Button label="Salvar rascunho" onPress={onSave} />
-            <Button label="Continuar editando" color="secondary" onPress={onKeepEditing} />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Descartar"
-              onPress={onDiscard}
-              style={({ pressed }) => [styles.discard, pressed && styles.pressed]}
-            >
-              <Text weight="semibold" tone="danger">
-                Descartar
-              </Text>
-            </Pressable>
-          </View>
+    <SheetModal visible={visible} onRequestClose={onKeepEditing} backdropTestID="discard-backdrop">
+      <View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: space.lg + insets.bottom }]}>
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
+          Descartar rascunho?
+        </Text>
+        <Text tone="medium">Você pode salvar o rascunho e continuar depois.</Text>
+        <View style={styles.actions}>
+          <Button label="Salvar rascunho" onPress={onSave} />
+          <Button label="Continuar editando" color="secondary" onPress={onKeepEditing} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Descartar"
+            onPress={onDiscard}
+            style={({ pressed }) => [styles.discard, pressed && styles.pressed]}
+          >
+            <Text weight="semibold" tone="danger">
+              Descartar
+            </Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgContrast50,
     borderTopLeftRadius: radii.md,

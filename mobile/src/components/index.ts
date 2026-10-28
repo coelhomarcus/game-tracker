@@ -40,6 +40,7 @@ export { Pill, type PillProps } from './Pill';
 export { RatingStars, type RatingStarsProps } from './RatingStars';
 export { Screen, type ScreenProps } from './Screen';
 export * as SettingsList from './SettingsList';
+export { SheetModal, type SheetModalProps } from './SheetModal';
 export { Skeleton, type SkeletonProps } from './Skeleton';
 export { StatusIcon, type StatusIconProps } from './StatusIcon';
 export { TabBar, type TabBarProps } from './TabBar';

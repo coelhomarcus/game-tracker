@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { IoniconName } from '@/features/library/status';
 import { colors, hairline, radii, space } from '@/theme/tokens';
+import { SheetModal } from './SheetModal';
 import { Text } from './Text';
 
 export type OptionSheetOption<T> = {
@@ -81,43 +82,33 @@ export function OptionSheet<T>({
   };
 
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <View style={styles.root}>
-        <Pressable
-          testID="sheet-backdrop"
-          accessible={false}
-          style={styles.backdrop}
-          onPress={onClose}
-        />
-        <View
-          accessibilityViewIsModal
-          style={[styles.sheet, { paddingBottom: space.sm + insets.bottom }]}
-        >
-          <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.title}>
-            {title}
-          </Text>
-          {options.map((option) => renderOption(option, selected))}
-          {sections.map((section, index) => (
-            <View
-              key={section.title}
-              testID="sheet-section"
-              style={(index > 0 || options.length > 0) && styles.sectionDivider}
-            >
-              <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium" style={styles.sectionTitle}>
-                {section.title}
-              </Text>
-              {section.options.map((option) => renderOption(option, section.selected))}
-            </View>
-          ))}
-        </View>
+    <SheetModal visible={visible} onRequestClose={onClose} backdropTestID="sheet-backdrop">
+      <View
+        accessibilityViewIsModal
+        style={[styles.sheet, { paddingBottom: space.sm + insets.bottom }]}
+      >
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.title}>
+          {title}
+        </Text>
+        {options.map((option) => renderOption(option, selected))}
+        {sections.map((section, index) => (
+          <View
+            key={section.title}
+            testID="sheet-section"
+            style={(index > 0 || options.length > 0) && styles.sectionDivider}
+          >
+            <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium" style={styles.sectionTitle}>
+              {section.title}
+            </Text>
+            {section.options.map((option) => renderOption(option, section.selected))}
+          </View>
+        ))}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgContrast50,
     borderTopLeftRadius: radii.md,
