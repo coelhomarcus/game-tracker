@@ -44,6 +44,7 @@ const AVATAR_LISTS: readonly QueryKey[] = [
   ['gamePosts'],
   ['userPosts'],
   ['bookmarks'],
+  ['postSearch'],
   ['post'],
   ['comments'],
   ['userReplies'],

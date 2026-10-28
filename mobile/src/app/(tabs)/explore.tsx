@@ -1,3 +1,3 @@
-import { ExploreScreen } from "@/features/games/ExploreScreen";
+import { ExploreScreen } from "@/features/explore/ExploreScreen";
 
 export default ExploreScreen;

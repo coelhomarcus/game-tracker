@@ -18,9 +18,17 @@ export type PersonRowProps = {
   showFollow?: boolean;
   /** Replaces the default `Perfil de <name>` label when the press does something else. */
   pressLabel?: string;
+  /** The person follows the viewer, so the button reads "Seguir de volta". */
+  followsMe?: boolean;
 };
 
-export function PersonRow({ person, onPress, showFollow = true, pressLabel }: PersonRowProps) {
+export function PersonRow({
+  person,
+  onPress,
+  showFollow = true,
+  pressLabel,
+  followsMe = false,
+}: PersonRowProps) {
   const selfId = useSession((state) => state.user?.id);
   const name = displayName(person);
   const bio = person.bio?.trim();
@@ -47,7 +55,12 @@ export function PersonRow({ person, onPress, showFollow = true, pressLabel }: Pe
         </View>
       </Pressable>
       {!showFollow || person.id === selfId ? null : (
-        <FollowButton userId={person.id} following={person.isFollowedByMe} name={name} />
+        <FollowButton
+          userId={person.id}
+          following={person.isFollowedByMe}
+          name={name}
+          followsMe={followsMe}
+        />
       )}
     </View>
   );

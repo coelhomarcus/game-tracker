@@ -33,6 +33,22 @@ export function formatRelativeTime(at: Date, now: Date = new Date()): string {
 
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
+/**
+ * The compact form for dense lists (notifications): "5 min", "2 h", "Ontem", then the day and
+ * month ("12 out"), with the year when it is not the current one ("12 out 2025").
+ */
+export function formatShortRelativeTime(at: Date, now: Date = new Date()): string {
+  const diff = now.getTime() - at.getTime();
+
+  if (diff < 45 * SECOND) return 'agora';
+  if (diff < HOUR) return `${Math.min(59, Math.max(1, Math.floor(diff / MINUTE)))} min`;
+  if (diff < 24 * HOUR) return `${Math.floor(diff / HOUR)} h`;
+  if (localDayNumber(now) - localDayNumber(at) === 1) return 'Ontem';
+
+  const dayMonth = `${at.getDate()} ${MONTHS[at.getMonth()]}`;
+  return at.getFullYear() === now.getFullYear() ? dayMonth : `${dayMonth} ${at.getFullYear()}`;
+}
+
 /** The full local date and time of an instant, e.g. "26 de out de 2026 às 14:05". */
 export function formatFullDate(at: Date): string {
   const date = `${at.getDate()} de ${MONTHS[at.getMonth()]} de ${at.getFullYear()}`;

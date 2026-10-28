@@ -54,6 +54,12 @@ export type FollowListPerson = PersonResult & { followsMe: boolean };
 
 export type FollowListPage = { items: FollowListPerson[]; nextCursor: string | null };
 
+/**
+ * One "Sugestões para seguir" row: never someone the viewer follows. `followedByCount` is how many of
+ * the people the viewer follows follow them (0 for the most-followed people that fill the list).
+ */
+export type SuggestedPerson = FollowListPerson & { followedByCount: number };
+
 /** One comment a user wrote, with the post it answers (the Respostas tab of a profile). */
 export type UserReply = {
   id: string;
@@ -122,6 +128,14 @@ export function parseFollowListPage(json: Json): FollowListPage {
       followsMe: item.followsMe === true,
     })),
     nextCursor: nullableString(json.nextCursor),
+  };
+}
+
+export function parseSuggestedPerson(json: Json): SuggestedPerson {
+  return {
+    ...parsePersonResult(json),
+    followsMe: json.followsMe === true,
+    followedByCount: count(json.followedByCount),
   };
 }
 

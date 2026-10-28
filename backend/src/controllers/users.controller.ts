@@ -12,6 +12,11 @@ export async function searchHandler(req: Request, res: Response) {
   res.json(results);
 }
 
+export async function suggestionsHandler(req: Request, res: Response) {
+  const { limit } = res.locals.query as { limit: number };
+  res.json(await usersService.suggestions(req.user!.id, limit));
+}
+
 export async function getPublicProfileHandler(req: Request, res: Response) {
   const profile = await usersService.getPublicProfile(req.user!.id, req.params.id as string);
   res.json(profile);

@@ -28,6 +28,28 @@ describeBackend('notifications against the test API', () => {
     await ana.notifications.markAllRead();
   });
 
+  it('filters by type, reports the cursor and keeps the count apart', async () => {
+    const ana = await signUpAccount('nd');
+    const others = [await signUpAccount('ne'), await signUpAccount('nf'), await signUpAccount('ng')];
+    for (const other of others) await other.profiles.setFollow(ana.user.id, true);
+
+    const first = await ana.notifications.list();
+    expect(first.items.map((n) => n.type)).toEqual(['follow', 'follow', 'follow']);
+    expect(first.items.every((n) => n.postImageUrl === null)).toBe(true);
+    expect(first.nextCursor).toBeNull();
+    expect(await ana.notifications.unreadCount()).toBe(3);
+
+    const follows = await ana.notifications.list({ filter: 'follows' });
+    expect(follows.items.map((n) => n.id)).toEqual(first.items.map((n) => n.id));
+    const replies = await ana.notifications.list({ filter: 'replies' });
+    expect(replies.items).toEqual([]);
+    // The count is over every type, whatever the filter.
+    expect(replies.unreadCount).toBe(3);
+
+    await ana.notifications.markAllRead();
+    expect(await ana.notifications.unreadCount()).toBe(0);
+  });
+
   it('without a valid session the list is rejected (401)', async () => {
     const ana = await signUpAccount('nc');
     await ana.app.sessionManager.clear();

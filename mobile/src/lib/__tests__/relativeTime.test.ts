@@ -1,4 +1,4 @@
-import { formatFullDate, formatRelativeTime } from '../relativeTime';
+import { formatFullDate, formatRelativeTime, formatShortRelativeTime } from '../relativeTime';
 
 // Local-time constructors keep the calendar-day rules independent of the machine time zone.
 const now = new Date(2026, 9, 20, 12, 0, 0);
@@ -62,5 +62,26 @@ describe('formatFullDate', () => {
   it('pads the time but not the day', () => {
     expect(formatFullDate(new Date(2027, 0, 3, 9, 0))).toBe('3 de jan de 2027 às 09:00');
     expect(formatFullDate(new Date(2026, 11, 31, 0, 59))).toBe('31 de dez de 2026 às 00:59');
+  });
+});
+
+describe('formatShortRelativeTime', () => {
+  it('counts minutes and hours without "há"', () => {
+    expect(formatShortRelativeTime(ago(10 * SECOND), now)).toBe('agora');
+    expect(formatShortRelativeTime(ago(45 * SECOND), now)).toBe('1 min');
+    expect(formatShortRelativeTime(ago(5 * MINUTE), now)).toBe('5 min');
+    expect(formatShortRelativeTime(ago(2 * HOUR), now)).toBe('2 h');
+    expect(formatShortRelativeTime(ago(23 * HOUR + 59 * MINUTE), now)).toBe('23 h');
+  });
+
+  it('says Ontem for the previous calendar day past 24 h, then the day and month', () => {
+    const early = new Date(2026, 9, 20, 0, 1);
+    expect(formatShortRelativeTime(new Date(2026, 9, 19, 0, 0), early)).toBe('Ontem');
+    expect(formatShortRelativeTime(new Date(2026, 9, 18, 23, 0), early)).toBe('18 out');
+    expect(formatShortRelativeTime(new Date(2026, 9, 12, 9, 0), now)).toBe('12 out');
+  });
+
+  it('adds the year outside the current one', () => {
+    expect(formatShortRelativeTime(new Date(2025, 11, 3, 9, 0), now)).toBe('3 dez 2025');
   });
 });

@@ -6,7 +6,7 @@ import { setupServer } from 'msw/node';
 import { apiBaseUrl } from '@/lib/env';
 
 import { notificationsApi } from '../api';
-import { parseNotificationsData } from '../types';
+import { parseNotificationsPage, parseUnreadCount } from '../types';
 
 const server = setupServer();
 
@@ -25,14 +25,16 @@ const item = {
   createdAt: '2026-10-20T10:00:00.000Z',
 };
 
-describe('parseNotificationsData', () => {
-  it('parses items and the unread count', () => {
-    const data = parseNotificationsData({
+describe('parseNotificationsPage', () => {
+  it('parses items, the unread count and the cursor', () => {
+    const data = parseNotificationsPage({
       items: [item, { ...item, id: 'n2', type: 'follow', postId: null, read: true }],
       unreadCount: 3,
+      nextCursor: 'c2',
     });
 
     expect(data.unreadCount).toBe(3);
+    expect(data.nextCursor).toBe('c2');
     expect(data.items).toEqual([
       {
         id: 'n1',
@@ -41,6 +43,7 @@ describe('parseNotificationsData', () => {
         postId: 'p1',
         commentId: null,
         excerpt: null,
+        postImageUrl: null,
         read: false,
         createdAt: new Date('2026-10-20T10:00:00.000Z'),
       },
@@ -51,6 +54,7 @@ describe('parseNotificationsData', () => {
         postId: null,
         commentId: null,
         excerpt: null,
+        postImageUrl: null,
         read: true,
         createdAt: new Date('2026-10-20T10:00:00.000Z'),
       },
@@ -58,7 +62,7 @@ describe('parseNotificationsData', () => {
   });
 
   it('skips items with an unknown type or without an actor', () => {
-    const data = parseNotificationsData({
+    const data = parseNotificationsPage({
       items: [
         { ...item, id: 'n1', type: 'comment' },
         { ...item, id: 'n2', type: 'weird' },
@@ -72,7 +76,7 @@ describe('parseNotificationsData', () => {
   });
 
   it('parses reply, mention, repost and quote with commentId and excerpt', () => {
-    const data = parseNotificationsData({
+    const data = parseNotificationsPage({
       items: [
         { ...item, id: 'n1', type: 'reply', commentId: 'c1', excerpt: 'Concordo' },
         { ...item, id: 'n2', type: 'mention', commentId: null, excerpt: 'oi @ana' },
@@ -89,33 +93,84 @@ describe('parseNotificationsData', () => {
   });
 
   it('defaults a missing commentId and excerpt to null', () => {
-    const data = parseNotificationsData({ items: [item] });
+    const data = parseNotificationsPage({ items: [item] });
 
     expect(data.items[0]).toMatchObject({ commentId: null, excerpt: null });
   });
 
-  it('defaults unreadCount to 0 and a missing postId to null', () => {
+  it('defaults unreadCount to 0, a missing cursor and postId to null', () => {
     const { postId: _postId, ...withoutPost } = item;
-    const data = parseNotificationsData({ items: [withoutPost] });
+    const data = parseNotificationsPage({ items: [withoutPost] });
 
     expect(data.unreadCount).toBe(0);
+    expect(data.nextCursor).toBeNull();
     expect(data.items[0]!.postId).toBeNull();
+  });
+
+  it('reads postImageUrl, and null when it is missing or not a string', () => {
+    const data = parseNotificationsPage({
+      items: [
+        { ...item, id: 'n1', postImageUrl: 'https://img/p1.jpg' },
+        { ...item, id: 'n2', postImageUrl: null },
+        { ...item, id: 'n3', postImageUrl: 42 },
+        { ...item, id: 'n4' },
+      ],
+      unreadCount: 0,
+    });
+
+    expect(data.items.map((n) => n.postImageUrl)).toEqual(['https://img/p1.jpg', null, null, null]);
+  });
+});
+
+describe('parseUnreadCount', () => {
+  it('reads the count and defaults to 0', () => {
+    expect(parseUnreadCount({ unreadCount: 7 })).toBe(7);
+    expect(parseUnreadCount({})).toBe(0);
+    expect(parseUnreadCount({ unreadCount: '7' })).toBe(0);
   });
 });
 
 describe('notificationsApi', () => {
-  it('list fetches and parses', async () => {
+  /** Answers one page and records the query of each request. */
+  function listHandler(body: Record<string, unknown>) {
+    const seen: URLSearchParams[] = [];
     server.use(
-      http.get(`${apiBaseUrl}/notifications`, () =>
-        HttpResponse.json({ items: [item], unreadCount: 1 }),
-      ),
+      http.get(`${apiBaseUrl}/notifications`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json(body);
+      }),
     );
+    return seen;
+  }
+
+  it('list fetches and parses the first page of every type', async () => {
+    const seen = listHandler({ items: [item], unreadCount: 1, nextCursor: 'next' });
 
     const data = await notificationsApi.list();
 
     expect(data.unreadCount).toBe(1);
+    expect(data.nextCursor).toBe('next');
     expect(data.items).toHaveLength(1);
     expect(data.items[0]).toMatchObject({ id: 'n1', type: 'like', read: false });
+    expect(Object.fromEntries(seen[0]!)).toEqual({ filter: 'all', limit: '30' });
+  });
+
+  it('list sends the filter and the cursor', async () => {
+    const seen = listHandler({ items: [], unreadCount: 0, nextCursor: null });
+
+    await notificationsApi.list({ filter: 'mentions', cursor: 'abc' });
+    await notificationsApi.list({ filter: 'replies' });
+
+    expect(Object.fromEntries(seen[0]!)).toEqual({ filter: 'mentions', limit: '30', cursor: 'abc' });
+    expect(Object.fromEntries(seen[1]!)).toEqual({ filter: 'replies', limit: '30' });
+  });
+
+  it('unreadCount fetches the cheap count', async () => {
+    server.use(
+      http.get(`${apiBaseUrl}/notifications/unread-count`, () => HttpResponse.json({ unreadCount: 12 })),
+    );
+
+    await expect(notificationsApi.unreadCount()).resolves.toBe(12);
   });
 
   it('markAllRead POSTs to read-all', async () => {

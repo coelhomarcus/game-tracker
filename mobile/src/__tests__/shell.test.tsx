@@ -24,11 +24,16 @@ jest.mock('@/features/library/queries', () => ({
 
 jest.mock('@/features/notifications/queries', () => ({
   useNotifications: () => ({
-    data: { items: [], unreadCount: 0 },
+    data: { pages: [{ items: [], unreadCount: 0, nextCursor: null }], pageParams: [undefined] },
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: jest.fn(),
     isError: false,
     refetch: jest.fn(),
   }),
   useUnreadCount: () => 0,
+  useUnreadCountQuery: () => ({ data: 0 }),
+  notificationListsKey: ['notifications', 'list'],
   useMarkAllRead: () => ({ mutate: jest.fn() }),
 }));
 
@@ -127,7 +132,7 @@ test('bell opens notifications', async () => {
   setStatus('signedIn');
   await renderApp('/');
   await fireEvent.press(await screen.findByRole('button', { name: 'Notificações' }));
-  expect(await screen.findByText('Sem notificações')).toBeOnTheScreen();
+  expect(await screen.findByText('Nenhuma notificação ainda')).toBeOnTheScreen();
 });
 
 test('the Perfil header has the settings button next to the bell', async () => {
@@ -163,7 +168,7 @@ test('double-tapping the bell opens notifications only once', async () => {
   const bell = await screen.findByRole('button', { name: 'Notificações' });
   await fireEvent.press(bell);
   await fireEvent.press(bell);
-  expect(await screen.findByText('Sem notificações')).toBeOnTheScreen();
+  expect(await screen.findByText('Nenhuma notificação ainda')).toBeOnTheScreen();
   expect(app.getPathname()).toBe('/notifications');
 
   await act(async () => router.back());

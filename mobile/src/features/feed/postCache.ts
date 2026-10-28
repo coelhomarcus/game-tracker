@@ -10,7 +10,13 @@ import type { Comment, Post, PostPage } from './types';
 
 type PostPages = InfiniteData<PostPage, string | undefined>;
 
-const LIST_KEYS: readonly QueryKey[] = [['feed'], ['gamePosts'], ['userPosts'], ['bookmarks']];
+const LIST_KEYS: readonly QueryKey[] = [
+  ['feed'],
+  ['gamePosts'],
+  ['userPosts'],
+  ['bookmarks'],
+  ['postSearch'],
+];
 
 type Interrupted = { query: Query; nextPage: boolean };
 

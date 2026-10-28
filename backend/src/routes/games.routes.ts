@@ -7,17 +7,25 @@ import {
   playersHandler,
   searchHandler,
   statsHandler,
+  trendingHandler,
   unfavoriteHandler,
 } from '../controllers/games.controller';
 import { requireAuth } from '../middlewares/auth';
 import { validateQuery } from '../middlewares/validate';
-import { gamePlayersQuerySchema, gamePostsQuerySchema, searchGamesQuerySchema } from '../schemas/games.schema';
+import {
+  gamePlayersQuerySchema,
+  gamePostsQuerySchema,
+  searchGamesQuerySchema,
+  trendingGamesQuerySchema,
+} from '../schemas/games.schema';
 
 export const gamesRouter = Router();
 
 gamesRouter.use(requireAuth);
 
 gamesRouter.get('/search', validateQuery(searchGamesQuerySchema), searchHandler);
+// Antes de `/:id`, senão "trending" seria lido como um id.
+gamesRouter.get('/trending', validateQuery(trendingGamesQuerySchema), trendingHandler);
 gamesRouter.get('/igdb/:igdbId', getByIgdbIdHandler);
 gamesRouter.get('/:id', getByIdHandler);
 gamesRouter.get('/:id/stats', statsHandler);

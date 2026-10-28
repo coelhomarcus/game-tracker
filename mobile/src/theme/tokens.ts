@@ -79,6 +79,8 @@ export const colors = {
   scrim: '#00000080',
   like: primary[500],
   repost: positive500,
+  /** The badge of reply, comment, mention and quote notifications. */
+  replyBadge: '#8679FC',
   /** Light red that reads at 4.5:1 on every tone; negative500/400 do not on dark surfaces. */
   danger: '#ff7a7a',
   /** A destructive fill under white (the leave swipe): `danger` is too light for white on it. */

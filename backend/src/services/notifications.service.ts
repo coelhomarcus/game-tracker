@@ -1,6 +1,8 @@
-import { and, count, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { notifications, notificationTypeEnum, users } from '../db/schema';
+import { notifications, notificationTypeEnum, postImages, users } from '../db/schema';
+import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
+import { AppError } from '../lib/errors';
 import { extractMentions } from '../lib/mentions';
 import { sendPushToUser } from '../push/pushService';
 import { hiddenAuthorsSql, suppressesNotification } from './moderation.service';
@@ -103,37 +105,95 @@ export function excerptOf(text: string | null | undefined): string | null {
   return graphemes.length <= EXCERPT_MAX ? flat : `${graphemes.slice(0, EXCERPT_MAX - 1).join('').trimEnd()}…`;
 }
 
+/** Os tipos de cada filtro da tela de notificações; `all` não filtra. */
+export const NOTIFICATION_FILTERS = {
+  all: null,
+  replies: ['comment', 'reply'],
+  mentions: ['mention', 'quote'],
+  follows: ['follow'],
+} as const satisfies Record<string, readonly NotificationType[] | null>;
+
+export type NotificationFilter = keyof typeof NOTIFICATION_FILTERS;
+
 /**
- * As 50 notificações mais recentes. As que vieram de alguém com bloqueio (em qualquer sentido) ou
- * silenciado — criadas antes do bloqueio/silêncio — ficam de fora, também da contagem de não lidas.
+ * As notificações que `userId` enxerga. As que vieram de alguém com bloqueio (em qualquer sentido)
+ * ou silenciado — criadas antes do bloqueio/silêncio — ficam de fora, também da contagem de não lidas.
  */
-export async function list(userId: string) {
-  const visible = and(eq(notifications.userId, userId), notInArray(notifications.actorId, hiddenAuthorsSql(userId, true)));
-  const [items, unreadCountRows] = await Promise.all([
-    db.query.notifications.findMany({
-      where: visible,
-      orderBy: desc(notifications.createdAt),
-      limit: 50,
-      with: {
-        actor: { columns: { id: true, username: true, name: true, avatarUrl: true } },
-        // Só para montar o trecho da prévia; não vão na resposta.
-        post: { columns: { content: true } },
-        comment: { columns: { content: true } },
+function visibleTo(userId: string) {
+  return and(eq(notifications.userId, userId), notInArray(notifications.actorId, hiddenAuthorsSql(userId, true)));
+}
+
+/** Quantas notificações visíveis ainda não foram lidas, de todos os tipos. */
+export async function unreadCount(userId: string): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(notifications)
+    .where(and(visibleTo(userId), eq(notifications.read, false)));
+  return rows[0]!.value;
+}
+
+interface ListOptions {
+  cursor?: string;
+  filter?: NotificationFilter;
+  limit?: number;
+}
+
+/**
+ * Uma página das notificações, a mais recente primeiro. Paginação keyset por (created_at, id), com
+ * microssegundos como nas linhas do tempo. `filter` restringe os tipos; `unreadCount` conta todos.
+ * Cada item leva o trecho do texto e `postImageUrl`, a primeira imagem do post relacionado.
+ */
+export async function list(userId: string, { cursor, filter = 'all', limit = 30 }: ListOptions = {}) {
+  const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
+  if (cursor !== undefined && !decoded) throw new AppError(400, 'validation_error', 'Cursor inválido');
+
+  const types = NOTIFICATION_FILTERS[filter];
+  const where = and(
+    visibleTo(userId),
+    types === null ? undefined : inArray(notifications.type, [...types]),
+    decoded
+      ? sql`(${notifications.createdAt}, ${notifications.id}) < (${decoded.at}::timestamptz, ${decoded.id}::uuid)`
+      : undefined,
+  );
+
+  // Em sequência de propósito: o stand-in de teste (PGlite) mistura consultas simultâneas.
+  const rows = await db.query.notifications.findMany({
+    where,
+    orderBy: [desc(notifications.createdAt), desc(notifications.id)],
+    limit: limit + 1,
+    extras: {
+      // A hora com microssegundos (a precisão do Postgres), para o cursor não pular itens.
+      atText: sql<string>`to_char(${notifications.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as(
+        'at_text',
+      ),
+    },
+    with: {
+      actor: { columns: { id: true, username: true, name: true, avatarUrl: true } },
+      // Só para montar o trecho e a miniatura; não vão na resposta.
+      post: {
+        columns: { content: true, imageUrl: true },
+        with: { images: { columns: { url: true }, orderBy: [asc(postImages.position)], limit: 1 } },
       },
-    }),
-    db
-      .select({ value: count() })
-      .from(notifications)
-      .where(and(visible, eq(notifications.read, false))),
-  ]);
+      comment: { columns: { content: true } },
+    },
+  });
+  const unread = await unreadCount(userId);
+
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    rows.length > limit && last ? encodeTimelineCursor({ at: last.atText, id: last.id, kind: 'post' }) : null;
 
   return {
-    items: items.map(({ post, comment, ...notification }) => ({
+    items: page.map(({ post, comment, atText: _atText, ...notification }) => ({
       ...notification,
       // O comentário, quando a notificação nasce de um; senão o texto do post.
       excerpt: excerptOf(comment ? comment.content : post?.content),
+      // A primeira imagem do post; um post antigo só tem a coluna legada `image_url`.
+      postImageUrl: post ? (post.images[0]?.url ?? post.imageUrl ?? null) : null,
     })),
-    unreadCount: unreadCountRows[0]!.value,
+    unreadCount: unread,
+    nextCursor,
   };
 }
 

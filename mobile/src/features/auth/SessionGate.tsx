@@ -6,6 +6,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Button, EmptyState, Layout } from '@/components';
 import { useSession } from '@/features/auth';
 import { realtimeBridge } from '@/features/chat/realtimeBridge';
+import { watchSessionForRecents } from '@/features/explore/recentSearches';
 import { watchSessionForDrafts } from '@/features/feed/composer/composerDraft';
 import { COMPOSER_ROUTE, COMPOSER_STACK_OPTIONS } from '@/features/feed/composer/presentation';
 import { EDIT_PROFILE_STACK_OPTIONS } from '@/features/profiles/edit/presentation';
@@ -30,6 +31,8 @@ export function SessionGate() {
 
   // A signed-out account must leave no composer draft behind for the next one.
   useEffect(() => watchSessionForDrafts(), []);
+  // Nor recent searches.
+  useEffect(() => watchSessionForRecents(), []);
 
   // One realtime connection while signed in; the token is read again on every attempt. The bridge
   // listens first so it sees the first connect.

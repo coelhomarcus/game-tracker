@@ -11,6 +11,7 @@ import {
   parseFollowListPage,
   parseModerationPage,
   parsePersonResult,
+  parseSuggestedPerson,
   parseUserProfile,
   parseUserReplyPage,
   type PickedImage,
@@ -165,6 +166,58 @@ describe('parseFollowListPage', () => {
 
   it('maps a missing cursor to null', () => {
     expect(parseFollowListPage({ items: [] })).toEqual({ items: [], nextCursor: null });
+  });
+});
+
+describe('parseSuggestedPerson', () => {
+  const json = {
+    id: 'u9',
+    username: 'caio',
+    name: 'Caio',
+    avatarUrl: 'https://img/caio.jpg',
+    bio: 'RPGs',
+    isFollowedByMe: false,
+    followsMe: true,
+    followedByCount: 3,
+  };
+
+  it('reads the person, the relation and how many of my follows follow them', () => {
+    expect(parseSuggestedPerson(json)).toEqual(json);
+  });
+
+  it('defaults the flags to false, the count to 0 and the text to null', () => {
+    expect(parseSuggestedPerson({ id: 'u9', username: 'caio' })).toEqual({
+      id: 'u9',
+      username: 'caio',
+      name: null,
+      avatarUrl: null,
+      bio: null,
+      isFollowedByMe: false,
+      followsMe: false,
+      followedByCount: 0,
+    });
+  });
+});
+
+describe('profilesApi.suggestions', () => {
+  it('sends the limit (10 by default) and parses each person', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/users/suggestions`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json([
+          { id: 'u9', username: 'caio', name: null, avatarUrl: null, bio: null, isFollowedByMe: false, followsMe: false, followedByCount: 2 },
+        ]);
+      }),
+    );
+
+    const people = await profilesApi.suggestions();
+    await profilesApi.suggestions(20);
+
+    expect(people).toEqual([
+      { id: 'u9', username: 'caio', name: null, avatarUrl: null, bio: null, isFollowedByMe: false, followsMe: false, followedByCount: 2 },
+    ]);
+    expect(seen.map((params) => params.get('limit'))).toEqual(['10', '20']);
   });
 });
 
