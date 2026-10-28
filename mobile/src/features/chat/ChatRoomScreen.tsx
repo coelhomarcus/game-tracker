@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import {
@@ -18,10 +19,12 @@ import {
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, EmptyState, Screen, Text } from '@/components';
+import { Button, ConfirmDialog, EmptyState, Screen, Text } from '@/components';
 import { useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
+import { haptic } from '@/lib/haptics';
 import { ApiError } from '@/lib/http/errors';
+import { showToast } from '@/lib/toast';
 import { colors, radii, space } from '@/theme/tokens';
 
 import { ChatComposer, useTypingSignal } from './ChatComposer';
@@ -31,8 +34,19 @@ import { ConnectionBanner } from './ConnectionBanner';
 import { DateDivider } from './DateDivider';
 import { groupMessages, type GroupedItem } from './groupMessages';
 import { MessageBubble, type BubbleMessage } from './MessageBubble';
-import { useConversation, useMessages } from './queries';
-import type { Message } from './types';
+import { MessageContextMenu, type MessageMenuAction } from './MessageContextMenu';
+import {
+  canAddReaction,
+  REACTION_LIMIT_MESSAGE,
+  useConversation,
+  useHideMessage,
+  useMessages,
+  useReact,
+  useUnreact,
+} from './queries';
+import { summarizeReactions } from './ReactionsPill';
+import { SwipeToReply } from './SwipeToReply';
+import type { Message, Reaction } from './types';
 
 // The API answers 500 to an id that is not a UUID, so such an address is simply not a conversation.
 const CONVERSATION_ID_PATTERN =
@@ -40,6 +54,8 @@ const CONVERSATION_ID_PATTERN =
 /** Up to this far (px) from the newest message the person is following the conversation. */
 const NEAR_BOTTOM = 80;
 const NO_PENDING: PendingMessage[] = [];
+/** After jumping near a quoted message that was not rendered yet, when to scroll to it exactly. */
+const SCROLL_RETRY_MS = 100;
 // Also clears the room's title and "…" when its first page answers 404.
 const NOT_FOUND_OPTIONS = { title: '', headerTitle: '', headerRight: undefined };
 
@@ -87,9 +103,12 @@ function ChatRoomLoader({ conversationId }: { conversationId: string }) {
 
 type MessageRow = BubbleMessage & {
   key: string;
+  /** The server's id; `null` while the message is still pending here. */
+  id: string | null;
   senderId: string;
   /** Set while the message is still pending here. */
   clientMessageId: string | null;
+  reactions: Reaction[];
 };
 
 type RoomItem = GroupedItem<MessageRow>;
@@ -104,6 +123,7 @@ function buildRows(
   selfId: string | undefined,
   otherName: string,
 ): MessageRow[] {
+  const nameOf = (senderId: string) => (senderId === selfId ? 'você' : otherName);
   const rows: MessageRow[] = [];
   const seen = new Set<string>();
   const confirmed = new Set<string>();
@@ -115,6 +135,7 @@ function buildRows(
     rows.push({
       // The same key before and after confirmation, so the bubble is not recreated.
       key: `m-${message.clientMessageId ?? message.id}`,
+      id: message.id,
       senderId: message.senderId,
       clientMessageId: null,
       content: message.content,
@@ -122,6 +143,9 @@ function buildRows(
       mine,
       senderName: mine ? '' : displayName(message.sender) || otherName,
       status: 'sent',
+      reactions: message.reactions,
+      replyTo: message.replyTo,
+      replyToName: message.replyTo ? nameOf(message.replyTo.senderId) : undefined,
     });
   }
   const waiting = pending
@@ -129,6 +153,7 @@ function buildRows(
     .reverse()
     .map<MessageRow>((item) => ({
       key: `m-${item.clientMessageId}`,
+      id: null,
       senderId: selfId ?? '',
       clientMessageId: item.clientMessageId,
       content: item.content,
@@ -137,6 +162,9 @@ function buildRows(
       senderName: '',
       status: item.status,
       reason: item.refusal,
+      reactions: [],
+      replyTo: item.replyTo ?? null,
+      replyToName: item.replyTo ? nameOf(item.replyTo.senderId) : undefined,
     }));
   return [...waiting, ...rows];
 }
@@ -181,6 +209,18 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const discard = useChatStore((state) => state.discard);
   const typing = useTypingSignal(conversationId);
   const stopTyping = typing.stop;
+  const startReply = useChatStore((state) => state.startReply);
+  const cancelReply = useChatStore((state) => state.cancelReply);
+  const react = useReact();
+  const unreact = useUnreact();
+  const hide = useHideMessage();
+  /** The message whose menu is open (by row key, so it follows the message as it changes). */
+  const [menuKey, setMenuKey] = useState<string | null>(null);
+  /** The message waiting for the "Apagar para mim" confirmation. */
+  const [hideId, setHideId] = useState<string | null>(null);
+
+  // A reply being written belongs to this visit of the room.
+  useEffect(() => () => useChatStore.getState().cancelReply(conversationId), [conversationId]);
 
   const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = messages;
   // Opened only once the conversation is known to exist: the first page loaded, or failed with
@@ -218,6 +258,12 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     [data, pending, selfId, otherName],
   );
   const items = useMemo(() => groupMessages(rows, new Date()), [rows]);
+  // Closes by itself when its message goes away (deleted for me on another device).
+  const menuRow = menuKey === null ? null : (rows.find((row) => row.key === menuKey) ?? null);
+  const menuTarget = useMemo(
+    () => (menuRow ? { message: menuRow, sent: menuRow.id !== null } : null),
+    [menuRow],
+  );
 
   const listRef = useRef<FlatList<RoomItem>>(null);
   // Pending rows sit above the server's, so the newest incoming message is looked up on its own.
@@ -260,6 +306,92 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     }
   }
 
+  // ---------- message actions ----------
+
+  function openMenu(row: MessageRow) {
+    haptic('longPress');
+    setMenuKey(row.key);
+  }
+
+  /** Adds my `emoji` to the message, or takes it back when it is already mine. */
+  function toggleReaction(row: MessageRow, emoji: string) {
+    if (row.id === null || !selfId) return;
+    const variables = { conversationId, messageId: row.id, emoji };
+    if (row.reactions.some((item) => item.userId === selfId && item.emoji === emoji)) {
+      unreact.mutate(variables);
+    } else if (!canAddReaction(row, selfId, emoji)) {
+      showToast(REACTION_LIMIT_MESSAGE);
+    } else {
+      react.mutate(variables);
+    }
+  }
+
+  /** The pill: takes back my first reaction, or opens the menu when none is mine. */
+  function pressReactions(row: MessageRow) {
+    const { myFirst } = summarizeReactions(row.reactions, selfId);
+    if (myFirst !== null && row.id !== null) {
+      unreact.mutate({ conversationId, messageId: row.id, emoji: myFirst });
+    } else {
+      openMenu(row);
+    }
+  }
+
+  function replyTo(row: MessageRow) {
+    if (row.id === null) return;
+    startReply(conversationId, { id: row.id, content: row.content, senderId: row.senderId });
+  }
+
+  async function copy(row: MessageRow) {
+    try {
+      await Clipboard.setStringAsync(row.content);
+      showToast('Texto copiado');
+    } catch {
+      showToast('Não foi possível copiar o texto.');
+    }
+  }
+
+  function menuAction(action: MessageMenuAction) {
+    const row = menuRow;
+    if (!row) return;
+    if (action === 'reply') replyTo(row);
+    else if (action === 'copy') void copy(row);
+    else if (action === 'hide' && row.id !== null) setHideId(row.id);
+    else if (action === 'discard' && row.clientMessageId) discard(conversationId, row.clientMessageId);
+  }
+
+  function confirmHide() {
+    const messageId = hideId;
+    setHideId(null);
+    if (messageId === null) return;
+    cancelReply(conversationId, messageId);
+    hide.mutate({ conversationId, messageId });
+  }
+
+  // A quote goes to its original when that is loaded. An item far from the rendered window is
+  // first approached by its estimated offset, then scrolled to once it has rendered.
+  const scrollRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (scrollRetry.current) clearTimeout(scrollRetry.current);
+    },
+    [],
+  );
+
+  function scrollToMessage(messageId: string) {
+    const index = items.findIndex((item) => item.kind === 'message' && item.message.id === messageId);
+    if (index < 0) return;
+    listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+  }
+
+  function onScrollToIndexFailed(info: { index: number; averageItemLength: number }) {
+    listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+    if (scrollRetry.current) return;
+    scrollRetry.current = setTimeout(() => {
+      scrollRetry.current = null;
+      listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+    }, SCROLL_RETRY_MS);
+  }
+
   function loadOlder() {
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
       // A second call while this one runs joins it instead of starting over.
@@ -271,17 +403,25 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     if (item.kind === 'divider') return <DateDivider label={item.label} />;
     const row = item.message;
     const clientMessageId = row.clientMessageId;
+    const quoted = row.replyTo;
     return (
-      <MessageBubble
-        message={row}
-        isFirstInGroup={item.isFirstInGroup}
-        isLastInGroup={item.isLastInGroup}
-        // A refusal (a block, the recipient's policy) would only repeat: the reason stays, the retry goes.
-        onRetry={
-          clientMessageId && !row.reason ? () => retry(conversationId, clientMessageId) : undefined
-        }
-        onDiscard={clientMessageId ? () => discard(conversationId, clientMessageId) : undefined}
-      />
+      // Only a confirmed message can be replied to.
+      <SwipeToReply id={row.key} enabled={row.id !== null} onReply={() => replyTo(row)}>
+        <MessageBubble
+          message={row}
+          isFirstInGroup={item.isFirstInGroup}
+          isLastInGroup={item.isLastInGroup}
+          selfId={selfId}
+          // A refusal (a block, the recipient's policy) would only repeat: the reason stays, the retry goes.
+          onRetry={
+            clientMessageId && !row.reason ? () => retry(conversationId, clientMessageId) : undefined
+          }
+          onDiscard={clientMessageId ? () => discard(conversationId, clientMessageId) : undefined}
+          onLongPress={() => openMenu(row)}
+          onReactionsPress={() => pressReactions(row)}
+          onQuotePress={quoted ? () => scrollToMessage(quoted.id) : undefined}
+        />
+      </SwipeToReply>
     );
   };
 
@@ -373,6 +513,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
           onEndReached={loadOlder}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
+          onScrollToIndexFailed={onScrollToIndexFailed}
           // Every frame: KeyboardChatScrollView tracks the offset from these events, and Android
           // drops any event within the throttle of the last one, the final one of a keyboard
           // animation included. A stale offset would leave the newest message under the composer.
@@ -419,10 +560,30 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
         <ConnectionBanner />
         <ChatComposer
           conversationId={conversationId}
+          otherName={otherName}
           onChangeText={typing.keystroke}
           onSent={stopTyping}
         />
       </KeyboardStickyView>
+      <MessageContextMenu
+        target={menuTarget}
+        selfId={selfId}
+        onReact={(emoji) => {
+          if (menuRow) toggleReaction(menuRow, emoji);
+        }}
+        onAction={menuAction}
+        onClose={() => setMenuKey(null)}
+      />
+      <ConfirmDialog
+        visible={hideId !== null}
+        title="Apagar mensagem para você?"
+        message="A outra pessoa continua vendo."
+        confirmLabel="Apagar"
+        cancelLabel="Cancelar"
+        destructive
+        onConfirm={confirmHide}
+        onCancel={() => setHideId(null)}
+      />
     </Screen>
   );
 }

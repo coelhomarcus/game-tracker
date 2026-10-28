@@ -2,23 +2,28 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import { useSession } from '@/features/auth';
+import { useSession, type User } from '@/features/auth';
+import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
 import { chatApi } from '../api';
 import {
   addMessagesToCache,
   applyLatestMessage,
+  canAddReaction,
   conversationsKey,
   markReadInList,
   messagesKey,
   useConversations,
+  useHideMessage,
   useLeaveConversation,
   useMarkAllRead,
   useMarkRead,
   useMessages,
   useMuteConversation,
+  useReact,
   useStartConversation,
+  useUnreact,
   type MessagePages,
 } from '../queries';
 import type { Conversation, Message, MessagePage } from '../types';
@@ -32,6 +37,9 @@ jest.mock('@/features/chat/api', () => ({
     markAllRead: jest.fn(),
     setMuted: jest.fn(),
     leave: jest.fn(),
+    hideMessage: jest.fn(),
+    addReaction: jest.fn(),
+    removeReaction: jest.fn(),
   },
 }));
 
@@ -49,6 +57,7 @@ function message(id: string, minute: number, conversationId = 'c1'): Message {
     clientMessageId: null,
     sender: { id: 'u2', username: 'bia', name: null, avatarUrl: null },
     reactions: [],
+    replyTo: null,
   };
 }
 
@@ -414,5 +423,136 @@ describe('list actions', () => {
 
     expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
     expect(showToast).toHaveBeenCalledWith('Não foi possível sair da conversa');
+  });
+});
+
+describe('message actions', () => {
+  const me = { id: 'me', username: 'eu', name: null, email: 'eu@example.com', avatarUrl: null } as User;
+  const loaded = (...items: Message[]) =>
+    client.setQueryData<MessagePages>(messagesKey('c1'), {
+      pages: [{ items, nextCursor: null }],
+      pageParams: [undefined],
+    });
+  const items = () => client.getQueryData<MessagePages>(messagesKey('c1'))?.pages.flatMap((p) => p.items);
+  const reactionsOf = (id: string) => items()?.find((item) => item.id === id)?.reactions;
+  const vars = (emoji: string) => ({ conversationId: 'c1', messageId: 'm1', emoji });
+  async function run<V>(hook: () => { mutateAsync: (v: V) => Promise<void> }, variables: V) {
+    const { result, unmount } = await renderHook(hook, { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync(variables).catch(() => undefined);
+    });
+    await unmount();
+  }
+
+  beforeEach(() => {
+    useSession.setState({ status: 'signedIn', user: me });
+  });
+
+  it('shows my reaction at once and keeps it when the server agrees', async () => {
+    const answer = deferred<void>();
+    mocked.addReaction.mockReturnValue(answer.promise);
+    loaded(message('m1', 1));
+    const { result, unmount } = await renderHook(() => useReact(), { wrapper: wrapperFor(client) });
+
+    await act(async () => result.current.mutate(vars('🔥')));
+    expect(reactionsOf('m1')).toEqual([{ emoji: '🔥', userId: 'me' }]);
+    expect(mocked.addReaction).toHaveBeenCalledWith('c1', 'm1', '🔥');
+
+    await act(async () => answer.resolve());
+    expect(reactionsOf('m1')).toEqual([{ emoji: '🔥', userId: 'me' }]);
+    expect(showToast).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('takes the reaction back and says so when the server refuses it', async () => {
+    mocked.addReaction.mockRejectedValue(new Error('boom'));
+    loaded({ ...message('m1', 1), reactions: [{ emoji: '😂', userId: 'u2' }] });
+
+    await run(() => useReact(), vars('🔥'));
+
+    expect(reactionsOf('m1')).toEqual([{ emoji: '😂', userId: 'u2' }]);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível reagir à mensagem.');
+  });
+
+  it('says I used my 5 reactions on a 409 reaction_limit', async () => {
+    mocked.addReaction.mockRejectedValue(new ApiError(409, 'reaction_limit', 'limite'));
+    loaded(message('m1', 1));
+
+    await run(() => useReact(), vars('🔥'));
+
+    expect(reactionsOf('m1')).toEqual([]);
+    expect(showToast).toHaveBeenCalledWith('Você já usou 5 reações nesta mensagem.');
+  });
+
+  it('does not remove a reaction that was already there when a repeated add fails', async () => {
+    mocked.addReaction.mockRejectedValue(new Error('boom'));
+    loaded({ ...message('m1', 1), reactions: [{ emoji: '🔥', userId: 'me' }] });
+
+    await run(() => useReact(), vars('🔥'));
+
+    expect(reactionsOf('m1')).toEqual([{ emoji: '🔥', userId: 'me' }]);
+  });
+
+  it('removes my reaction at once and puts it back when the server fails', async () => {
+    mocked.removeReaction.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce();
+    loaded({ ...message('m1', 1), reactions: [{ emoji: '🔥', userId: 'me' }, { emoji: '🔥', userId: 'u2' }] });
+
+    await run(() => useUnreact(), vars('🔥'));
+    expect(mocked.removeReaction).toHaveBeenCalledWith('c1', 'm1', '🔥');
+    expect(reactionsOf('m1')).toEqual([
+      { emoji: '🔥', userId: 'u2' },
+      { emoji: '🔥', userId: 'me' },
+    ]);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível remover a reação.');
+
+    await run(() => useUnreact(), vars('🔥'));
+    expect(reactionsOf('m1')).toEqual([{ emoji: '🔥', userId: 'u2' }]);
+  });
+
+  it('never brings back a message deleted for me when a reaction on it fails', async () => {
+    mocked.hideMessage.mockResolvedValue();
+    const answer = deferred<void>();
+    mocked.addReaction.mockReturnValue(answer.promise.then(() => Promise.reject(new Error('boom'))));
+    loaded(message('m2', 2), message('m1', 1));
+    const react = await renderHook(() => useReact(), { wrapper: wrapperFor(client) });
+    await act(async () => react.result.current.mutate(vars('🔥')));
+
+    await run(() => useHideMessage(), { conversationId: 'c1', messageId: 'm1' });
+    await act(async () => answer.resolve());
+
+    expect(items()?.map((item) => item.id)).toEqual(['m2']);
+    await react.unmount();
+  });
+
+  it('allows up to 5 different emoji of mine per message', () => {
+    const mine = ['😂', '❤️', '👍', '😮', '😢'].map((emoji) => ({ emoji, userId: 'me' }));
+    expect(canAddReaction({ reactions: mine.slice(0, 4) }, 'me', '🔥')).toBe(true);
+    expect(canAddReaction({ reactions: mine }, 'me', '🔥')).toBe(false);
+    // One already used can always be chosen (it is taken back).
+    expect(canAddReaction({ reactions: mine }, 'me', '😂')).toBe(true);
+    // Other people's reactions do not count.
+    expect(canAddReaction({ reactions: [...mine.slice(0, 4), { emoji: '🔥', userId: 'u2' }] }, 'me', '🎮')).toBe(true);
+  });
+
+  it('deletes a message for me at once, and the list reads its last message again', async () => {
+    mocked.hideMessage.mockResolvedValue();
+    loaded(message('m2', 2), message('m1', 1));
+    client.setQueryData(conversationsKey, [conversation('c1', message('m2', 2))]);
+
+    await run(() => useHideMessage(), { conversationId: 'c1', messageId: 'm2' });
+
+    expect(mocked.hideMessage).toHaveBeenCalledWith('c1', 'm2');
+    expect(items()?.map((item) => item.id)).toEqual(['m1']);
+    expect(client.getQueryState(conversationsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('reads the conversation again and says so when deleting fails', async () => {
+    mocked.hideMessage.mockRejectedValue(new Error('boom'));
+    loaded(message('m1', 1));
+
+    await run(() => useHideMessage(), { conversationId: 'c1', messageId: 'm1' });
+
+    expect(client.getQueryState(messagesKey('c1'))?.isInvalidated).toBe(true);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível apagar a mensagem.');
   });
 });

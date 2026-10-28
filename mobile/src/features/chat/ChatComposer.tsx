@@ -4,10 +4,12 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { PressableScale } from '@/components';
 import { fontFamily } from '@/components/Text';
+import { useSession } from '@/features/auth';
 import { chatSocket } from '@/lib/realtime/chatSocket';
 import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
 
 import { MAX_MESSAGE_LENGTH, useChatStore } from './chatStore';
+import { ReplyPreview } from './ReplyPreview';
 
 const FONT_SIZE = type.size.md;
 const LINE_HEIGHT = lineHeight(FONT_SIZE, 'snug');
@@ -65,6 +67,8 @@ export function useTypingSignal(conversationId: string): TypingSignal {
 
 export type ChatComposerProps = {
   conversationId: string;
+  /** The other person's name, for "Respondendo a …". */
+  otherName: string;
   onChangeText: (text: string) => void;
   /** Runs after a message was queued for sending. */
   onSent: () => void;
@@ -72,14 +76,24 @@ export type ChatComposerProps = {
 
 /**
  * The message pill under the conversation: grows up to 12 lines and then scrolls, with a round
- * send button that stays off for blank text. The text is the conversation's draft.
+ * send button that stays off for blank text. The text is the conversation's draft. While replying,
+ * what is being answered shows above it (with an "x" to stop) and goes out with the message.
  */
-export function ChatComposer({ conversationId, onChangeText, onSent }: ChatComposerProps) {
+export function ChatComposer({ conversationId, otherName, onChangeText, onSent }: ChatComposerProps) {
   const draft = useChatStore((state) => state.drafts[conversationId] ?? '');
   const setDraft = useChatStore((state) => state.setDraft);
   const send = useChatStore((state) => state.send);
+  const replying = useChatStore((state) => state.replying[conversationId]);
+  const cancelReply = useChatStore((state) => state.cancelReply);
+  const selfId = useSession((state) => state.user?.id);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const canSend = draft.trim().length > 0;
+
+  // Starting a reply puts the cursor in the field, ready to answer.
+  const replyingId = replying?.id;
+  useEffect(() => {
+    if (replyingId) inputRef.current?.focus();
+  }, [replyingId]);
 
   function change(text: string) {
     setDraft(conversationId, text);
@@ -92,52 +106,61 @@ export function ChatComposer({ conversationId, onChangeText, onSent }: ChatCompo
   }
 
   return (
-    <View style={styles.container}>
-      {/* A 48 dp target around the 40 dp pill: a tap on its padding focuses the field too. */}
-      <Pressable
-        accessible={false}
-        onPress={() => inputRef.current?.focus()}
-        style={styles.pillTouch}
-      >
-        <View style={styles.pill}>
-          <TextInput
-            ref={inputRef}
-            accessibilityLabel="Mensagem"
-            placeholder="Escreva uma mensagem"
-            placeholderTextColor={colors.textMedium}
-            selectionColor={colors.primary}
-            multiline
-            maxLength={MAX_MESSAGE_LENGTH}
-            autoCapitalize="sentences"
-            value={draft}
-            onChangeText={change}
-            style={styles.input}
-          />
-        </View>
-      </Pressable>
-      <PressableScale
-        targetScale={0.95}
-        accessibilityRole="button"
-        accessibilityLabel="Enviar mensagem"
-        accessibilityState={{ disabled: !canSend }}
-        disabled={!canSend}
-        onPress={submit}
-        style={styles.sendTouch}
-      >
-        <View testID="send-circle" style={[styles.send, canSend ? styles.sendOn : styles.sendOff]}>
-          <Ionicons name="arrow-up" size={22} color={canSend ? colors.onPrimary : colors.textLow} />
-        </View>
-      </PressableScale>
+    <View style={styles.composer}>
+      {replying ? (
+        <ReplyPreview
+          name={replying.senderId === selfId ? 'você' : otherName}
+          content={replying.content}
+          onCancel={() => cancelReply(conversationId)}
+        />
+      ) : null}
+      <View style={styles.container}>
+        {/* A 48 dp target around the 40 dp pill: a tap on its padding focuses the field too. */}
+        <Pressable
+          accessible={false}
+          onPress={() => inputRef.current?.focus()}
+          style={styles.pillTouch}
+        >
+          <View style={styles.pill}>
+            <TextInput
+              ref={inputRef}
+              accessibilityLabel="Mensagem"
+              placeholder="Escreva uma mensagem"
+              placeholderTextColor={colors.textMedium}
+              selectionColor={colors.primary}
+              multiline
+              maxLength={MAX_MESSAGE_LENGTH}
+              autoCapitalize="sentences"
+              value={draft}
+              onChangeText={change}
+              style={styles.input}
+            />
+          </View>
+        </Pressable>
+        <PressableScale
+          targetScale={0.95}
+          accessibilityRole="button"
+          accessibilityLabel="Enviar mensagem"
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          onPress={submit}
+          style={styles.sendTouch}
+        >
+          <View testID="send-circle" style={[styles.send, canSend ? styles.sendOn : styles.sendOff]}>
+            <Ionicons name="arrow-up" size={22} color={canSend ? colors.onPrimary : colors.textLow} />
+          </View>
+        </PressableScale>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  composer: { backgroundColor: colors.bg },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
-    backgroundColor: colors.bg,
     paddingLeft: space.lg,
     paddingRight: space.sm,
     paddingVertical: space.xs,

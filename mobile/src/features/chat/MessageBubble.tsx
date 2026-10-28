@@ -1,11 +1,13 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components';
-import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
+import { colors, lineHeight, radii, space, threadLine, type } from '@/theme/tokens';
 
 import type { PendingStatus } from './chatStore';
 import { pad } from './formatConversationTime';
 import { isEmojiOnly } from './isEmojiOnly';
+import { ReactionsPill } from './ReactionsPill';
+import type { Reaction, ReplyTo } from './types';
 
 /** A message as the room shows it: from the server (`sent`) or still pending here. */
 export type BubbleMessage = {
@@ -17,6 +19,12 @@ export type BubbleMessage = {
   status: 'sent' | PendingStatus;
   /** Why a failed message was refused for good (a block, or the recipient's message policy). */
   reason?: string;
+  /** Oldest first; only server messages have any. */
+  reactions?: Reaction[];
+  /** The earlier message this one answers, shown as a quote above it. */
+  replyTo?: ReplyTo | null;
+  /** Who wrote `replyTo` ("você" for my own), for the quote's label. */
+  replyToName?: string;
 };
 
 /** `HH:mm` in local time. */
@@ -40,28 +48,112 @@ const STATUS_LABELS = {
   sent: 'Enviada',
 } as const;
 
+const NO_REACTIONS: Reaction[] = [];
+
 export type MessageBubbleProps = {
   message: BubbleMessage;
   /** The oldest bubble of its group (top on screen): full corners on top, a group gap above. */
   isFirstInGroup?: boolean;
   /** The newest bubble of its group (bottom on screen): full corners below, the time under it. */
   isLastInGroup?: boolean;
+  /** The signed-in user, to tell my reactions apart. */
+  selfId?: string;
   onRetry?: () => void;
   onDiscard?: () => void;
+  /** Long press on the bubble (or its reactions): the message menu. */
+  onLongPress?: () => void;
+  /** A tap on the reactions pill. */
+  onReactionsPress?: () => void;
+  /** A tap on the quote: go to the original. */
+  onQuotePress?: () => void;
 };
+
+export type BubbleContentProps = {
+  content: string;
+  mine: boolean;
+  pending: boolean;
+  /** Squared corners where bubbles of a group meet; full corners when left out. */
+  corners?: object;
+  /** Caps the lines (the message menu's copy of a long message). */
+  numberOfLines?: number;
+  /** The screen reader label; the menu's copy has none (it is not the message itself). */
+  label?: string;
+  onLongPress?: () => void;
+};
+
+const LONG_PRESS_HINT = 'Toque duas vezes e segure para reagir e ver opções';
+
+/** The bubble itself: text in a coloured bubble, or 1–3 emoji large and without one. */
+export function BubbleContent({
+  content,
+  mine,
+  pending,
+  corners,
+  numberOfLines,
+  label,
+  onLongPress,
+}: BubbleContentProps) {
+  const hint = onLongPress ? LONG_PRESS_HINT : undefined;
+  if (isEmojiOnly(content)) {
+    return (
+      <Text
+        testID="message-emoji"
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+        onLongPress={onLongPress}
+        style={[styles.emoji, pending && styles.pendingEmoji]}
+      >
+        {content}
+      </Text>
+    );
+  }
+  const style = [
+    styles.bubble,
+    corners,
+    mine ? (pending ? styles.bubblePending : styles.bubbleMine) : styles.bubbleOther,
+  ];
+  const text = (
+    <Text tone={mine ? 'onPrimary' : 'default'} numberOfLines={numberOfLines}>
+      {content}
+    </Text>
+  );
+  if (!onLongPress) {
+    return (
+      <View testID="message-bubble" accessible={label !== undefined} accessibilityLabel={label} style={style}>
+        {text}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      testID="message-bubble"
+      accessible
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      onLongPress={onLongPress}
+      style={style}
+    >
+      {text}
+    </Pressable>
+  );
+}
 
 export function MessageBubble({
   message,
   isFirstInGroup = true,
   isLastInGroup = true,
+  selfId,
   onRetry,
   onDiscard,
+  onLongPress,
+  onReactionsPress,
+  onQuotePress,
 }: MessageBubbleProps) {
-  const { content, createdAt, mine, senderName, status, reason } = message;
+  const { content, createdAt, mine, senderName, status, reason, replyTo, replyToName } = message;
+  const reactions = message.reactions ?? NO_REACTIONS;
   const time = formatClock(createdAt);
   const label = `${mine ? 'Você' : senderName}: ${content}, ${time}`;
   const pending = status !== 'sent';
-  const emoji = isEmojiOnly(content);
 
   // The joined corners are on the sender's side: right for mine, left for theirs.
   const corners = mine
@@ -83,28 +175,24 @@ export function MessageBubble({
         { paddingTop: isFirstInGroup ? GROUP_GAP : CLUSTER_GAP },
       ]}
     >
-      {emoji ? (
-        <Text
-          testID="message-emoji"
-          accessibilityLabel={label}
-          style={[styles.emoji, pending && styles.pendingEmoji]}
-        >
-          {content}
-        </Text>
-      ) : (
-        <View
-          testID="message-bubble"
-          accessible
-          accessibilityLabel={label}
-          style={[
-            styles.bubble,
-            corners,
-            mine ? (pending ? styles.bubblePending : styles.bubbleMine) : styles.bubbleOther,
-          ]}
-        >
-          <Text tone={mine ? 'onPrimary' : 'default'}>{content}</Text>
-        </View>
-      )}
+      {replyTo ? (
+        <QuotedReply replyTo={replyTo} name={replyToName ?? ''} onPress={onQuotePress} />
+      ) : null}
+      <BubbleContent
+        content={content}
+        mine={mine}
+        pending={pending}
+        corners={corners}
+        label={label}
+        onLongPress={onLongPress}
+      />
+      <ReactionsPill
+        reactions={reactions}
+        selfId={selfId}
+        alignRight={mine}
+        onPress={() => onReactionsPress?.()}
+        onLongPress={onLongPress}
+      />
       {status === 'failed' ? (
         <FailedLine reason={reason} onRetry={onRetry} onDiscard={onDiscard} />
       ) : isLastInGroup ? (
@@ -125,6 +213,28 @@ export function MessageBubble({
         </View>
       ) : null}
     </View>
+  );
+}
+
+type QuotedReplyProps = { replyTo: ReplyTo; name: string; onPress?: () => void };
+
+/** The message being answered, above the reply: a left bar and up to two lines of it. */
+function QuotedReply({ replyTo, name, onPress }: QuotedReplyProps) {
+  return (
+    <Pressable
+      testID="message-quote"
+      accessibilityRole="button"
+      accessibilityLabel={`Em resposta a ${name}: ${replyTo.content}`}
+      accessibilityHint="Vai para a mensagem original"
+      onPress={onPress}
+      style={styles.quoteTouch}
+    >
+      <View style={styles.quote}>
+        <Text size="sm" tone="medium" numberOfLines={2}>
+          {replyTo.content}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -184,6 +294,14 @@ const styles = StyleSheet.create({
   bubbleOther: { backgroundColor: colors.bgContrast50 },
   emoji: { maxWidth: '85%', fontSize: EMOJI_SIZE, lineHeight: lineHeight(EMOJI_SIZE, 'snug') },
   pendingEmoji: { opacity: 0.6 },
+  /** A real 48 dp target around the two-line quote. */
+  quoteTouch: { maxWidth: '85%', minHeight: 48, justifyContent: 'flex-end', paddingBottom: space._2xs },
+  quote: {
+    paddingLeft: space.sm,
+    paddingVertical: space._2xs,
+    borderLeftWidth: threadLine,
+    borderLeftColor: colors.borderMedium,
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',

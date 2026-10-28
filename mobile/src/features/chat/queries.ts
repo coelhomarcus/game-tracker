@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 
 import { useSession } from '@/features/auth';
+import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 
 import { chatApi } from './api';
@@ -315,6 +316,113 @@ export function useLeaveConversation() {
     onError: () => {
       refetchList(client);
       showToast('Não foi possível sair da conversa');
+    },
+  });
+}
+
+// ---------- message actions ----------
+
+/** Each person may use up to this many different emoji on one message (the server says 409). */
+export const MAX_REACTIONS_PER_USER = 5;
+export const REACTION_LIMIT_MESSAGE = 'Você já usou 5 reações nesta mensagem.';
+
+export type ReactionVariables = { conversationId: string; messageId: string; emoji: string };
+
+/** The loaded copy of a message, if any. */
+function findLoaded(client: QueryClient, conversationId: string, messageId: string): Message | undefined {
+  const data = client.getQueryData<MessagePages>(messagesKey(conversationId));
+  for (const page of data?.pages ?? []) {
+    const found = page.items.find((item) => item.id === messageId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function hasReaction(client: QueryClient, { conversationId, messageId, emoji }: ReactionVariables, userId: string) {
+  return (
+    findLoaded(client, conversationId, messageId)?.reactions.some(
+      (item) => item.emoji === emoji && item.userId === userId,
+    ) ?? false
+  );
+}
+
+/** What an optimistic reaction change did, so a failure undoes exactly that. */
+type ReactionContext = { userId: string; changed: boolean };
+
+/**
+ * Reacts to a message with an emoji: it shows at once and goes away again if the server refuses
+ * (409 past 5 emoji per person: "Você já usou 5 reações nesta mensagem."). Someone else's
+ * reactions arrive through the realtime bridge.
+ */
+export function useReact() {
+  const client = useQueryClient();
+  return useMutation<void, Error, ReactionVariables, ReactionContext>({
+    mutationFn: ({ conversationId, messageId, emoji }) =>
+      chatApi.addReaction(conversationId, messageId, emoji),
+    onMutate: (variables) => {
+      const userId = useSession.getState().user?.id ?? '';
+      const changed = userId !== '' && !hasReaction(client, variables, userId);
+      if (changed) applyReactionToCache(client, { ...variables, userId, action: 'add' });
+      return { userId, changed };
+    },
+    onError: (error, variables, context) => {
+      if (context?.changed) {
+        applyReactionToCache(client, { ...variables, userId: context.userId, action: 'remove' });
+      }
+      showToast(
+        error instanceof ApiError && error.code === 'reaction_limit'
+          ? REACTION_LIMIT_MESSAGE
+          : 'Não foi possível reagir à mensagem.',
+      );
+    },
+  });
+}
+
+/** Takes my reaction back, at once; a failure puts it back. */
+export function useUnreact() {
+  const client = useQueryClient();
+  return useMutation<void, Error, ReactionVariables, ReactionContext>({
+    mutationFn: ({ conversationId, messageId, emoji }) =>
+      chatApi.removeReaction(conversationId, messageId, emoji),
+    onMutate: (variables) => {
+      const userId = useSession.getState().user?.id ?? '';
+      const changed = userId !== '' && hasReaction(client, variables, userId);
+      if (changed) applyReactionToCache(client, { ...variables, userId, action: 'remove' });
+      return { userId, changed };
+    },
+    onError: (_error, variables, context) => {
+      if (context?.changed) {
+        applyReactionToCache(client, { ...variables, userId: context.userId, action: 'add' });
+      }
+      showToast('Não foi possível remover a reação.');
+    },
+  });
+}
+
+/** Whether I may still add `emoji` to the message: at most 5 different ones of mine. */
+export function canAddReaction(message: Pick<Message, 'reactions'>, userId: string, emoji: string): boolean {
+  const mine = message.reactions.filter((item) => item.userId === userId);
+  return mine.some((item) => item.emoji === emoji) || mine.length < MAX_REACTIONS_PER_USER;
+}
+
+export type HideVariables = { conversationId: string; messageId: string };
+
+/**
+ * Deletes a message for me: it leaves the room at once (and the list's last message is read
+ * again). A failure reads the conversation again, which brings it back, since it is still there.
+ */
+export function useHideMessage() {
+  const client = useQueryClient();
+  return useMutation<void, Error, HideVariables>({
+    mutationFn: ({ conversationId, messageId }) => chatApi.hideMessage(conversationId, messageId),
+    onMutate: ({ conversationId, messageId }) =>
+      removeMessageFromCache(client, conversationId, messageId),
+    // A fetch that read the server before the hide landed may still hold it.
+    onSuccess: (_data, { conversationId, messageId }) =>
+      removeMessageFromCache(client, conversationId, messageId),
+    onError: (_error, { conversationId }) => {
+      void client.invalidateQueries({ queryKey: messagesKey(conversationId), exact: true });
+      showToast('Não foi possível apagar a mensagem.');
     },
   });
 }

@@ -6,7 +6,7 @@ import { chatSocket } from '@/lib/realtime/chatSocket';
 import { newUuid } from '@/lib/uuid';
 
 import { addMessagesToCache, applyLatestMessage } from './queries';
-import { parseMessage, type Message } from './types';
+import { parseMessage, type Message, type ReplyTo } from './types';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 /** A `typing:start` without a `typing:stop` (the other side dropped) expires after this. */
@@ -22,8 +22,13 @@ export type PendingMessage = {
   /** `uncertain`: no answer (timeout or drop); it may be stored, and is re-sent on reconnect. */
   status: PendingStatus;
   error?: string;
-  /** Set when the server refused it for good (a block, or the recipient's message policy). */
+  /**
+   * Set when the server refused it for good (a block, the recipient's message policy, or the
+   * message it replies to is gone).
+   */
   refusal?: string;
+  /** The message it replies to; its id goes out as `replyToId` on every (re)send. */
+  replyTo?: ReplyTo;
 };
 
 type SendAck =
@@ -38,23 +43,35 @@ type SendAck =
 export const SEND_REFUSALS = {
   blocked: 'Não é possível enviar mensagens para esta conta.',
   dm_not_allowed: DM_NOT_ALLOWED_MESSAGE,
+  reply_not_found: 'A mensagem respondida não está mais disponível.',
 } as const;
 
 function refusalReason(code: unknown): string | undefined {
-  return code === 'blocked' || code === 'dm_not_allowed' ? SEND_REFUSALS[code] : undefined;
+  return code === 'blocked' || code === 'dm_not_allowed' || code === 'reply_not_found'
+    ? SEND_REFUSALS[code]
+    : undefined;
 }
 
 type ChatState = {
   pending: Record<string, PendingMessage[]>;
   drafts: Record<string, string>;
+  /** The message each conversation's composer is replying to. */
+  replying: Record<string, ReplyTo>;
   typing: Record<string, boolean>;
   online: Record<string, boolean>;
   /** The conversation on screen; the realtime bridge joins its room. */
   openConversationId: string | null;
 
   setDraft(conversationId: string, text: string): void;
-  /** Sends trimmed text (1–2000 chars) and clears the draft. Returns the clientMessageId. */
+  /**
+   * Sends trimmed text (1–2000 chars) and clears the draft. A reply being written goes with it
+   * (and is cleared too). Returns the clientMessageId.
+   */
   send(conversationId: string, text: string): string | null;
+  /** The composer replies to `replyTo` until it is sent or cancelled. */
+  startReply(conversationId: string, replyTo: ReplyTo): void;
+  /** Stops replying; with `messageId`, only when replying to that message. */
+  cancelReply(conversationId: string, messageId?: string): void;
   retry(conversationId: string, clientMessageId: string): void;
   discard(conversationId: string, clientMessageId: string): void;
   /** Unsent text that signing out would lose: non-blank drafts plus pending messages. */
@@ -76,6 +93,7 @@ type ChatState = {
 const initialData = {
   pending: {},
   drafts: {},
+  replying: {},
   typing: {},
   online: {},
   openConversationId: null,
@@ -154,6 +172,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         conversationId,
         content: item.content,
         clientMessageId,
+        ...(item.replyTo ? { replyToId: item.replyTo.id } : {}),
       });
     } catch {
       // Timeout or drop: the server may have stored it. Re-sending the same id is safe.
@@ -198,11 +217,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       const content = text.trim();
       if (content.length === 0 || content.length > MAX_MESSAGE_LENGTH) return null;
       const clientMessageId = newUuid();
+      const replyTo = get().replying[conversationId];
       const item: PendingMessage = {
         clientMessageId,
         content,
         createdAt: new Date(),
         status: 'sending',
+        ...(replyTo ? { replyTo } : {}),
       };
       set((state) => ({
         pending: {
@@ -210,9 +231,22 @@ export const useChatStore = create<ChatState>((set, get) => {
           [conversationId]: [...(state.pending[conversationId] ?? []), item],
         },
         drafts: without(state.drafts, conversationId),
+        replying: without(state.replying, conversationId),
       }));
       void deliver(conversationId, clientMessageId);
       return clientMessageId;
+    },
+
+    startReply(conversationId, replyTo) {
+      set((state) => ({ replying: { ...state.replying, [conversationId]: replyTo } }));
+    },
+
+    cancelReply(conversationId, messageId) {
+      set((state) => {
+        const current = state.replying[conversationId];
+        if (!current || (messageId !== undefined && current.id !== messageId)) return state;
+        return { replying: without(state.replying, conversationId) };
+      });
     },
 
     retry(conversationId, clientMessageId) {

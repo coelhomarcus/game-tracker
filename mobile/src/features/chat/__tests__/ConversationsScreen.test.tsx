@@ -79,6 +79,7 @@ function message(id: string, senderId: string, content: string, minutesAgo: numb
     clientMessageId: null,
     sender: { id: senderId, username: senderId, name: null, avatarUrl: null },
     reactions: [],
+    replyTo: null,
   };
 }
 
