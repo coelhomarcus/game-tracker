@@ -121,6 +121,74 @@ async function reactionsByMessage(messageIds: string[]): Promise<Map<string, Rea
   return byMessage;
 }
 
+/** A mensagem a que outra responde, resumida para a citação. */
+export interface ReplyTo {
+  id: string;
+  content: string;
+  senderId: string;
+}
+
+/**
+ * Acrescenta `replyTo` a cada mensagem, como `viewerId` vê a original: nulo se ela não responde a
+ * nada, se a original foi apagada de vez, se eu a apaguei para mim ou se é anterior à minha saída
+ * da conversa (o que eu não vejo não volta pela citação).
+ */
+export async function withReplyTo<T extends { replyToId: string | null }>(
+  viewerId: string,
+  items: T[],
+): Promise<(T & { replyTo: ReplyTo | null })[]> {
+  const ids = [...new Set(items.map((m) => m.replyToId).filter((id): id is string => id !== null))];
+  const visible = new Map<string, ReplyTo>();
+  if (ids.length > 0) {
+    const rows = await db
+      .select({ id: messages.id, content: messages.content, senderId: messages.senderId })
+      .from(messages)
+      .innerJoin(
+        conversationParticipants,
+        and(
+          eq(conversationParticipants.conversationId, messages.conversationId),
+          eq(conversationParticipants.userId, viewerId),
+        ),
+      )
+      .where(
+        and(
+          inArray(messages.id, ids),
+          // Compara no banco, com microssegundos.
+          sql`(${conversationParticipants.clearedAt} is null or ${messages.createdAt} > ${conversationParticipants.clearedAt})`,
+          sql`not exists (select 1 from ${messageHides} mh where mh.message_id = ${messages.id} and mh.user_id = ${viewerId})`,
+        ),
+      );
+    for (const row of rows) visible.set(row.id, row);
+  }
+  return items.map((m) => ({ ...m, replyTo: (m.replyToId && visible.get(m.replyToId)) || null }));
+}
+
+/**
+ * A mensagem `replyToId` desta conversa e quem dos participantes a vê agora (não a apagou para si
+ * nem saiu depois dela), para responder a ela. `null` se ela não é desta conversa.
+ */
+export async function replyAudience(
+  conversationId: string,
+  replyToId: string,
+): Promise<{ replyTo: ReplyTo; visibleTo: Set<string> } | null> {
+  const result = await db.execute<{ user_id: string; id: string; content: string; sender_id: string; visible: boolean }>(sql`
+    select cp.user_id, m.id, m.content, m.sender_id,
+      (
+        (cp.cleared_at is null or m.created_at > cp.cleared_at)
+        and not exists (select 1 from ${messageHides} mh where mh.message_id = m.id and mh.user_id = cp.user_id)
+      ) as visible
+    from ${messages} m
+    join ${conversationParticipants} cp on cp.conversation_id = m.conversation_id
+    where m.id = ${replyToId} and m.conversation_id = ${conversationId}
+  `);
+  const first = result.rows[0];
+  if (!first) return null;
+  return {
+    replyTo: { id: first.id, content: first.content, senderId: first.sender_id },
+    visibleTo: new Set(result.rows.filter((row) => row.visible).map((row) => row.user_id)),
+  };
+}
+
 /** Acrescenta `reactions` a cada mensagem. */
 export async function withReactions<T extends { id: string }>(items: T[]): Promise<(T & { reactions: Reaction[] })[]> {
   const byMessage = await reactionsByMessage(items.map((m) => m.id));
@@ -290,7 +358,8 @@ async function requireVisibleMessage(userId: string, conversationId: string, mes
 
 /**
  * Histórico da conversa, a mais recente primeiro. Só o que eu vejo: sem as mensagens que apaguei
- * para mim e sem as anteriores à minha saída. Cada mensagem leva as suas reações.
+ * para mim e sem as anteriores à minha saída. Cada mensagem leva as suas reações e, quando
+ * responde a outra, `replyTo` como eu vejo a original (ver `withReplyTo`).
  */
 export async function getMessages(userId: string, conversationId: string, cursor: string | undefined, limit: number) {
   const participant = await requireParticipant(userId, conversationId);
@@ -320,7 +389,7 @@ export async function getMessages(userId: string, conversationId: string, cursor
   });
 
   const hasMore = results.length > limit;
-  const items = await withReactions(results.slice(0, limit));
+  const items = await withReplyTo(userId, await withReactions(results.slice(0, limit)));
   const last = items[items.length - 1];
   const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
 

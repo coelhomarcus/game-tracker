@@ -422,6 +422,11 @@ export const messages = pgTable(
      * cliente legado, que não envia o campo.
      */
     clientMessageId: uuid('client_message_id'),
+    /**
+     * A mensagem anterior, da mesma conversa, a que esta responde. Vira nulo se a original for
+     * apagada de vez (a resposta continua).
+     */
+    replyToId: uuid('reply_to_id').references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -435,6 +440,11 @@ export const messages = pgTable(
     clientMessageUnique: uniqueIndex('messages_conversation_sender_client_message_unique')
       .on(table.conversationId, table.senderId, table.clientMessageId)
       .where(sql`${table.clientMessageId} is not null`),
+    // Apagar uma mensagem procura as respostas a ela (on delete set null): sem o índice, cada
+    // exclusão (também em cascata, ao apagar uma conta) varreria a tabela. Parcial: só respostas.
+    replyToIdx: index('messages_reply_to_id_idx')
+      .on(table.replyToId)
+      .where(sql`${table.replyToId} is not null`),
   }),
 );
 

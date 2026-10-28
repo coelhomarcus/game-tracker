@@ -13,6 +13,13 @@ export function setRealtimeServer(io: Server | null) {
 /** Sala de uma conversa: quem abriu a conversa no app. */
 export const conversationRoom = (conversationId: string) => `conversation:${conversationId}`;
 
+/**
+ * Os sockets de um usuário que abriram a conversa (a interseção de `conversationRoom` e
+ * `userRoom`): para mandar a uma pessoa da sala uma versão diferente de um evento.
+ */
+export const conversationUserRoom = (conversationId: string, userId: string) =>
+  `conversation:${conversationId}:user:${userId}`;
+
 /** Sala de um usuário: todos os sockets dele (vários aparelhos ou abas). */
 export const userRoom = (userId: string) => `user:${userId}`;
 
