@@ -6,7 +6,13 @@ import { setupServer } from 'msw/node';
 import { apiBaseUrl } from '@/lib/env';
 
 import { gamesApi } from '../api';
-import { parseGame, parseGamePlayer, parseGameStats, parseGameSummary } from '../types';
+import {
+  parseGame,
+  parseGamePlayer,
+  parseGameStats,
+  parseGameSummary,
+  parseTrendingGame,
+} from '../types';
 
 const server = setupServer();
 
@@ -75,6 +81,53 @@ describe('parsers', () => {
     expect(parseGamePlayer({ user: { id: 'u1', username: 'ana' }, status: 'weird' })).toMatchObject(
       { status: 'backlog', hoursPlayed: null },
     );
+  });
+});
+
+describe('parseTrendingGame', () => {
+  it('keeps the local id with the summary and the entry count', () => {
+    expect(parseTrendingGame({ game: gameJson, entryCount: 12 })).toEqual({
+      game: {
+        id: 'g1',
+        igdbId: 1942,
+        name: 'Hades',
+        coverUrl: 'https://img/hades.jpg',
+        platforms: ['PC'],
+        genres: ['Roguelike'],
+      },
+      entryCount: 12,
+    });
+  });
+
+  it('defaults a missing count to 0 and missing arrays and cover', () => {
+    expect(parseTrendingGame({ game: { id: 'g2', igdbId: 2, name: 'Y' } })).toEqual({
+      game: { id: 'g2', igdbId: 2, name: 'Y', coverUrl: null, platforms: [], genres: [] },
+      entryCount: 0,
+    });
+  });
+});
+
+describe('gamesApi.trending', () => {
+  it('sends the limit (10 by default) and parses each game', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(
+      http.get(`${apiBaseUrl}/games/trending`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams);
+        return HttpResponse.json([
+          { game: gameJson, entryCount: 5 },
+          { game: { ...gameJson, id: 'g2', igdbId: 2, name: 'Celeste' }, entryCount: 3 },
+        ]);
+      }),
+    );
+
+    const games = await gamesApi.trending();
+    await gamesApi.trending(20);
+
+    expect(games.map((item) => [item.game.id, item.game.igdbId, item.game.name, item.entryCount])).toEqual([
+      ['g1', 1942, 'Hades', 5],
+      ['g2', 2, 'Celeste', 3],
+    ]);
+    expect(seen.map((params) => params.get('limit'))).toEqual(['10', '20']);
   });
 });
 

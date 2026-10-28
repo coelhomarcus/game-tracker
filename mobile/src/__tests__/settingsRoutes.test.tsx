@@ -21,7 +21,10 @@ jest.mock('@/features/library/queries', () => ({
 }));
 
 jest.mock('@/features/notifications/queries', () => ({
-  useNotifications: () => ({ data: { items: [], unreadCount: 0 }, isError: false, refetch: jest.fn() }),
+  useNotifications: () => ({ data: { pages: [{ items: [], unreadCount: 0, nextCursor: null }], pageParams: [undefined] },
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: jest.fn(), isError: false, refetch: jest.fn() }),
   useUnreadCount: () => 0,
   useMarkAllRead: () => ({ mutate: jest.fn() }),
 }));

@@ -9,6 +9,12 @@ export type GameSummary = {
   genres: string[];
 };
 
+/** One "Em alta" game: the search summary plus its local id, and the entries of the last 7 days. */
+export type TrendingGame = {
+  game: GameSummary & { id: string };
+  entryCount: number;
+};
+
 export type Game = {
   id: string;
   igdbId: number;
@@ -69,6 +75,13 @@ export function parseGameSummary(json: Json): GameSummary {
     coverUrl: nullableString(json.coverUrl),
     platforms: strings(json.platforms),
     genres: strings(json.genres),
+  };
+}
+
+export function parseTrendingGame(json: Json): TrendingGame {
+  return {
+    game: { id: json.game.id, ...parseGameSummary(json.game) },
+    entryCount: count(json.entryCount),
   };
 }
 

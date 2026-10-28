@@ -5,7 +5,7 @@ import { HeaderBell } from '@/components';
 import { showToast } from '@/lib/toast';
 
 import NotificationsScreen from '../NotificationsScreen';
-import type { AppNotification, NotificationsData } from '../types';
+import type { AppNotification, NotificationsPage } from '../types';
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
@@ -21,28 +21,43 @@ jest.mock('expo-router', () => ({
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 
 type QueryState = {
-  data: NotificationsData | undefined;
+  /** The loaded pages, as the server sent them. */
+  data: NotificationsPage[] | undefined;
   isError: boolean;
+  isFetchingNextPage?: boolean;
 };
 
 const mockRefetch = jest.fn();
 const mockMutate = jest.fn();
+const mockFetchNextPage = jest.fn();
 
 jest.mock('@/features/notifications/queries', () => {
   const { create: createStore } = jest.requireActual('zustand');
   const store = createStore(() => ({ data: undefined, isError: false }));
   return {
     __store: store,
-    useNotifications: () => ({ ...store(), refetch: mockRefetch }),
-    useUnreadCount: () => store((state: QueryState) => state.data?.unreadCount ?? 0),
+    useNotifications: () => {
+      const state: QueryState = store();
+      const last = state.data?.[state.data.length - 1];
+      return {
+        data: state.data && { pages: state.data, pageParams: state.data.map(() => undefined) },
+        isError: state.isError,
+        hasNextPage: last !== undefined && last.nextCursor !== null,
+        isFetchingNextPage: state.isFetchingNextPage === true,
+        fetchNextPage: mockFetchNextPage,
+        refetch: mockRefetch,
+      };
+    },
+    useUnreadCount: () => store((state: QueryState) => state.data?.[0]?.unreadCount ?? 0),
     useMarkAllRead: () => ({
       mutate: () => {
         mockMutate();
         store.setState((state: QueryState) => ({
-          data: state.data && {
-            items: state.data.items.map((item) => ({ ...item, read: true })),
+          data: state.data?.map((page: NotificationsPage) => ({
+            ...page,
+            items: page.items.map((item) => ({ ...item, read: true })),
             unreadCount: 0,
-          },
+          })),
         }));
       },
     }),
@@ -69,6 +84,7 @@ function item(overrides: Partial<AppNotification> & { id: string }): AppNotifica
     postId: 'p1',
     commentId: null,
     excerpt: null,
+    postImageUrl: null,
     read: false,
     createdAt: new Date(Date.now() - 5 * 60_000),
     ...overrides,
@@ -91,7 +107,19 @@ const follow = item({
 });
 
 function setData(items: AppNotification[], unreadCount = items.filter((i) => !i.read).length) {
-  store.setState({ data: { items, unreadCount }, isError: false });
+  store.setState({ data: [{ items, unreadCount, nextCursor: null }], isError: false });
+}
+
+function setPages(...pageItems: AppNotification[][]) {
+  const unreadCount = pageItems.flat().filter((i) => !i.read).length;
+  store.setState({
+    data: pageItems.map((items, index) => ({
+      items,
+      unreadCount,
+      nextCursor: index === pageItems.length - 1 ? 'more' : `c${index}`,
+    })),
+    isError: false,
+  });
 }
 
 function renderScreen() {
@@ -106,7 +134,7 @@ function renderScreen() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRefetch.mockResolvedValue({ isError: false });
-  store.setState({ data: undefined, isError: false });
+  store.setState({ data: undefined, isError: false, isFetchingNextPage: false });
 });
 
 test('shows the text of each notification type', async () => {
@@ -214,16 +242,38 @@ test('mark all as read is disabled with nothing unread', async () => {
   expect(mockMutate).not.toHaveBeenCalled();
 });
 
-test('the footer shows with exactly 50 items', async () => {
-  setData(Array.from({ length: 50 }, (_, index) => item({ id: `n${index}`, read: true })));
+test('shows the items of every loaded page', async () => {
+  setPages([like], [comment, follow]);
   await renderScreen();
-  expect(screen.getByText('Mostrando as 50 mais recentes.')).toBeOnTheScreen();
+  expect(screen.getByText('Ana Souza curtiu seu post')).toBeOnTheScreen();
+  expect(screen.getByText('bruno comentou no seu post')).toBeOnTheScreen();
+  expect(screen.getByText('Carla começou a seguir você')).toBeOnTheScreen();
 });
 
-test('the footer is absent below 50 items', async () => {
-  setData(Array.from({ length: 3 }, (_, index) => item({ id: `n${index}`, read: true })));
+test('reaching the end loads the next page while there is one', async () => {
+  setPages([like, comment]);
   await renderScreen();
-  expect(screen.queryByText('Mostrando as 50 mais recentes.')).toBeNull();
+  await act(async () => {
+    screen.getByTestId('notifications-list').props.onEndReached();
+  });
+  expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+});
+
+test('reaching the end does nothing on the last page or while a page loads', async () => {
+  setData([like, comment]);
+  await renderScreen();
+  await act(async () => {
+    screen.getByTestId('notifications-list').props.onEndReached();
+  });
+  expect(mockFetchNextPage).not.toHaveBeenCalled();
+
+  setPages([like, comment]);
+  store.setState({ isFetchingNextPage: true });
+  await act(async () => {
+    screen.getByTestId('notifications-list').props.onEndReached();
+  });
+  expect(mockFetchNextPage).not.toHaveBeenCalled();
+  expect(screen.getByTestId('notifications-more')).toBeOnTheScreen();
 });
 
 test('refreshing refetches and toasts a failure', async () => {

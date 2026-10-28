@@ -3,15 +3,13 @@ import { Stack, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { EmptyState, Screen, Tabs, Text } from '@/components';
+import { EmptyState, Screen, Tabs } from '@/components';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
 
 import { NotificationRow } from './NotificationRow';
-import { useMarkAllRead, useNotifications } from './queries';
+import { useMarkAllRead, useNotifications, useUnreadCount } from './queries';
 import type { AppNotification, NotificationType } from './types';
-
-const LIMIT = 50;
 
 type Filter = 'all' | 'interactions' | 'followers';
 
@@ -56,12 +54,17 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<Filter>('all');
   const [refreshing, setRefreshing] = useState(false);
   const notifications = useNotifications();
+  const unread = useUnreadCount();
   const markAllRead = useMarkAllRead();
 
   const data = notifications.data;
-  const unread = data?.unreadCount ?? 0;
+  const loaded = data?.pages.flatMap((page) => page.items) ?? [];
   const types = FILTER_TYPES[filter];
-  const items = (data?.items ?? []).filter((item) => types === null || types.includes(item.type));
+  const items = loaded.filter((item) => types === null || types.includes(item.type));
+
+  function loadMore() {
+    if (notifications.hasNextPage && !notifications.isFetchingNextPage) void notifications.fetchNextPage();
+  }
 
   async function refresh() {
     setRefreshing(true);
@@ -105,13 +108,17 @@ export default function NotificationsScreen() {
     );
   }
 
-  const footer =
-    data.items.length === LIMIT ? (
-      <Text size="sm" tone="medium" style={styles.footer}>{`Mostrando as ${LIMIT} mais recentes.`}</Text>
-    ) : undefined;
+  const footer = notifications.isFetchingNextPage ? (
+    <ActivityIndicator
+      testID="notifications-more"
+      accessibilityLabel="Carregando mais"
+      color={colors.textMedium}
+      style={styles.footer}
+    />
+  ) : undefined;
   const filterLabel = FILTERS.find((entry) => entry.value === filter)?.label ?? '';
   const empty =
-    data.items.length === 0 ? (
+    loaded.length === 0 ? (
       <EmptyState
         title="Sem notificações"
         message="Curtidas, comentários e novos seguidores aparecem aqui."
@@ -144,6 +151,8 @@ export default function NotificationsScreen() {
         }
         ListEmptyComponent={empty}
         ListFooterComponent={footer}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshing={refreshing}
         onRefresh={() => void refresh()}
       />
@@ -155,8 +164,5 @@ const styles = StyleSheet.create({
   markAll: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   loading: { marginTop: space._2xl },
   tabs: { paddingVertical: space.md },
-  footer: {
-    textAlign: 'center',
-    padding: space.lg,
-  },
+  footer: { padding: space.lg },
 });

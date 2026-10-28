@@ -8,6 +8,7 @@ import {
   parseFollowListPage,
   parseModerationPage,
   parsePersonResult,
+  parseSuggestedPerson,
   parseUserProfile,
   parseUserReplyPage,
   type FollowListPage,
@@ -15,6 +16,7 @@ import {
   type ModerationPage,
   type PersonResult,
   type PickedImage,
+  type SuggestedPerson,
   type UserProfile,
   type UserReplyPage,
 } from './types';
@@ -39,6 +41,12 @@ export const profilesApi = {
   async search(term: string): Promise<PersonResult[]> {
     const json = await api.get<Json[]>('/users/search', { query: { q: term } });
     return json.map(parsePersonResult);
+  },
+
+  /** People to follow, best first (up to 20); blocked and muted people never show up. */
+  async suggestions(limit = 10): Promise<SuggestedPerson[]> {
+    const json = await api.get<Json[]>('/users/suggestions', { query: { limit } });
+    return json.map(parseSuggestedPerson);
   },
 
   /** `type` separates the activity tab from the posts tab. */
