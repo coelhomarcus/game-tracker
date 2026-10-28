@@ -12,6 +12,11 @@ export async function searchHandler(_req: Request, res: Response) {
   res.json(results);
 }
 
+export async function trendingHandler(req: Request, res: Response) {
+  const { limit } = res.locals.query as { limit: number };
+  res.json(await gamesService.getTrending(req.user!.id, limit));
+}
+
 export async function getByIdHandler(req: Request, res: Response) {
   const game = await gamesService.getGame(req.params.id as string, req.user!.id);
   res.json(game);

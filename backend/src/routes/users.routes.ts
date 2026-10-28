@@ -18,6 +18,7 @@ import {
   removeAvatarHandler,
   removeBannerHandler,
   searchHandler,
+  suggestionsHandler,
   unblockHandler,
   unfollowHandler,
   unmuteHandler,
@@ -35,6 +36,7 @@ import { listGameEntriesQuerySchema } from '../schemas/gameEntry.schema';
 import {
   followListQuerySchema,
   searchUsersQuerySchema,
+  suggestionsQuerySchema,
   updateProfileSchema,
   userPostsQuerySchema,
 } from '../schemas/users.schema';
@@ -54,6 +56,8 @@ usersRouter.get('/me/likes', validateQuery(bookmarksQuerySchema), getMyLikesHand
 usersRouter.get('/me/mutes', validateQuery(followListQuerySchema), getMyMutesHandler);
 usersRouter.get('/me/blocks', validateQuery(followListQuerySchema), getMyBlocksHandler);
 usersRouter.get('/search', validateQuery(searchUsersQuerySchema), searchHandler);
+// Antes de `/:id`, senão "suggestions" seria lido como um id.
+usersRouter.get('/suggestions', validateQuery(suggestionsQuerySchema), suggestionsHandler);
 usersRouter.get('/:id', getPublicProfileHandler);
 usersRouter.get('/:id/posts', validateQuery(userPostsQuerySchema), getUserPostsHandler);
 usersRouter.get('/:id/followers', validateQuery(followListQuerySchema), getFollowersHandler);

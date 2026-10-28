@@ -25,6 +25,10 @@ export const searchUsersQuerySchema = z.object({
   q: z.string().min(1).max(50),
 });
 
+export const suggestionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(20).optional().default(10),
+});
+
 export const updateProfileSchema = z.object({
   username: usernameSchema.optional(),
   // O nome não pode ficar vazio (nem só espaços); a bio vazia limpa o campo.

@@ -152,6 +152,61 @@ export async function listFollows(
   return { items, nextCursor };
 }
 
+interface SuggestionRow extends Record<string, unknown> {
+  id: string;
+  username: string;
+  name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  followed_by_count: number;
+  follows_me: boolean;
+}
+
+/**
+ * "Sugestões para seguir": quem é seguido por quem eu sigo, primeiro quem mais dos meus seguidos
+ * segue (`followedByCount`), depois quem tem mais seguidores. Faltando gente para `limit`, o resto
+ * vem dos mais seguidos em geral (a mesma ordem, com `followedByCount` 0). Nunca traz a mim, quem eu
+ * já sigo, quem tem bloqueio comigo (em qualquer sentido) nem quem eu silenciei.
+ */
+export async function suggestions(viewerId: string, limit: number) {
+  const result = await db.execute<SuggestionRow>(sql`
+    with mine as (
+      select f.following_id as id from ${follows} f where f.follower_id = ${viewerId}
+    ),
+    follower_counts as (
+      select fc.following_id as id, count(*)::int as n from ${follows} fc group by fc.following_id
+    ),
+    followed_by_mine as (
+      select fm.following_id as id, count(*)::int as n
+      from ${follows} fm
+      join mine on mine.id = fm.follower_id
+      group by fm.following_id
+    )
+    select u.id, u.username, u.name, u.avatar_url, u.bio,
+      coalesce(fbm.n, 0) as followed_by_count,
+      exists(select 1 from ${follows} theirs where theirs.follower_id = u.id and theirs.following_id = ${viewerId}) as follows_me
+    from ${users} u
+    left join followed_by_mine fbm on fbm.id = u.id
+    left join follower_counts fc on fc.id = u.id
+    where u.id <> ${viewerId}
+      and u.id not in (select id from mine)
+      and u.id not in ${moderationService.hiddenAuthorsSql(viewerId, true)}
+    order by coalesce(fbm.n, 0) desc, coalesce(fc.n, 0) desc, u.created_at desc, u.id
+    limit ${limit}
+  `);
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    name: row.name,
+    avatarUrl: row.avatar_url,
+    bio: row.bio,
+    isFollowedByMe: false as const,
+    followsMe: row.follows_me === true,
+    followedByCount: Number(row.followed_by_count),
+  }));
+}
+
 export async function follow(followerId: string, followingId: string) {
   if (followerId === followingId) {
     throw new AppError(400, 'invalid_operation', 'Não é possível seguir a si mesmo');

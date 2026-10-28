@@ -1,6 +1,6 @@
-import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { favorites, follows, gameEntries, gameEntryStatusEnum, games } from '../db/schema';
+import { favorites, follows, gameEntries, gameEntryStatusEnum, games, posts } from '../db/schema';
 import { AppError } from '../lib/errors';
 import * as igdb from '../lib/igdb';
 import * as moderationService from './moderation.service';
@@ -84,6 +84,62 @@ export async function getStats(gameId: string) {
   const stats: Record<GameEntryStatus, number> = { backlog: 0, playing: 0, completed: 0, dropped: 0 };
   for (const row of rows) stats[row.status] = row.count;
   return stats;
+}
+
+/** O resumo de um jogo nas listas: os campos da busca, mais o id local. */
+function gameSummary(game: typeof games.$inferSelect) {
+  return {
+    id: game.id,
+    igdbId: game.igdbId,
+    name: game.name,
+    summary: game.summary,
+    coverUrl: game.coverUrl,
+    screenshots: game.screenshots,
+    platforms: game.platforms,
+    genres: game.genres,
+  };
+}
+
+const TRENDING_WINDOW = '7 days';
+
+/**
+ * "Em alta": os jogos com mais registros criados ou atualizados nos últimos 7 dias; no empate, o
+ * de atividade mais recente. `game_entries` não tem `updated_at`: a atualização que conta é a de
+ * status, que gera o post de atividade do registro (`posts.game_entry_id`, tipo `activity`). Cada
+ * registro conta uma vez. Os registros de quem tem bloqueio com quem vê, ou foi silenciado por
+ * ele, não contam.
+ */
+export async function getTrending(viewerId: string, limit: number) {
+  const hidden = moderationService.hiddenAuthorsSql(viewerId, true);
+  const result = await db.execute<{ game_id: string; entry_count: number }>(sql`
+    with activity as (
+      select ge.game_id, ge.id as entry_id, ge.created_at as at
+      from ${gameEntries} ge
+      where ge.created_at >= now() - ${TRENDING_WINDOW}::interval
+        and ge.user_id not in ${hidden}
+      union all
+      select ge.game_id, ge.id as entry_id, p.created_at as at
+      from ${posts} p
+      join ${gameEntries} ge on ge.id = p.game_entry_id
+      where p.type = 'activity'
+        and p.created_at >= now() - ${TRENDING_WINDOW}::interval
+        and ge.user_id not in ${hidden}
+    )
+    select game_id, count(distinct entry_id)::int as entry_count
+    from activity
+    group by game_id
+    order by count(distinct entry_id) desc, max(at) desc, game_id
+    limit ${limit}
+  `);
+
+  const ranked = result.rows;
+  if (ranked.length === 0) return [];
+  const rows = await db.query.games.findMany({ where: inArray(games.id, ranked.map((row) => row.game_id)) });
+  const byId = new Map(rows.map((game) => [game.id, game]));
+  return ranked.flatMap((row) => {
+    const game = byId.get(row.game_id);
+    return game ? [{ game: gameSummary(game), entryCount: Number(row.entry_count) }] : [];
+  });
 }
 
 /**
