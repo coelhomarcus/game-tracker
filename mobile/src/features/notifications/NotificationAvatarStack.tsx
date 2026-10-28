@@ -93,6 +93,9 @@ const styles = StyleSheet.create({
     minHeight: STACK_TOUCH,
     minWidth: STACK_TOUCH,
     marginTop: -STACK_TOUCH_OVERHANG,
+    // The box's lower overhang already spaces the faces from the sentence: take back the content's
+    // gap so the box ends exactly where the sentence starts (no touch area under the text).
+    marginBottom: -space.xs,
   },
   overlap: { marginLeft: STACK_OVERLAP },
   rest: { marginLeft: space.sm },

@@ -165,6 +165,17 @@ describe('grouped rows', () => {
     expect(stack).toHaveStyle({ minHeight: 48 });
   });
 
+  it('pulls the faces up and the sentence close with the 48 dp box, without the box reaching under it', async () => {
+    await renderRow(only(seven.map((id) => n('like', { actor: person(id) }))));
+    // 10 dp above and below the 28 dp faces; the row's 4 dp gap is taken back from the bottom, so
+    // the box ends exactly where the sentence starts.
+    expect(screen.getByTestId('notification-avatar-stack')).toHaveStyle({
+      minHeight: 48,
+      marginTop: -10,
+      marginBottom: -4,
+    });
+  });
+
   it('a single notification has no stack', async () => {
     await renderRow(only([n('like')]));
     expect(screen.queryByTestId('notification-avatar-stack')).toBeNull();

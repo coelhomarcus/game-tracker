@@ -272,6 +272,32 @@ test('a grouped follow row shows the people, each opening their profile', async 
   expect(mockPush).toHaveBeenLastCalledWith('/users/u8');
 });
 
+test('a group stays open when a refresh adds a newer member (its key changes)', async () => {
+  server.items = [like, item({ id: 'n4', actor: actor('u4', 'bia', 'Bia'), read: true })];
+  await renderScreen();
+  await fireEvent.press(await screen.findByRole('button', { name: 'Mostrar as 2 pessoas' }));
+  expect(screen.getByRole('button', { name: 'Ver perfil de Bia' })).toBeOnTheScreen();
+  await settle();
+
+  server.items = [
+    item({ id: 'n40', actor: actor('u5', 'caio', 'Caio'), createdAt: new Date(Date.now() - MINUTE) }),
+    ...server.items,
+  ];
+  await act(async () => {
+    await screen.getByTestId('notifications-list-all').props.refreshControl.props.onRefresh();
+  });
+  await settle();
+
+  expect(screen.getByText('Caio e mais 2 curtiram seu post')).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Ocultar pessoas' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Ver perfil de Caio' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Ver perfil de Bia' })).toBeOnTheScreen();
+
+  // Pressing again closes it.
+  await fireEvent.press(screen.getByRole('button', { name: 'Ocultar pessoas' }));
+  expect(screen.queryByRole('button', { name: 'Ver perfil de Caio' })).toBeNull();
+});
+
 describe('mark as read', () => {
   test('opening Todas marks everything read and the bell drops, but the rows stay tinted', async () => {
     server.items = [like, comment, follow];
@@ -408,6 +434,37 @@ describe('Atualizar', () => {
 
     await act(async () => mockFocus.set(true));
     expect(screen.getByRole('button', { name: 'Atualizar' })).toBeOnTheScreen();
+  });
+
+  test('a pull to refresh on another filter does not hide the pill: Todas is still behind', async () => {
+    await openAndRead();
+    await arrive(reply);
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Respostas' }));
+    await screen.findByText('Iris respondeu seu comentário');
+    await act(async () => {
+      await screen.getByTestId('notifications-list-replies').props.refreshControl.props.onRefresh();
+    });
+    await settle();
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeOnTheScreen();
+  });
+
+  test('an older count in the cache does not flash the pill while the screen reads its own', async () => {
+    // The bell last read 0, a while ago; the server now has unread ones, and Todas has not loaded.
+    client.setQueryData(unreadCountKey, 0, { updatedAt: Date.now() - 60_000 });
+    server.items = [like, comment];
+    mocked.list.mockReturnValue(new Promise(() => {}));
+    await renderScreen();
+    // The count refetches on mount; the list request never answers, so `settle` cannot be used.
+    await act(async () => {
+      await client.refetchQueries({ queryKey: unreadCountKey });
+      await tick();
+      await tick();
+    });
+
+    expect(client.getQueryData(unreadCountKey)).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Atualizar' })).toBeNull();
   });
 
   test('pull to refresh catches up too', async () => {

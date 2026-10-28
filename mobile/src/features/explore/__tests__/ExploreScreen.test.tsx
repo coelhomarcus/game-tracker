@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
-import { Keyboard } from 'react-native';
+import { createRef } from 'react';
+import { FlatList, Keyboard, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
@@ -14,6 +15,7 @@ import type { PersonResult } from '@/features/profiles/types';
 import { socialDefaults } from '@/test-utils/postDefaults';
 
 import { ExploreScreen } from '../ExploreScreen';
+import { PERSON_AVATAR } from '../SearchRecents';
 import { useRecentSearches } from '../recentSearches';
 
 jest.mock('@/features/games/queries', () => ({
@@ -335,6 +337,45 @@ describe('ExploreScreen recents', () => {
     expect(recents().terms).toEqual(['celeste']);
   });
 
+  it('keeps the middle of a recent avatar out of the "x" box, so a tap there opens the profile', async () => {
+    await renderExplore();
+    await focusField();
+
+    const item = screen.getByRole('button', { name: 'Perfil de Ana Souza' });
+    const remove = screen.getByRole('button', { name: 'Remover Ana Souza das pessoas recentes' });
+    const body = StyleSheet.flatten(item.props.style);
+    const box = StyleSheet.flatten(remove.props.style);
+
+    // A real 48 dp box in the item's top-right corner...
+    expect(box.width).toBeGreaterThanOrEqual(48);
+    expect(box.height).toBeGreaterThanOrEqual(48);
+    expect(box.top).toBe(0);
+    expect(box.right).toBe(0);
+    // ...that ends above the avatar's centre (the avatar starts at the body's top padding).
+    const avatarCentre = (body.paddingTop ?? 0) + PERSON_AVATAR / 2;
+    expect(avatarCentre).toBeGreaterThanOrEqual(box.top + box.height);
+
+    // Pressing the profile opens it and removes nothing.
+    await fireEvent.press(item);
+    expect(mockPush).toHaveBeenCalledWith('/users/u1');
+    expect(recents().people.map((p) => p.id)).toContain('u1');
+  });
+
+  it('scrolls the recents back to the top when Explorar is pressed again', async () => {
+    // The ScrollView mock shares one `scrollTo` between instances; a probe reaches it.
+    const probe = createRef<{ scrollTo: jest.Mock }>();
+    const { unmount } = await render(<ScrollView ref={probe as never} />);
+    const scrollTo = probe.current!.scrollTo;
+    await unmount();
+
+    await renderExplore();
+    await focusField();
+    scrollTo.mockClear();
+
+    await act(async () => mockTabPress.forEach((listener) => listener()));
+    expect(scrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
+  });
+
   it('opens a recent person and removes one with its "x"', async () => {
     await renderExplore();
     await focusField();
@@ -441,6 +482,49 @@ describe('ExploreScreen results', () => {
     expect(screen.getByText('Não foi possível buscar agora')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a retry when the people search fails', async () => {
+    mockPeople({ data: undefined, isError: true });
+    await renderExplore();
+    await searchGames('an');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Pessoas' }));
+
+    expect(screen.getByText('Não foi possível buscar agora')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a retry when the post search fails', async () => {
+    mockPosts({ data: undefined, isError: true });
+    await renderExplore();
+    await searchGames('an');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Posts' }));
+
+    expect(screen.getByText('Não foi possível buscar agora')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('scrolls the people results to the top when their tab is pressed again', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    await renderExplore();
+    await searchGames('an');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Pessoas' }));
+    scrollToOffset.mockClear();
+
+    await fireEvent.press(screen.getByRole('tab', { name: 'Pessoas' }));
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+    scrollToOffset.mockRestore();
+  });
+
+  it('keeps the first tap on a result working with the keyboard open', async () => {
+    await renderExplore();
+    await searchGames('an');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Pessoas' }));
+    expect(screen.getByTestId('people-results').props.keyboardShouldPersistTaps).toBe('handled');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Posts' }));
+    expect(screen.getByTestId('post-list').props.keyboardShouldPersistTaps).toBe('handled');
   });
 
   it('lists people with their names, usernames and bios, and follows from the row', async () => {

@@ -13,6 +13,7 @@ const SEARCH_MIN_LENGTH = 2;
 const PLAYERS_LIMIT = 10;
 /** How many games "Em alta" shows. */
 const TRENDING_LIMIT = 10;
+const TRENDING_STALE_MS = 5 * 60_000;
 
 export function useGame(igdbId: number) {
   return useQuery({ queryKey: ['game', igdbId], queryFn: () => gamesApi.byIgdbId(igdbId) });
@@ -65,6 +66,8 @@ export function useTrendingGames() {
   return useQuery({
     queryKey: ['trendingGames'],
     queryFn: () => gamesApi.trending(TRENDING_LIMIT),
+    // Leaving the search (Cancelar) shows what was loaded instead of asking the server again.
+    staleTime: TRENDING_STALE_MS,
   });
 }
 

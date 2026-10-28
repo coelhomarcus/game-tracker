@@ -50,6 +50,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_MIN_LENGTH = 2;
 /** Explorar shows 5 suggestions and "Ver mais" opens up to this many. */
 const SUGGESTIONS_LIMIT = 10;
+const SUGGESTIONS_STALE_MS = 2 * 60_000;
 
 export function useProfile(id?: string) {
   return useQuery({
@@ -74,6 +75,8 @@ export function useFollowSuggestions() {
   return useQuery({
     queryKey: ['suggestions'],
     queryFn: () => profilesApi.suggestions(SUGGESTIONS_LIMIT),
+    // Follows patch the cached rows and blocks and mutes invalidate them, so Cancelar does not ask again.
+    staleTime: SUGGESTIONS_STALE_MS,
   });
 }
 
@@ -462,8 +465,8 @@ function applyModeration(
     return next;
   });
   if (on) {
-    // A mute only empties the feeds: profiles, threads and bookmarks keep showing a muted person.
-    const posts = removeUserPostsEverywhere(client, person.id, kind === 'blocks' ? undefined : [['feed']]);
+    // A mute only empties the feeds and the post search: profiles, threads and bookmarks keep showing a muted person.
+    const posts = removeUserPostsEverywhere(client, person.id, kind === 'blocks' ? undefined : [['feed'], ['postSearch']]);
     if (posts.length > 0) {
       const removal = removals.get(lane) ?? { posts: [] };
       removal.posts.push(...posts);
@@ -545,11 +548,14 @@ function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: s
     }
     return;
   }
-  // The feeds, notifications and suggestions filter the person in or out; read again on the next
+  // The feeds, post search and notifications filter the person in or out; read again on the next
   // visit.
-  for (const key of [['feed'], ['notifications'], ['suggestions']]) {
+  for (const key of [['feed'], ['postSearch'], ['notifications']]) {
     void client.invalidateQueries({ queryKey: key, refetchType: 'none' });
   }
+  // Suggestions stay mounted under the profile and are cached for minutes: a new mute drops the
+  // person from them now, an undo is read on the next visit.
+  void client.invalidateQueries({ queryKey: ['suggestions'], refetchType: added ? 'active' : 'none' });
 }
 
 export type ModerationVariables = {

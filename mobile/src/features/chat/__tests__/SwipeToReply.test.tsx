@@ -21,8 +21,15 @@ import {
 
 jest.mock('@/lib/haptics', () => ({ haptic: jest.fn() }));
 
+/** One display frame at 60 fps. */
+const FRAME_MS = 16;
+
 beforeEach(() => {
   jest.mocked(haptic).mockReset();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('reply swipe thresholds', () => {
@@ -133,6 +140,9 @@ describe('SwipeToReply', () => {
   });
 
   it('fades the reply arrow in as the bubble follows the finger', async () => {
+    // Reanimated applies style updates on animation frames: with fake timers the test moves the
+    // frames itself instead of waiting for them, so a busy machine cannot make it read too early.
+    jest.useFakeTimers();
     await renderSwipe();
     const readStyle = getAnimatedStyle as unknown as (element: unknown) => { opacity?: number };
     const icon = () => readStyle(screen.getByTestId('reply-swipe-icon', { includeHiddenElements: true }));
@@ -144,9 +154,15 @@ describe('SwipeToReply', () => {
       pan.activate({ translationX: 12 });
       pan.update({ translationX: 28 });
     });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(FRAME_MS * 4);
+    });
     expect(icon().opacity).toBeCloseTo(0.5);
 
     await act(async () => pan.update({ translationX: 120 }));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(FRAME_MS * 4);
+    });
     expect(icon().opacity).toBe(1);
   });
 });

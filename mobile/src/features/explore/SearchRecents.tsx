@@ -1,18 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 
 import { Avatar, Text } from '@/components';
 import { displayName } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
+import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
 import { colors, space } from '@/theme/tokens';
 
 import type { RecentPerson } from './recentSearches';
 
-const PERSON_WIDTH = 72;
-const PERSON_AVATAR = 60;
+const PERSON_WIDTH = 80;
+export const PERSON_AVATAR = 60;
 /** Real touch box of every "x"; the drawn circle is smaller. */
 const REMOVE_BOX = 48;
 const REMOVE_BADGE = 20;
+/**
+ * Room above the avatar for the "x" box: the box is 48 tall, so with the avatar starting 24 below
+ * the item's top the avatar's centre (24 + 30) lies outside it and a tap on the middle of the
+ * avatar opens the profile.
+ */
+const REMOVE_ROOM = 24;
 const ROW_MIN_HEIGHT = 48;
 
 export type SearchRecentsProps = {
@@ -47,7 +55,7 @@ function RecentPersonItem({
           {name}
         </Text>
       </Pressable>
-      {/* A 48 dp box in the item's corner; the small badge inside sits on the avatar's edge. */}
+      {/* A 48 dp box in the item's top corner, clear of the avatar's centre; the badge sits on the avatar's edge. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Remover ${name} das pessoas recentes`}
@@ -74,8 +82,16 @@ export function SearchRecents({
   onPressPerson,
   onRemovePerson,
 }: SearchRecentsProps) {
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  // Pressing Explorar again brings the recents back to the top (a ScrollView scrolls with scrollTo).
+  const scrollable = useRef({
+    scrollToOffset: ({ offset, animated }: { offset: number; animated?: boolean }) =>
+      scrollRef.current?.scrollTo({ y: offset, animated }),
+  });
+  useScrollToTopOnTabPress(scrollable);
   return (
     <ScrollView
+      ref={scrollRef}
       testID="search-recents"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={styles.content}
@@ -142,7 +158,7 @@ const styles = StyleSheet.create({
   heading: { paddingHorizontal: space.lg, paddingBottom: space.sm },
   people: { paddingHorizontal: space.sm, gap: space.sm },
   person: { width: PERSON_WIDTH },
-  personBody: { alignItems: 'center', gap: space.xs, paddingTop: space.xs, paddingBottom: space.sm },
+  personBody: { alignItems: 'center', gap: space.xs, paddingTop: REMOVE_ROOM, paddingBottom: space.sm },
   personName: { maxWidth: PERSON_WIDTH, textAlign: 'center' },
   personRemove: {
     position: 'absolute',
@@ -154,6 +170,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   badge: {
+    marginTop: REMOVE_ROOM - space.sm,
+    marginRight: space.sm,
     width: REMOVE_BADGE,
     height: REMOVE_BADGE,
     borderRadius: REMOVE_BADGE / 2,

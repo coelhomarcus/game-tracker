@@ -111,7 +111,7 @@ describe('useRecentSearches', () => {
         state: {
           recents: {
             ana: {
-              terms: ['hades', 'HADES', 42, ' ', 'celeste'],
+              terms: ['hades', 'HADES', 42, ' ', ' Celeste', 'celeste ', 'Zelda'],
               people: [person('u1'), { id: 'u2' }, person('u1'), 'lixo'],
             },
             bia: 'lixo',
@@ -123,7 +123,7 @@ describe('useRecentSearches', () => {
     await useRecentSearches.persist.rehydrate();
 
     expect(store().recents).toEqual({
-      ana: { terms: ['hades', 'celeste'], people: [person('u1')] },
+      ana: { terms: ['hades', 'Celeste', 'Zelda'], people: [person('u1')] },
     });
   });
 });

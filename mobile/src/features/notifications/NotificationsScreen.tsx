@@ -13,6 +13,7 @@ import { colors, hairline, radii, space } from '@/theme/tokens';
 import {
   groupNotifications,
   sectionGroups,
+  type NotificationGroup,
   type NotificationListEntry,
   type NotificationSectionTitle,
 } from './groupNotifications';
@@ -128,14 +129,16 @@ type NotificationListProps = {
   wasUnread: ReadonlySet<string>;
   listRef: (list: ListHandle | null) => void;
   onNavigate: (href: Href) => void;
-  /** A pull-to-refresh brought the list up to date. */
-  onRefreshed: () => void;
+  /** A pull-to-refresh brought the list up to date (only Todas reports it: it is the list the pill is about). */
+  onRefreshed?: () => void;
 };
 
 /** One filter's list: it pages from the server on its own and keeps its own scroll. */
 function NotificationList({ info, wasUnread, listRef, onNavigate, onRefreshed }: NotificationListProps) {
   const notifications = useNotifications(info.value);
   const [refreshing, setRefreshing] = useState(false);
+  // The ids of the notifications whose group is open. A group's key is its newest id, which
+  // changes when a refresh adds a newer member, so a group counts as open while any member is here.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(EMPTY);
   const { data } = notifications;
 
@@ -146,10 +149,16 @@ function NotificationList({ info, wasUnread, listRef, onNavigate, onRefreshed }:
     return sectionGroups(groupNotifications(items));
   }, [data, wasUnread]);
 
-  function toggle(key: string) {
+  const isOpen = (group: NotificationGroup) => group.items.some((member) => expanded.has(member.id));
+
+  function toggle(group: NotificationGroup) {
     setExpanded((current) => {
       const next = new Set(current);
-      if (!next.delete(key)) next.add(key);
+      if (group.items.some((member) => next.has(member.id))) {
+        for (const member of group.items) next.delete(member.id);
+      } else {
+        next.add(group.first.id);
+      }
       return next;
     });
   }
@@ -166,7 +175,7 @@ function NotificationList({ info, wasUnread, listRef, onNavigate, onRefreshed }:
     );
     setRefreshing(false);
     if (failed) showToast('Não foi possível atualizar as notificações');
-    else onRefreshed();
+    else onRefreshed?.();
   }
 
   // A failed background refetch keeps the loaded list: the error shows only without data.
@@ -195,8 +204,8 @@ function NotificationList({ info, wasUnread, listRef, onNavigate, onRefreshed }:
         ) : (
           <NotificationRow
             group={entry.group}
-            expanded={expanded.has(entry.key)}
-            onToggleExpanded={() => toggle(entry.key)}
+            expanded={isOpen(entry.group)}
+            onToggleExpanded={() => toggle(entry.group)}
             onNavigate={onNavigate}
           />
         )
@@ -257,9 +266,16 @@ export default function NotificationsScreen() {
 
   // The count is polled (every 30 s) for the bell; while on screen, growth means the list is
   // behind: offer to update it instead of jumping the list.
-  const count = useUnreadCountQuery().data;
-  const [seenCount, setSeenCount] = useState(count);
-  if (count !== undefined && (seenCount === undefined || count < seenCount)) setSeenCount(count);
+  // The baseline is the first count read after the screen opened, never a cached (older) one: a
+  // stale bell value would otherwise read as growth while the screen's own refetch lands.
+  const countQuery = useUnreadCountQuery();
+  const count = countQuery.data;
+  const [openedAt] = useState(() => Date.now());
+  const countIsFresh = countQuery.dataUpdatedAt >= openedAt;
+  const [seenCount, setSeenCount] = useState<number | undefined>(undefined);
+  if (countIsFresh && count !== undefined && (seenCount === undefined || count < seenCount)) {
+    setSeenCount(count);
+  }
   const hasNew = focused && !marking && count !== undefined && seenCount !== undefined && count > seenCount;
 
   function caughtUp() {
@@ -296,7 +312,7 @@ export default function NotificationsScreen() {
                 lists.current[info.value] = list;
               }}
               onNavigate={(href) => router.push(href)}
-              onRefreshed={caughtUp}
+              onRefreshed={info.value === 'all' ? caughtUp : undefined}
             />
           </View>
         ))}

@@ -55,8 +55,10 @@ function parseRecents(value: unknown): UserRecents | null {
   if (!isObject(value)) return null;
   const terms: string[] = [];
   for (const term of Array.isArray(value.terms) ? value.terms : []) {
-    if (typeof term !== 'string' || term.trim() === '') continue;
-    if (!terms.some((kept) => sameTerm(kept, term))) terms.push(term.trim());
+    if (typeof term !== 'string') continue;
+    const clean = term.trim();
+    if (clean === '') continue;
+    if (!terms.some((kept) => sameTerm(kept, clean))) terms.push(clean);
   }
   const people: RecentPerson[] = [];
   for (const item of Array.isArray(value.people) ? value.people : []) {

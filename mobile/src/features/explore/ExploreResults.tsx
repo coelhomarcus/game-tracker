@@ -171,6 +171,7 @@ function PostResults({ term, onOpen, listRef }: PanelProps<Post, FlatList<Post>>
       ref={listRef}
       query={search}
       onPressPost={onOpen}
+      keyboardShouldPersistTaps="handled"
       ListHeaderComponent={<Busy visible={search.isFetching && !search.isFetchingNextPage} />}
       ListEmptyComponent={emptyFor(search, term, search.isPending ? loading : null) ?? undefined}
     />

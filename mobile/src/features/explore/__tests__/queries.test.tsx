@@ -103,6 +103,30 @@ describe('discovery queries', () => {
   });
 });
 
+describe('discovery stays cached while the search is open', () => {
+  it('trending games are not asked for again when the module remounts (Cancelar)', async () => {
+    const trending = jest.spyOn(gamesApi, 'trending').mockResolvedValue([]);
+    const first = await renderHook(() => useTrendingGames(), { wrapper });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    await first.unmount();
+
+    const second = await renderHook(() => useTrendingGames(), { wrapper });
+    expect(second.result.current.isSuccess).toBe(true);
+    expect(trending).toHaveBeenCalledTimes(1);
+  });
+
+  it('suggestions are not asked for again when the module remounts (Cancelar)', async () => {
+    const suggestions = jest.spyOn(profilesApi, 'suggestions').mockResolvedValue([suggested('u1')]);
+    const first = await renderHook(() => useFollowSuggestions(), { wrapper });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    await first.unmount();
+
+    const second = await renderHook(() => useFollowSuggestions(), { wrapper });
+    expect(second.result.current.isSuccess).toBe(true);
+    expect(suggestions).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('usePostSearch', () => {
   beforeEach(() => {
     jest.useFakeTimers({ doNotFake: ['clearTimeout', 'nextTick', 'queueMicrotask'] });
@@ -197,6 +221,37 @@ describe('search results in the shared caches', () => {
     await waitFor(() =>
       expect(client.getQueryData(['suggestions'])).toEqual([suggested('u1'), suggested('u2')]),
     );
+  });
+
+  it('a mute takes their posts out of the search results and the person out of the suggestions', async () => {
+    jest.spyOn(profilesApi, 'setMute').mockResolvedValue(undefined);
+    const muted = { id: 'u9', username: 'caio', name: null, avatarUrl: null };
+    client.setQueryData<InfiniteData<PostPage, string | undefined>>(['postSearch', 'hades'], {
+      pages: [
+        {
+          items: [post('p1'), post('p2', { author: { id: 'u5', username: 'edu', name: null, avatarUrl: null } })],
+          nextCursor: null,
+        },
+      ],
+      pageParams: [undefined],
+    });
+    const suggestions = jest
+      .spyOn(profilesApi, 'suggestions')
+      .mockResolvedValueOnce([suggested('u9'), suggested('u2')])
+      .mockResolvedValue([suggested('u2')]);
+    const list = await renderHook(() => useFollowSuggestions(), { wrapper });
+    await waitFor(() => expect(list.result.current.data).toHaveLength(2));
+    const { result } = await renderHook(() => useSetModeration('mutes'), { wrapper });
+
+    await act(async () => {
+      result.current.mutate({ person: muted, on: true });
+    });
+
+    const cached = client.getQueryData<InfiniteData<PostPage>>(['postSearch', 'hades']);
+    expect(cached?.pages[0].items.map((p) => p.id)).toEqual(['p2']);
+    // The mounted suggestions are read again, so a muted person is not suggested on return.
+    await waitFor(() => expect(list.result.current.data?.map((p) => p.id)).toEqual(['u2']));
+    expect(suggestions).toHaveBeenCalledTimes(2);
   });
 
   it('a block takes the person out of the recent searches once the server has it', async () => {

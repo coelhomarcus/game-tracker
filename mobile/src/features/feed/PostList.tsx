@@ -43,6 +43,8 @@ export type PostListProps = {
   /** A plain callback or a Reanimated scroll handler (`useAnimatedScrollHandler`). */
   onScroll?: AnimatedListProps['onScroll'];
   onContentSizeChange?: (width: number, height: number) => void;
+  /** Set to `handled` under a search field, so the first tap on a row works with the keyboard open. */
+  keyboardShouldPersistTaps?: AnimatedListProps['keyboardShouldPersistTaps'];
 };
 
 type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
@@ -63,6 +65,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     initialOffset,
     onScroll,
     onContentSizeChange,
+    keyboardShouldPersistTaps,
   },
   ref,
 ) {
@@ -161,6 +164,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
       onScroll={onScroll}
       scrollEventThrottle={onScroll ? 16 : undefined}
       onContentSizeChange={onContentSizeChange}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       onRefresh={() => void refresh()}
