@@ -20,7 +20,8 @@ export const POLL_INTERVAL_MS = 30_000;
 
 /** Every notifications query sits under this prefix (moderation and avatar changes invalidate it). */
 const ROOT: QueryKey = ['notifications'];
-const LISTS: QueryKey = ['notifications', 'list'];
+/** Every filter's list (the "Atualizar" pill refetches them all). */
+export const notificationListsKey: QueryKey = ['notifications', 'list'];
 export const unreadCountKey: QueryKey = ['notifications', 'unreadCount'];
 export const notificationsKey = (filter: NotificationFilter): QueryKey => ['notifications', 'list', filter];
 
@@ -95,9 +96,9 @@ export function useMarkAllRead() {
     mutationFn: () => notificationsApi.markAllRead(),
     onMutate: async () => {
       await client.cancelQueries({ queryKey: ROOT });
-      const lists = client.getQueriesData<NotificationsPages>({ queryKey: LISTS });
+      const lists = client.getQueriesData<NotificationsPages>({ queryKey: notificationListsKey });
       const count = client.getQueryData<number>(unreadCountKey);
-      client.setQueriesData<NotificationsPages>({ queryKey: LISTS }, allRead);
+      client.setQueriesData<NotificationsPages>({ queryKey: notificationListsKey }, allRead);
       if (count !== undefined) client.setQueryData<number>(unreadCountKey, 0);
       return { lists, count };
     },
