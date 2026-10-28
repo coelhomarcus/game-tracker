@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
-import { FlatList, StyleSheet } from 'react-native';
+import { FlatList, Keyboard, StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
@@ -1539,5 +1539,82 @@ describe('ChatRoomScreen: replies', () => {
 
     await cleanup();
     expect(useChatStore.getState().replying[CONV]).toBeUndefined();
+  });
+});
+
+describe('ChatRoomScreen: final fixes', () => {
+  it('drops the quote of loaded and pending replies when their original is deleted for me', async () => {
+    await settled([
+      message('m2', 'u1', 'Respondi', today(9, 6), {
+        replyTo: { id: 'm1', content: 'Segredo', senderId: 'me' },
+      }),
+      message('m1', 'me', 'Segredo', today(9, 5)),
+    ]);
+    await swipe('m-m1', [12, 70]);
+    await type('Mais uma');
+    await fireEvent.press(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(screen.getAllByLabelText('Em resposta a você: Segredo')).toHaveLength(2);
+    // The server shows the replies without the quote from now on.
+    mocked.messages.mockResolvedValue(
+      page([message('m2', 'u1', 'Respondi', today(9, 6), { replyTo: null })]),
+    );
+
+    await fireEvent(screen.getByLabelText('Você: Segredo, 09:05'), 'longPress');
+    await fireEvent.press(menu().getByRole('button', { name: 'Apagar para mim' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apagar' }));
+
+    expect(screen.queryByLabelText('Em resposta a você: Segredo')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Segredo')).not.toBeOnTheScreen();
+    expect(screen.getByText('Respondi')).toBeOnTheScreen();
+    expect(screen.getByText('Mais uma')).toBeOnTheScreen();
+    // The pending reply still goes out as a reply; the server decides.
+    expect(chatSocket.pendingAck('message:send')?.payload).toMatchObject({ replyToId: 'm1' });
+  });
+
+  it('drops the quote when the original is deleted for me on another device', async () => {
+    await settled([
+      message('m2', 'u1', 'Respondi', today(9, 6), {
+        replyTo: { id: 'm1', content: 'Segredo', senderId: 'me' },
+      }),
+      message('m1', 'me', 'Segredo', today(9, 5)),
+    ]);
+
+    await act(async () => chatSocket.fire('message:hidden', { conversationId: CONV, messageId: 'm1' }));
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Em resposta a você: Segredo')).not.toBeOnTheScreen(),
+    );
+    expect(screen.getByText('Respondi')).toBeOnTheScreen();
+  });
+
+  it('closes the keyboard before the menu opens', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    await settled([message('m1', 'u1', 'Bora jogar?', today(9, 5))]);
+    await longPress('Bora jogar?');
+
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('message-menu')).toBeOnTheScreen();
+  });
+
+  it('gives a short quote a real 48 wide target', async () => {
+    await settled([
+      message('m2', 'u1', 'Sim', today(9, 6), { replyTo: { id: 'm1', content: 'ok', senderId: 'me' } }),
+      message('m1', 'me', 'ok', today(9, 5)),
+    ]);
+    const quote = screen.getByLabelText('Em resposta a você: ok');
+    expect(StyleSheet.flatten(quote.props.style)).toMatchObject({ minWidth: 48, minHeight: 48 });
+  });
+
+  it('tucks the time line under the pill of the last bubble only', async () => {
+    const reactions = [{ emoji: '😂', userId: 'u1' }];
+    await settled([
+      message('m2', 'me', 'Segunda', today(9, 6), { reactions }),
+      message('m1', 'me', 'Primeira', today(9, 5), { reactions }),
+    ]);
+    const [last, first] = screen
+      .getAllByTestId('reactions-pill')
+      .map((pill) => StyleSheet.flatten(pill.props.style));
+    expect(last.marginBottom).toBeLessThan(0);
+    expect(first.marginBottom).toBeUndefined();
   });
 });

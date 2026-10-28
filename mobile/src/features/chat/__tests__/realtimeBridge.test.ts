@@ -285,12 +285,18 @@ describe('message:hidden', () => {
   it('stops a reply being written to the hidden message, and only to it', () => {
     seedCache();
     useChatStore.getState().startReply('c1', { id: 'm0', content: 'oi', senderId: 'u2' });
+    chatSocket.drop();
+    useChatStore.getState().send('c1', 'sobre o oi');
+    useChatStore.getState().startReply('c1', { id: 'm0', content: 'oi', senderId: 'u2' });
 
     chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm1' });
     expect(useChatStore.getState().replying.c1?.id).toBe('m0');
 
     chatSocket.fire('message:hidden', { conversationId: 'c1', messageId: 'm0' });
     expect(useChatStore.getState().replying.c1).toBeUndefined();
+    // A pending reply to it loses the quote, not the reply.
+    expect(useChatStore.getState().pending.c1?.[0]).toMatchObject({ replyToId: 'm0' });
+    expect(useChatStore.getState().pending.c1?.[0].replyTo).toBeUndefined();
   });
 
   it('ignores unknown messages and conversations without creating anything', () => {

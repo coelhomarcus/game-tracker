@@ -6,8 +6,10 @@ import {
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 import { haptic } from '@/lib/haptics';
+import { colors, negative500 } from '@/theme/tokens';
 
 import {
   crossedFurther,
@@ -15,6 +17,7 @@ import {
   MARK_READ_DISTANCE,
   SwipeableConversation,
   swipeActionAt,
+  swipeColorAt,
   swipePreviewAt,
 } from '../ConversationActions';
 import type { Conversation } from '../types';
@@ -155,5 +158,49 @@ describe('SwipeableConversation', () => {
     await act(async () => pan.update({ translationX: -230 }));
     expect(screen.getByTestId('swipe-leave-icon', { includeHiddenElements: true })).toBeOnTheScreen();
     expect(screen.queryByTestId('swipe-read-icon', { includeHiddenElements: true })).not.toBeOnTheScreen();
+  });
+});
+
+describe('swipe colour', () => {
+  it('says what a release does: neutral, then primary to mark read, then the destructive fill', () => {
+    expect(swipeColorAt(0, true)).toBe(colors.bgContrast25);
+    expect(swipeColorAt(-119, true)).toBe(colors.bgContrast25);
+    expect(swipeColorAt(-120, true)).toBe(colors.primary);
+    expect(swipeColorAt(-224, true)).toBe(colors.primary);
+    expect(swipeColorAt(-225, true)).toBe(colors.dangerFill);
+  });
+
+  it('stays neutral on a read row until leaving is reached', () => {
+    expect(swipeColorAt(-150, false)).toBe(colors.bgContrast25);
+    expect(swipeColorAt(-224, false)).toBe(colors.bgContrast25);
+    expect(swipeColorAt(-225, false)).toBe(colors.dangerFill);
+  });
+
+  it('fills leave with a red that white reads on', () => {
+    expect(colors.dangerFill).toBe(negative500);
+  });
+
+  it('colours the background under the row as it is dragged', async () => {
+    await render(
+      <GestureHandlerRootView>
+        <SwipeableConversation conversation={unread} onAction={jest.fn()}>
+          <Text>row</Text>
+        </SwipeableConversation>
+      </GestureHandlerRootView>,
+    );
+    const readStyle = getAnimatedStyle as unknown as (element: unknown) => { backgroundColor?: string };
+    const underlay = () => readStyle(screen.getByTestId('swipe-underlay', { includeHiddenElements: true }));
+    const pan = createGestureController<{ translationX: number }>('conversation-swipe-c1');
+
+    await act(async () => {
+      pan.begin({ translationX: 0 });
+      pan.activate({ translationX: -15 });
+      pan.update({ translationX: -100 });
+    });
+    expect(underlay().backgroundColor).toBe(colors.bgContrast25);
+    await act(async () => pan.update({ translationX: -150 }));
+    expect(underlay().backgroundColor).toBe(colors.primary);
+    await act(async () => pan.update({ translationX: -230 }));
+    expect(underlay().backgroundColor).toBe(colors.dangerFill);
   });
 });

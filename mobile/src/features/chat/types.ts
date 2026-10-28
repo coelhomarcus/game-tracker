@@ -31,7 +31,10 @@ export type Conversation = {
   otherUser: UserSummary | null;
   lastMessage: Message | null;
   unread: boolean;
-  /** Muted: its messages send no push to me; it still shows as unread. */
+  /**
+   * Muted: its messages send no push to me. The server still keeps it unread (`unread`), but the
+   * list never shows it as unread nor counts it in the badge (see `showsUnread`).
+   */
   muted: boolean;
 };
 

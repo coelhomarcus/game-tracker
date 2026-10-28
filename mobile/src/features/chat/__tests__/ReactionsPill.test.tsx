@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors } from '@/theme/tokens';
 
-import { PILL_OVERLAP, ReactionsPill, summarizeReactions } from '../ReactionsPill';
+import { PILL_FOOTER_TUCK, PILL_OVERLAP, ReactionsPill, summarizeReactions } from '../ReactionsPill';
 import type { Reaction } from '../types';
 
 const r = (emoji: string, userId: string): Reaction => ({ emoji, userId });
@@ -25,7 +25,7 @@ describe('summarizeReactions', () => {
 });
 
 describe('ReactionsPill', () => {
-  async function renderPill(reactions: Reaction[], alignRight = false) {
+  async function renderPill(reactions: Reaction[], alignRight = false, footerBelow = false) {
     const onPress = jest.fn();
     const onLongPress = jest.fn();
     await render(
@@ -35,6 +35,7 @@ describe('ReactionsPill', () => {
         alignRight={alignRight}
         onPress={onPress}
         onLongPress={onLongPress}
+        footerBelow={footerBelow}
       />,
     );
     return { onPress, onLongPress };
@@ -72,12 +73,25 @@ describe('ReactionsPill', () => {
     expect(screen.getByRole('button', { name: 'Reações: 😂 1, 🔥 1. Inclui as suas' })).toBeOnTheScreen();
   });
 
-  it('hangs on the sender side, 8 over the bubble, in a real 48 touch box', async () => {
+  it('hangs on the sender side, 8 over the bubble, at the top of a real 48 touch box', async () => {
     await renderPill([r('😂', 'u1')], true);
-    expect(touch()).toMatchObject({ minWidth: 48, minHeight: 48, alignSelf: 'flex-end' });
-    // Centred in the box: the 24 high pill's top is 8 above the box's natural top.
-    expect(touch().marginTop).toBe(-(PILL_OVERLAP + (48 - 24) / 2));
+    // The box reaches down from the pill: only the visible 8 cover the bubble's corner.
+    expect(touch()).toMatchObject({
+      minWidth: 48,
+      minHeight: 48,
+      alignSelf: 'flex-end',
+      justifyContent: 'flex-start',
+      marginTop: -PILL_OVERLAP,
+    });
     expect(PILL_OVERLAP).toBe(8);
+    expect(body().height).toBe(24);
+    expect(touch().marginBottom).toBeUndefined();
+  });
+
+  it('lets the time line under it move up into the empty bottom of its box, staying on top', async () => {
+    await renderPill([r('😂', 'u1')], false, true);
+    expect(PILL_FOOTER_TUCK).toBe(48 - 24 - 8);
+    expect(touch()).toMatchObject({ marginBottom: -PILL_FOOTER_TUCK, zIndex: 1 });
   });
 
   it('passes taps and long presses on', async () => {

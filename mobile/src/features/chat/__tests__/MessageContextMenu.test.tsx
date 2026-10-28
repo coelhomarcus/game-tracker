@@ -1,5 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { colors } from '@/theme/tokens';
 
 import type { BubbleMessage } from '../MessageBubble';
 import {
@@ -114,7 +117,13 @@ describe('MessageContextMenu', () => {
 
   it('closes on the backdrop', async () => {
     const { onClose, onAction, onReact } = await renderMenu({ message: bubble, sent: true });
-    await fireEvent.press(screen.getByTestId('message-menu-backdrop', { includeHiddenElements: true }));
+    const backdrop = screen.getByTestId('message-menu-backdrop', { includeHiddenElements: true });
+    // The shared backdrop token: `bg` at 60%.
+    expect(StyleSheet.flatten(screen.getByTestId('message-menu-scrim', { includeHiddenElements: true }).props.style)).toMatchObject({
+      backgroundColor: colors.backdrop,
+    });
+    expect(colors.backdrop).toBe(`${colors.bg}99`);
+    await fireEvent.press(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAction).not.toHaveBeenCalled();
     expect(onReact).not.toHaveBeenCalled();

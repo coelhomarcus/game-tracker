@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, t
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   View,
@@ -210,7 +211,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
   const typing = useTypingSignal(conversationId);
   const stopTyping = typing.stop;
   const startReply = useChatStore((state) => state.startReply);
-  const cancelReply = useChatStore((state) => state.cancelReply);
+  const messageHidden = useChatStore((state) => state.messageHidden);
   const react = useReact();
   const unreact = useUnreact();
   const hide = useHideMessage();
@@ -310,6 +311,8 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
 
   function openMenu(row: MessageRow) {
     haptic('longPress');
+    // The menu's actions would sit under an open keyboard.
+    Keyboard.dismiss();
     setMenuKey(row.key);
   }
 
@@ -363,7 +366,7 @@ function ChatRoom({ conversationId, messages }: ChatRoomProps) {
     const messageId = hideId;
     setHideId(null);
     if (messageId === null) return;
-    cancelReply(conversationId, messageId);
+    messageHidden(conversationId, messageId);
     hide.mutate({ conversationId, messageId });
   }
 

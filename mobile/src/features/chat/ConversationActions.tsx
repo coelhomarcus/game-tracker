@@ -5,7 +5,6 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
-  interpolateColor,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -59,6 +58,19 @@ export function swipePreviewAt(translationX: number, canMarkRead: boolean): Swip
   return canMarkRead && -translationX < LEAVE_DISTANCE ? 'read' : 'leave';
 }
 
+/**
+ * The colour under the row says what releasing there does: `primary` for mark read, the
+ * destructive fill for leave, and a neutral tone where releasing does nothing. Runs on the UI
+ * thread as well.
+ */
+export function swipeColorAt(translationX: number, canMarkRead: boolean): string {
+  'worklet';
+  const action = swipeActionAt(translationX, canMarkRead);
+  if (action === 'leave') return colors.dangerFill;
+  if (action === 'read') return colors.primary;
+  return colors.bgContrast25;
+}
+
 /** True when the drag went from `previous` to a further action: each such crossing plays one haptic. */
 export function crossedFurther(previous: SwipeAction, next: SwipeAction): boolean {
   'worklet';
@@ -79,10 +91,10 @@ export type SwipeableConversationProps = {
 
 /**
  * Swipe a row left: the background turns `primary` with a double check past 120 (mark read, only
- * for an unread row) and `danger` with a trash can past 225 (leave). Each threshold plays one
- * haptic as it is crossed; releasing below 120 does nothing. A vertical move first leaves the
- * gesture to the list, and a gesture the system takes over (the Android back swipe) is cancelled
- * and does nothing either.
+ * for an unread row) and the destructive fill with a trash can past 225 (leave). Below 120 it is a
+ * neutral tone: releasing there does nothing. Each threshold plays one haptic as it is crossed.
+ * A vertical move first leaves the gesture to the list, and a gesture the system takes over (the
+ * Android back swipe) is cancelled and does nothing either.
  */
 export function SwipeableConversation({ conversation, onAction, children }: SwipeableConversationProps) {
   const canMarkRead = showsUnread(conversation);
@@ -142,13 +154,7 @@ export function SwipeableConversation({ conversation, onAction, children }: Swip
 
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.get() }] }));
   const backgroundStyle = useAnimatedStyle(() => ({
-    backgroundColor: canMarkRead
-      ? interpolateColor(
-          translateX.get(),
-          [-LEAVE_DISTANCE, -LEAVE_DISTANCE + 40, -MARK_READ_DISTANCE, 0],
-          [colors.danger, colors.primary, colors.primary, colors.bg],
-        )
-      : interpolateColor(translateX.get(), [-LEAVE_DISTANCE, 0], [colors.danger, colors.bg]),
+    backgroundColor: swipeColorAt(translateX.get(), canMarkRead),
   }));
   const iconStyle = useAnimatedStyle(() => ({
     opacity: interpolate(-translateX.get(), [0, 75], [0.15, 1], 'clamp'),
@@ -160,6 +166,7 @@ export function SwipeableConversation({ conversation, onAction, children }: Swip
     <GestureDetector gesture={pan}>
       <View onLayout={onLayout}>
         <Animated.View
+          testID="swipe-underlay"
           style={[StyleSheet.absoluteFill, styles.underlay, backgroundStyle]}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"

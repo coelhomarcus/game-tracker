@@ -155,21 +155,23 @@ export default function ConversationsScreen() {
         testID="conversations-list"
         data={shown}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <SwipeableConversation
-            conversation={item}
-            onAction={(action) => {
-              if (action === 'read') markRead.mutate(item.id);
-              else setLeaving(item);
-            }}
-          >
-            <ConversationRow
-              conversation={item}
-              onPress={() => router.push(`/chat/${item.id}` as Href)}
-              onLongPress={() => openMenu(item)}
-            />
-          </SwipeableConversation>
-        )}
+        renderItem={({ item }) => {
+          const swipeAction = (action: 'read' | 'leave') => {
+            if (action === 'read') markRead.mutate(item.id);
+            else setLeaving(item);
+          };
+          return (
+            <SwipeableConversation conversation={item} onAction={swipeAction}>
+              <ConversationRow
+                conversation={item}
+                onPress={() => router.push(`/chat/${item.id}` as Href)}
+                onLongPress={() => openMenu(item)}
+                // The swipe's actions, for screen readers.
+                onSwipeAction={swipeAction}
+              />
+            </SwipeableConversation>
+          );
+        }}
         ListHeaderComponent={
           all.length === 0 ? undefined : (
             <ConversationsHeader

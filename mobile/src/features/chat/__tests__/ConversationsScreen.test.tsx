@@ -6,6 +6,7 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
+import { profilesApi } from '@/features/profiles/api';
 import { useFollowList, usePeopleSearch, useSetModeration } from '@/features/profiles/queries';
 import type { PersonResult, UserProfile } from '@/features/profiles/types';
 import { haptic } from '@/lib/haptics';
@@ -48,6 +49,10 @@ jest.mock('@/features/chat/api', () => ({
     setMuted: jest.fn(),
     leave: jest.fn(),
   },
+}));
+
+jest.mock('@/features/profiles/api', () => ({
+  profilesApi: { ...jest.requireActual('@/features/profiles/api').profilesApi, get: jest.fn() },
 }));
 
 const mockBlock = jest.fn();
@@ -173,6 +178,8 @@ beforeEach(() => {
   mockNavigation.addListener.mockReturnValue(jest.fn());
   mockedApi.list.mockReset();
   mockedApi.create.mockReset();
+  // A suggestion's profile stays on its way unless a test answers it.
+  jest.mocked(profilesApi.get).mockReset().mockReturnValue(new Promise(() => undefined));
   jest.mocked(showToast).mockReset();
   mockSearch();
   mockFollowing();
@@ -524,6 +531,25 @@ describe('conversation swipe', () => {
     expect(screen.queryByText('Sair da conversa?')).not.toBeOnTheScreen();
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it('offers the swipe actions to screen readers', async () => {
+    await renderWithList([withAna, withJoao]);
+    const ana = screen.getByRole('button', { name: /^Ana Souza/ });
+    const joao = screen.getByRole('button', { name: /^João Lima/ });
+    expect(ana.props.accessibilityActions).toEqual([
+      { name: 'read', label: 'Marcar como lida' },
+      { name: 'leave', label: 'Sair da conversa' },
+    ]);
+    // Nothing to mark read on a read conversation.
+    expect(joao.props.accessibilityActions).toEqual([{ name: 'leave', label: 'Sair da conversa' }]);
+
+    await fireEvent(ana, 'accessibilityAction', { nativeEvent: { actionName: 'read' } });
+    expect(mockedApi.markRead).toHaveBeenCalledWith('c1');
+
+    await fireEvent(joao, 'accessibilityAction', { nativeEvent: { actionName: 'leave' } });
+    expect(screen.getByText('Sair da conversa?')).toBeOnTheScreen();
+    expect(mockedApi.leave).not.toHaveBeenCalled();
+  });
 });
 
 function SheetHarness() {
@@ -794,6 +820,32 @@ describe('NewConversationSheet suggestions', () => {
     expect(screen.getByText('Não aceita mensagens suas')).toBeOnTheScreen();
     await fireEvent.press(row);
     expect(mockedApi.create).not.toHaveBeenCalled();
+  });
+
+  it('reads the profiles of the suggestions to dim people who do not take my messages', async () => {
+    client.setQueryData(conversationsKey, [withAna]);
+    mockedApi.list.mockResolvedValue([withAna]);
+    mockFollowing([bia]);
+    jest.mocked(profilesApi.get).mockImplementation(
+      async (id: string) => ({ id, canMessage: id !== 'p1', isBlockedByMe: false, blocksMe: false }) as UserProfile,
+    );
+    await renderSheet();
+
+    const row = await screen.findByRole('button', { name: 'Bia Rocha, Não aceita mensagens suas' });
+    expect(row).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Conversar com Ana Souza' })).toBeEnabled();
+    expect(profilesApi.get).toHaveBeenCalledWith('u1');
+    expect(profilesApi.get).toHaveBeenCalledWith('p1');
+  });
+
+  it('does not read profiles for search results, which say it already', async () => {
+    mockSearch({ data: [{ ...person, id: 'p2', name: 'Bianca' }] });
+    await renderSheet();
+    jest.mocked(profilesApi.get).mockClear();
+    await type('Buscar pessoas', 'bi');
+
+    expect(screen.getByText('Bianca')).toBeOnTheScreen();
+    expect(profilesApi.get).not.toHaveBeenCalled();
   });
 
   it('marks a blocked person in the suggestions', async () => {

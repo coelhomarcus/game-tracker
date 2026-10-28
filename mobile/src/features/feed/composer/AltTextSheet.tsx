@@ -8,8 +8,6 @@ import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import { ALT_MAX_LENGTH } from './composerDraft';
 
-/** Two-digit hex alpha for 60% opacity, appended to a 6-digit hex token. */
-const ALPHA_60 = '99';
 const PREVIEW_MAX_HEIGHT = 240;
 
 export type AltTextSheetProps = {
@@ -123,7 +121,7 @@ function AltForm({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: `${colors.bg}${ALPHA_60}` },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     maxHeight: '90%',
     backgroundColor: colors.bgContrast50,

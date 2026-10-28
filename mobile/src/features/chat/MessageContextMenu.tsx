@@ -24,8 +24,6 @@ export const MORE_REACTIONS = [
 
 const EMOJI_FONT = type.size._3xl;
 const PREVIEW_MAX_LINES = 8;
-/** Two-digit hex alpha for 60% opacity, appended to a 6-digit hex token. */
-const ALPHA_60 = '99';
 
 export type MessageMenuAction = 'reply' | 'copy' | 'hide' | 'discard';
 
@@ -119,7 +117,7 @@ export function MessageContextMenu({ target, selfId, onReact, onAction, onClose 
           style={StyleSheet.absoluteFill}
           onPress={close}
         >
-          <View style={styles.backdrop} />
+          <View testID="message-menu-scrim" style={styles.backdrop} />
         </Pressable>
         <View
           testID="message-menu"
@@ -194,7 +192,7 @@ const GRID_COLUMNS = 6;
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: `${colors.bg}${ALPHA_60}` },
+  backdrop: { flex: 1, backgroundColor: colors.backdrop },
   content: {
     flex: 1,
     justifyContent: 'center',

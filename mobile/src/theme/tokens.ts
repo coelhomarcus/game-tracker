@@ -73,12 +73,16 @@ export const colors = {
   /** `primary` at 60%: my chat bubble while it is not confirmed yet. */
   primaryPending: '#ea377a99',
   onPrimary: '#ffffff',
+  /** `bg` at 60% behind dialogs, sheets and menus. */
+  backdrop: '#16181c99',
   /** Half-transparent black behind controls drawn over images (the back button on a banner). */
   scrim: '#00000080',
   like: primary[500],
   repost: positive500,
   /** Light red that reads at 4.5:1 on every tone; negative500/400 do not on dark surfaces. */
   danger: '#ff7a7a',
+  /** A destructive fill under white (the leave swipe): `danger` is too light for white on it. */
+  dangerFill: negative500,
 
   status: {
     playing: '#5cb8ff',

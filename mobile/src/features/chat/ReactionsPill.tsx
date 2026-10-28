@@ -11,6 +11,11 @@ export const PILL_MAX_EMOJI = 3;
 export const PILL_OVERLAP = space.sm;
 const PILL_HEIGHT = 24;
 const TOUCH = 48;
+/**
+ * How far the line under the pill (the time) moves up into the bottom of its touch box, so the
+ * box does not push it 40 down. The box stays over it (zIndex) and inside the row.
+ */
+export const PILL_FOOTER_TUCK = TOUCH - PILL_HEIGHT - PILL_OVERLAP;
 
 export type ReactionSummary = {
   /** Up to 3 different emoji, the most used first (ties: the first used first). */
@@ -51,14 +56,24 @@ export type ReactionsPillProps = {
   /** A tap: takes back my first reaction, or (with none of mine) opens the message menu. */
   onPress: () => void;
   onLongPress?: () => void;
+  /** A line follows under it (the time): it moves up into the box's empty bottom. */
+  footerBelow?: boolean;
 };
 
 /**
  * The reactions hanging under a bubble: up to 3 different emoji and the total when over 1, in a
  * small pill that rides 8 up over the bubble's edge. Outlined in `primary` when mine are among them.
- * The pill is 24 high; its touch box is a real 48 around it.
+ * The pill is 24 high at the top of a real 48 touch box, which reaches down from the pill rather
+ * than up over the bubble: only the visible 8 cover the bubble's corner.
  */
-export function ReactionsPill({ reactions, selfId, alignRight, onPress, onLongPress }: ReactionsPillProps) {
+export function ReactionsPill({
+  reactions,
+  selfId,
+  alignRight,
+  onPress,
+  onLongPress,
+  footerBelow = false,
+}: ReactionsPillProps) {
   if (reactions.length === 0) return null;
   const summary = summarizeReactions(reactions, selfId);
   return (
@@ -69,7 +84,7 @@ export function ReactionsPill({ reactions, selfId, alignRight, onPress, onLongPr
       accessibilityHint={summary.mine ? 'Remove a sua reação' : 'Abre as opções da mensagem'}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={[styles.touch, alignRight ? styles.right : styles.left]}
+      style={[styles.touch, alignRight ? styles.right : styles.left, footerBelow && styles.tucked]}
     >
       <View testID="reactions-pill-body" style={[styles.pill, summary.mine && styles.pillMine]}>
         {summary.emoji.map((emoji) => (
@@ -88,14 +103,16 @@ export function ReactionsPill({ reactions, selfId, alignRight, onPress, onLongPr
 }
 
 const styles = StyleSheet.create({
-  // Centred in its 48 box, the pill's top sits PILL_OVERLAP over the bubble's bottom edge.
+  // The pill sits at the top of its 48 box, PILL_OVERLAP over the bubble's bottom edge.
   touch: {
     minWidth: TOUCH,
     minHeight: TOUCH,
-    marginTop: -(PILL_OVERLAP + (TOUCH - PILL_HEIGHT) / 2),
+    marginTop: -PILL_OVERLAP,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    zIndex: 1,
   },
+  tucked: { marginBottom: -PILL_FOOTER_TUCK },
   right: { alignSelf: 'flex-end', marginRight: space.xs },
   left: { alignSelf: 'flex-start', marginLeft: space.xs },
   pill: {

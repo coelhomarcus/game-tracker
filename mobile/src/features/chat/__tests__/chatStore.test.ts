@@ -426,3 +426,38 @@ describe('replies', () => {
     expect(store().replying.c1).toBeUndefined();
   });
 });
+
+describe('a message hidden for me', () => {
+  const original = { id: 'm5', content: 'segredo', senderId: 'u2' };
+
+  it('stops a reply being written to it and drops the quote of pending replies, keeping replyToId', async () => {
+    store().startReply('c1', original);
+    const quoted = store().send('c1', 'sobre aquilo') ?? '';
+    chatSocket.pendingAck('message:send')?.reject(new Error('timeout'));
+    await flush();
+    store().startReply('c1', { ...original, id: 'm6' });
+    store().send('c1', 'outra');
+    store().startReply('c1', original);
+
+    store().messageHidden('c1', 'm5');
+
+    expect(store().replying.c1).toBeUndefined();
+    const [first, second] = pendingOf();
+    expect(first.replyTo).toBeUndefined();
+    expect(first.replyToId).toBe('m5');
+    expect(second.replyTo?.id).toBe('m6');
+
+    // It still goes out as the same reply: the server decides, and a repeat stays idempotent.
+    chatSocket.ackLog = [];
+    store().resendPending();
+    expect(chatSocket.ackLog.find((entry) => (entry.payload as { clientMessageId: string }).clientMessageId === quoted)?.payload).toMatchObject({
+      replyToId: 'm5',
+    });
+  });
+
+  it('leaves a reply to another message alone', () => {
+    store().startReply('c1', { ...original, id: 'm6' });
+    store().messageHidden('c1', 'm5');
+    expect(store().replying.c1?.id).toBe('m6');
+  });
+});

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
 
 import { Avatar, Text } from '@/components';
 import { useSession } from '@/features/auth';
@@ -20,6 +20,11 @@ export type ConversationRowProps = {
   onPress: () => void;
   /** Opens the conversation's menu; the row plays the long-press haptic first. */
   onLongPress?: () => void;
+  /**
+   * The swipe's actions, offered to screen readers as actions of the row: "Marcar como lida"
+   * (when unread) and "Sair da conversa".
+   */
+  onSwipeAction?: (action: 'read' | 'leave') => void;
 };
 
 /**
@@ -27,7 +32,7 @@ export type ConversationRowProps = {
  * lines of the last message. Unread rows are tinted; a muted one shows a bell-off icon and never
  * looks unread. The background is opaque, so a swipe slides it over the action underneath.
  */
-export function ConversationRow({ conversation, onPress, onLongPress }: ConversationRowProps) {
+export function ConversationRow({ conversation, onPress, onLongPress, onSwipeAction }: ConversationRowProps) {
   const selfId = useSession((state) => state.user?.id);
   const { otherUser, lastMessage, muted } = conversation;
   const unread = showsUnread(conversation);
@@ -40,10 +45,23 @@ export function ConversationRow({ conversation, onPress, onLongPress }: Conversa
     .filter(Boolean)
     .join(', ');
 
+  const swipeActions = onSwipeAction
+    ? [
+        ...(unread ? [{ name: 'read', label: 'Marcar como lida' }] : []),
+        { name: 'leave', label: 'Sair da conversa' },
+      ]
+    : undefined;
+  function onAccessibilityAction(event: AccessibilityActionEvent) {
+    const name = event.nativeEvent.actionName;
+    if (name === 'read' || name === 'leave') onSwipeAction?.(name);
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityActions={swipeActions}
+      onAccessibilityAction={swipeActions ? onAccessibilityAction : undefined}
       onPress={onPress}
       onLongPress={
         onLongPress

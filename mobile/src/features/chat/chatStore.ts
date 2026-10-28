@@ -27,7 +27,9 @@ export type PendingMessage = {
    * message it replies to is gone).
    */
   refusal?: string;
-  /** The message it replies to; its id goes out as `replyToId` on every (re)send. */
+  /** The message it replies to: goes out on every (re)send, so a repeat stays the same send. */
+  replyToId?: string;
+  /** The quote shown above it; dropped when I delete the original for me (the id stays). */
   replyTo?: ReplyTo;
 };
 
@@ -72,6 +74,11 @@ type ChatState = {
   startReply(conversationId: string, replyTo: ReplyTo): void;
   /** Stops replying; with `messageId`, only when replying to that message. */
   cancelReply(conversationId: string, messageId?: string): void;
+  /**
+   * I deleted a message for me: a reply being written to it stops, and pending replies to it
+   * lose its quote (they still go out as replies, and the server decides).
+   */
+  messageHidden(conversationId: string, messageId: string): void;
   retry(conversationId: string, clientMessageId: string): void;
   discard(conversationId: string, clientMessageId: string): void;
   /** Unsent text that signing out would lose: non-blank drafts plus pending messages. */
@@ -172,7 +179,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         conversationId,
         content: item.content,
         clientMessageId,
-        ...(item.replyTo ? { replyToId: item.replyTo.id } : {}),
+        ...(item.replyToId ? { replyToId: item.replyToId } : {}),
       });
     } catch {
       // Timeout or drop: the server may have stored it. Re-sending the same id is safe.
@@ -223,7 +230,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         content,
         createdAt: new Date(),
         status: 'sending',
-        ...(replyTo ? { replyTo } : {}),
+        ...(replyTo ? { replyToId: replyTo.id, replyTo } : {}),
       };
       set((state) => ({
         pending: {
@@ -246,6 +253,24 @@ export const useChatStore = create<ChatState>((set, get) => {
         const current = state.replying[conversationId];
         if (!current || (messageId !== undefined && current.id !== messageId)) return state;
         return { replying: without(state.replying, conversationId) };
+      });
+    },
+
+    messageHidden(conversationId, messageId) {
+      get().cancelReply(conversationId, messageId);
+      set((state) => {
+        const list = state.pending[conversationId];
+        if (!list?.some((item) => item.replyTo?.id === messageId)) return state;
+        return {
+          pending: {
+            ...state.pending,
+            [conversationId]: list.map((item) => {
+              if (item.replyTo?.id !== messageId) return item;
+              const { replyTo: _quote, ...rest } = item;
+              return rest;
+            }),
+          },
+        };
       });
     },
 

@@ -14,6 +14,7 @@ import {
   conversationsKey,
   markReadInList,
   messagesKey,
+  removeMessageFromCache,
   useConversations,
   useHideMessage,
   useLeaveConversation,
@@ -554,5 +555,118 @@ describe('message actions', () => {
 
     expect(client.getQueryState(messagesKey('c1'))?.isInvalidated).toBe(true);
     expect(showToast).toHaveBeenCalledWith('Não foi possível apagar a mensagem.');
+  });
+});
+
+describe('removeMessageFromCache', () => {
+  const pagesOf = (...items: Message[]): MessagePages => ({
+    pages: [{ items, nextCursor: null }],
+    pageParams: [undefined],
+  });
+  const quoting = (id: string, minute: number, quotedId: string): Message => ({
+    ...message(id, minute),
+    replyTo: { id: quotedId, content: `text ${quotedId}`, senderId: 'u2' },
+  });
+  const loadedItems = () => client.getQueryData<MessagePages>(messagesKey('c1'))?.pages.flatMap((p) => p.items);
+
+  it('drops the quote of the loaded replies to a hidden message, on every page', () => {
+    client.setQueryData<MessagePages>(messagesKey('c1'), {
+      pages: [
+        { items: [quoting('m3', 3, 'm1'), quoting('m2', 2, 'm0')], nextCursor: 'older' },
+        { items: [message('m1', 1), quoting('m0', 0, 'm1')], nextCursor: null },
+      ],
+      pageParams: [undefined, 'older'],
+    });
+
+    removeMessageFromCache(client, 'c1', 'm1');
+
+    const items = loadedItems();
+    expect(items?.map((item) => item.id)).toEqual(['m3', 'm2', 'm0']);
+    expect(items?.map((item) => item.replyTo?.id ?? null)).toEqual([null, 'm0', null]);
+  });
+
+  it('drops the quote even when the hidden message itself is not loaded', () => {
+    client.setQueryData(messagesKey('c1'), pagesOf(quoting('m3', 3, 'm1')));
+
+    removeMessageFromCache(client, 'c1', 'm1');
+
+    expect(loadedItems()?.[0].replyTo).toBeNull();
+  });
+
+  it('drops it again on top of a fetch that was already on its way', async () => {
+    mocked.messages.mockResolvedValueOnce({ items: [quoting('m3', 3, 'm1')], nextCursor: null });
+    const response = deferred<MessagePage>();
+    mocked.messages.mockReturnValueOnce(response.promise);
+    const { result, unmount } = await renderHook(() => useMessages('c1'), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    void client.refetchQueries({ queryKey: messagesKey('c1'), exact: true });
+
+    removeMessageFromCache(client, 'c1', 'm1');
+    await act(async () => response.resolve({ items: [quoting('m3', 3, 'm1'), message('m1', 1)], nextCursor: null }));
+
+    await waitFor(() => expect(loadedItems()?.map((item) => item.id)).toEqual(['m3']));
+    expect(loadedItems()?.[0].replyTo).toBeNull();
+    await unmount();
+  });
+});
+
+describe('list actions while offline', () => {
+  // Offline: the action and the list's refetch both fail; the list must still say what the server has.
+  async function run<V>(hook: () => { mutateAsync: (v: V) => Promise<void> }, variables: V) {
+    const { result, unmount } = await renderHook(hook, { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync(variables).catch(() => undefined);
+    });
+    await unmount();
+  }
+  const list = () => client.getQueryData<Conversation[]>(conversationsKey);
+
+  beforeEach(() => {
+    mocked.list.mockRejectedValue(new Error('offline'));
+  });
+
+  it('puts the unread flag back when marking read fails', async () => {
+    mocked.markRead.mockRejectedValue(new Error('offline'));
+    client.setQueryData(conversationsKey, [conversation('c1', null, true), conversation('c2', null, false)]);
+
+    await run(() => useMarkRead(), 'c1');
+
+    expect(list()?.map((item) => item.unread)).toEqual([true, false]);
+  });
+
+  it('puts back only the conversations that were unread when marking all read fails', async () => {
+    mocked.markAllRead.mockRejectedValue(new Error('offline'));
+    client.setQueryData(conversationsKey, [
+      conversation('c1', null, true),
+      conversation('c2', null, false),
+      conversation('c3', null, true),
+    ]);
+
+    await run<void>(() => useMarkAllRead(), undefined);
+
+    expect(list()?.map((item) => item.unread)).toEqual([true, false, true]);
+  });
+
+  it('puts the mute state back when muting or unmuting fails', async () => {
+    mocked.setMuted.mockRejectedValue(new Error('offline'));
+    client.setQueryData(conversationsKey, [conversation('c1', null), { ...conversation('c2', null), muted: true }]);
+
+    await run(() => useMuteConversation(), { conversationId: 'c1', muted: true });
+    await run(() => useMuteConversation(), { conversationId: 'c2', muted: false });
+
+    expect(list()?.map((item) => item.muted)).toEqual([false, true]);
+  });
+
+  it('puts a conversation back where it was, with its messages, when leaving fails', async () => {
+    mocked.leave.mockRejectedValue(new Error('offline'));
+    const pages: MessagePages = { pages: [{ items: [message('m1', 1, 'c2')], nextCursor: null }], pageParams: [undefined] };
+    client.setQueryData(conversationsKey, [conversation('c1', null), conversation('c2', null), conversation('c3', null)]);
+    client.setQueryData(messagesKey('c2'), pages);
+
+    await run(() => useLeaveConversation(), 'c2');
+
+    expect(list()?.map((item) => item.id)).toEqual(['c1', 'c2', 'c3']);
+    expect(client.getQueryData(messagesKey('c2'))).toEqual(pages);
+    expect(showToast).toHaveBeenCalledWith('Não foi possível sair da conversa');
   });
 });

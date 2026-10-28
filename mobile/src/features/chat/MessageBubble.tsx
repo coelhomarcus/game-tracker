@@ -192,6 +192,7 @@ export function MessageBubble({
         alignRight={mine}
         onPress={() => onReactionsPress?.()}
         onLongPress={onLongPress}
+        footerBelow={status !== 'failed' && isLastInGroup}
       />
       {status === 'failed' ? (
         <FailedLine reason={reason} onRetry={onRetry} onDiscard={onDiscard} />
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
   emoji: { maxWidth: '85%', fontSize: EMOJI_SIZE, lineHeight: lineHeight(EMOJI_SIZE, 'snug') },
   pendingEmoji: { opacity: 0.6 },
   /** A real 48 dp target around the two-line quote. */
-  quoteTouch: { maxWidth: '85%', minHeight: 48, justifyContent: 'flex-end', paddingBottom: space._2xs },
+  quoteTouch: { maxWidth: '85%', minWidth: 48, minHeight: 48, justifyContent: 'flex-end', paddingBottom: space._2xs },
   quote: {
     paddingLeft: space.sm,
     paddingVertical: space._2xs,

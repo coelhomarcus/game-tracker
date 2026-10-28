@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useRouter, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
@@ -17,6 +17,7 @@ import { fontFamily } from '@/components/Text';
 import { authErrorMessage, useSession } from '@/features/auth';
 import { displayName } from '@/features/feed/types';
 import type { UserSummary } from '@/features/games/types';
+import { profilesApi } from '@/features/profiles/api';
 import { useFollowList, usePeopleSearch } from '@/features/profiles/queries';
 import type { UserProfile } from '@/features/profiles/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
@@ -30,8 +31,10 @@ const MAX_SUGGESTIONS = 10;
 const AVATAR_SIZE = 42;
 const FIELD_RADIUS = 10;
 const FONT_SIZE = type.size.md;
+/** A suggestion's profile (whether I can message the person) is read again after this long. */
+const SUGGESTION_PROFILE_STALE_MS = 60_000;
 
-/** Someone the sheet offers; `canMessage` is known for search results only. */
+/** Someone the sheet offers; `canMessage` comes with search results, and from profiles otherwise. */
 export type Candidate = UserSummary & { canMessage?: boolean };
 
 /**
@@ -164,6 +167,15 @@ function SheetContent({ onClose }: ContentProps) {
         following.data?.pages[0]?.items ?? [],
         selfId,
       );
+  // The suggestions come from lists that do not say whether I can message each person; their
+  // profiles do (and tell a block apart). At most 10, shared with the profile screens' cache.
+  useQueries({
+    queries: (searching ? [] : results).map((person) => ({
+      queryKey: ['profile', person.id],
+      queryFn: () => profilesApi.get(person.id),
+      staleTime: SUGGESTION_PROFILE_STALE_MS,
+    })),
+  });
 
   async function choose(userId: string) {
     if (starting.current) return;
