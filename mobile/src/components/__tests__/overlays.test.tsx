@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
-import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { AccessibilityInfo, StyleSheet, Text } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ChoiceChip, ConfirmDialog, OptionSheet, ToastHost } from '..';
+import { ChoiceChip, ConfirmDialog, OptionSheet, SheetModal, ToastHost } from '..';
 import { hideToast, showToast } from '@/lib/toast';
 import { colors } from '@/theme/tokens';
 
@@ -185,6 +186,83 @@ describe('ConfirmDialog', () => {
       />,
     );
     expect(screen.queryByText('Oculto')).toBeNull();
+  });
+});
+
+describe('SheetModal', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function sheet(visible: boolean) {
+    return withInsets(
+      <SheetModal visible={visible} onRequestClose={jest.fn()} testID="sheet-modal" backdropTestID="backdrop">
+        <Text>Conteúdo</Text>
+      </SheetModal>,
+    );
+  }
+
+  it('slides only the sheet: the platform animation is off and the backdrop fades on its own', async () => {
+    await render(sheet(true));
+
+    expect(screen.getByTestId('sheet-modal').props.animationType).toBe('none');
+    // The backdrop's opacity is its own: it does not ride up with the sheet.
+    await act(async () => jest.advanceTimersByTime(400));
+    const read = getAnimatedStyle as unknown as (element: unknown) => { opacity?: number };
+    expect(read(screen.getByTestId('backdrop').parent!)).toMatchObject({ opacity: 1 });
+  });
+
+  it('keeps the sheet mounted while it leaves, out of reach, and removes it once it is gone', async () => {
+    const view = await render(sheet(true));
+    await act(async () => jest.advanceTimersByTime(400));
+    expect(screen.getByText('Conteúdo')).toBeOnTheScreen();
+
+    await view.rerender(sheet(false));
+    // Leaving: still there for the animation, but not for screen readers or touches.
+    expect(screen.getByText('Conteúdo', { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(screen.queryByText('Conteúdo')).toBeNull();
+
+    await act(async () => jest.advanceTimersByTime(400));
+    expect(screen.queryByText('Conteúdo', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('starts every opening from fresh content', async () => {
+    function Counter() {
+      const [count, setCount] = useState(0);
+      return (
+        <Text onPress={() => setCount((current) => current + 1)}>{`Toques ${count}`}</Text>
+      );
+    }
+    const view = await render(
+      withInsets(
+        <SheetModal visible onRequestClose={jest.fn()}>
+          <Counter />
+        </SheetModal>,
+      ),
+    );
+    await fireEvent.press(screen.getByText('Toques 0'));
+    expect(screen.getByText('Toques 1')).toBeOnTheScreen();
+
+    await view.rerender(
+      withInsets(
+        <SheetModal visible={false} onRequestClose={jest.fn()}>
+          <Counter />
+        </SheetModal>,
+      ),
+    );
+    // Reopened before the last one finished leaving.
+    await view.rerender(
+      withInsets(
+        <SheetModal visible onRequestClose={jest.fn()}>
+          <Counter />
+        </SheetModal>,
+      ),
+    );
+    expect(screen.getByText('Toques 0')).toBeOnTheScreen();
   });
 });
 

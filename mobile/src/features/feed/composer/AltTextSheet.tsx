@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { AccessibilityInfo, Image, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Text, TextField } from '@/components';
+import { Button, SheetModal, Text, TextField } from '@/components';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
 import { ALT_MAX_LENGTH } from './composerDraft';
 
 const PREVIEW_MAX_HEIGHT = 240;
+/** The sheet never grows past this share of the screen; its content scrolls. */
+const SHEET_MAX_HEIGHT = 0.9;
 
 export type AltTextSheetProps = {
   visible: boolean;
@@ -36,13 +37,12 @@ export function AltTextSheet({
   onCancel,
 }: AltTextSheetProps) {
   return (
-    <Modal
+    <SheetModal
       testID="alt-modal"
-      transparent
-      statusBarTranslucent
-      animationType="slide"
       visible={visible}
       onRequestClose={onCancel}
+      avoidKeyboard
+      backdropTestID="alt-backdrop"
     >
       {/* The app's keyboard provider already follows the keyboard inside a Modal's window. */}
       <AltForm
@@ -52,7 +52,7 @@ export function AltTextSheet({
         onSave={onSave}
         onCancel={onCancel}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -64,6 +64,7 @@ function AltForm({
   onCancel,
 }: Omit<AltTextSheetProps, 'visible'>) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   // Mounted only while the sheet is open, so every opening starts from the saved description.
   const [text, setText] = useState(initialAlt);
   useEffect(() => {
@@ -71,14 +72,14 @@ function AltForm({
   }, [notice]);
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={styles.root}>
-      <Pressable
-        testID="alt-backdrop"
-        accessible={false}
-        style={styles.backdrop}
-        onPress={onCancel}
-      />
-      <View testID="alt-sheet" accessibilityViewIsModal style={[styles.sheet, { paddingBottom: space.lg + insets.bottom }]}>
+    <View
+      testID="alt-sheet"
+      accessibilityViewIsModal
+      style={[
+        styles.sheet,
+        { maxHeight: windowHeight * SHEET_MAX_HEIGHT, paddingBottom: space.lg + insets.bottom },
+      ]}
+    >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -114,16 +115,12 @@ function AltForm({
             <Button label="Cancelar" color="secondary" onPress={onCancel} />
           </View>
         </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
-    maxHeight: '90%',
     backgroundColor: colors.bgContrast50,
     borderTopLeftRadius: radii.md,
     borderTopRightRadius: radii.md,
