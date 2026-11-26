@@ -7,7 +7,7 @@ import { statusLabel } from '@/features/library/status';
 import { ProfileLink } from '@/features/profiles/ProfileLink';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { colors, hairline, space } from '@/theme/tokens';
+import { colors, hairline, space, threadLine } from '@/theme/tokens';
 
 import { GameEmbed } from './embeds/GameEmbed';
 import { ImageGrid } from './embeds/ImageGrid';
@@ -24,6 +24,14 @@ const AVATAR_BOX = 48;
 const AVATAR_OVERHANG = (AVATAR_BOX - AVATAR_SIZE) / 2;
 const AVATAR_COLUMN_LEFT = space.sm;
 const AVATAR_COLUMN_RIGHT = 10;
+const ROW_PADDING_LEFT = 10;
+const ROW_PADDING_RIGHT = 15;
+export const postFeedRowLayout = {
+  avatarSize: AVATAR_SIZE,
+  paddingLeft: ROW_PADDING_LEFT + AVATAR_COLUMN_LEFT,
+  paddingRight: ROW_PADDING_RIGHT,
+  gap: AVATAR_COLUMN_RIGHT,
+};
 /** Where the text column starts inside the row's padding (70 dp from the screen edge). */
 const TEXT_COLUMN_START = AVATAR_COLUMN_LEFT + AVATAR_SIZE + AVATAR_COLUMN_RIGHT;
 /**
@@ -46,6 +54,7 @@ export type PostFeedItemProps = {
   hideGame?: boolean;
   /** The first row of a list sits under a header that already draws a line. */
   hideTopBorder?: boolean;
+  hasReplyBelow?: boolean;
 };
 
 /**
@@ -75,6 +84,7 @@ export function PostFeedItem({
   onDeleted,
   hideGame = false,
   hideTopBorder = false,
+  hasReplyBelow = false,
 }: PostFeedItemProps) {
   const name = displayName(post.author);
   const reposter = post.reason?.type === 'repost' ? post.reason.by : null;
@@ -132,6 +142,7 @@ export function PostFeedItem({
           >
             <Avatar uri={resolveImageUrl(post.author.avatarUrl)} name={name} size={AVATAR_SIZE} />
           </ProfileLink>
+          {hasReplyBelow ? <View testID="feed-thread-line" style={styles.threadLine} /> : null}
         </View>
         <View testID="post-content" style={styles.content}>
           {hasBody ? (
@@ -276,7 +287,7 @@ export function PostFeedItemSkeleton({ hideTopBorder = false, testID }: PostFeed
 const styles = StyleSheet.create({
   // No bottom padding: the controls' 48 dp touch boxes already leave the reference's space
   // under their icons.
-  outer: { paddingLeft: 10, paddingRight: 15 },
+  outer: { paddingLeft: ROW_PADDING_LEFT, paddingRight: ROW_PADDING_RIGHT },
   topBorder: { borderTopWidth: hairline, borderTopColor: colors.borderLow },
   topWithoutReason: { paddingTop: TOP_WITHOUT_REASON },
   // Aligned with the text column, past the avatar.
@@ -289,6 +300,14 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   layout: { flexDirection: 'row' },
   avatarColumn: { paddingLeft: AVATAR_COLUMN_LEFT, paddingRight: AVATAR_COLUMN_RIGHT },
+  threadLine: {
+    alignSelf: 'center',
+    flex: 1,
+    width: threadLine,
+    marginTop: space.xs - AVATAR_OVERHANG,
+    marginBottom: space.xs,
+    backgroundColor: colors.borderMedium,
+  },
   // 48 dp of touch around the 42 dp avatar, inside the column's padding (so within its bounds).
   avatarLink: {
     width: AVATAR_BOX,

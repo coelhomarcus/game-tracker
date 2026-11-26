@@ -7,7 +7,7 @@ import { authErrorMessage } from '@/features/auth';
 import { GameNotFound } from '@/features/games/GameNotFound';
 import { useGame } from '@/features/games/queries';
 import type { Game } from '@/features/games/types';
-import { todayDate, formatDate } from '@/lib/dateOnly';
+import { todayDate, formatDate, formatDateInput } from '@/lib/dateOnly';
 import { ApiError } from '@/lib/http/errors';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
@@ -27,7 +27,6 @@ import { STATUSES, statusIcon, statusLabel } from './status';
 import type { GameEntry } from './types';
 
 const MAX_PLATFORM_LENGTH = 50;
-const DATE_INPUT_LENGTH = 8;
 const RATINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -38,18 +37,6 @@ function parseIgdbId(value: string | undefined): number | null {
   if (value === undefined || !/^\d+$/.test(value)) return null;
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-/** Keeps digits only and inserts the `/` separators of `dd/mm/aaaa` while the user types. */
-function formatDateInput(text: string, previous: string): string {
-  const digits = text.replace(/\D/g, '').slice(0, DATE_INPUT_LENGTH);
-  let formatted = digits.slice(0, 2);
-  if (digits.length > 2) formatted += `/${digits.slice(2, 4)}`;
-  if (digits.length > 4) formatted += `/${digits.slice(4)}`;
-  // The separator is added only when typing forward, so backspace can delete it.
-  const typingForward = text.length > previous.length;
-  if (typingForward && (digits.length === 2 || digits.length === 4)) formatted += '/';
-  return formatted;
 }
 
 function replayNote(count: number): string {

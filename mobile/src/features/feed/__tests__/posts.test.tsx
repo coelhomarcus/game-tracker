@@ -275,22 +275,61 @@ function feedQuery(overrides: Record<string, unknown> = {}, items: Post[] = [pos
 }
 
 describe('PostList', () => {
-  it('renders a reply using its author and a link to the original publication', async () => {
+  it('groups the original post above the reply, preserving actions and its linked game', async () => {
     const original = post({ content: 'O chefe final é difícil' });
     const reply = post({ ...original, reason: {
       type: 'reply', id: 'r1', by: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
       content: 'Acertei na terceira tentativa', at: original.createdAt,
     } });
-    await render(<PostList query={feedQuery({}, [original, reply])} />);
+    await render(<PostList query={feedQuery({}, [reply, original])} />);
 
     const row = screen.getByTestId('feed-reply');
-    expect(within(row).getByText('Acertei na terceira tentativa')).toBeOnTheScreen();
-    expect(within(row).getByText('Respondendo ao post de @ana')).toBeOnTheScreen();
-    const preview = within(row).getByRole('link', { name: /Post original de Ana Souza/ });
-    expect(within(preview).getByText('O chefe final é difícil')).toBeOnTheScreen();
-    expect(within(row).queryByTestId('post-controls')).toBeNull();
-    await fireEvent.press(preview);
-    expect(mockPush).toHaveBeenCalledWith('/posts/p1');
+    const source = within(row).getByTestId('post-feed-item');
+    const response = within(row).getByTestId('feed-thread-response');
+    const conversation = within(row).getByRole('link', { name: 'Ver conversa' });
+    expect(row.children).toEqual([source, response, conversation]);
+    expect(screen.getAllByText('O chefe final é difícil')).toHaveLength(1);
+    expect(within(source).getByText('Hades')).toBeOnTheScreen();
+    expect(within(source).getByTestId('post-controls')).toBeOnTheScreen();
+    expect(within(source).getByTestId('feed-thread-line')).toBeOnTheScreen();
+    expect(within(response).getByText('Acertei na terceira tentativa')).toBeOnTheScreen();
+    expect(within(response).queryByTestId('reply-post-preview')).toBeNull();
+
+    await fireEvent.press(within(source).getByRole('button', { name: /Post de Ana Souza/ }));
+    await fireEvent.press(within(response).getByRole('button', { name: /Resposta de Bia/ }));
+    await fireEvent.press(conversation);
+    expect(mockPush.mock.calls).toEqual([['/posts/p1'], ['/posts/p1'], ['/posts/p1']]);
+  });
+
+  it('groups replies across loaded pages and shows the two latest in conversation order', async () => {
+    const original = post({ content: 'Um post com várias respostas' });
+    const reply = (id: string, content: string, at: Date) => post({ ...original, reason: {
+      type: 'reply', id, content, at, by: { id, username: id, name: id, avatarUrl: null },
+    } });
+    const newest = reply('r3', 'Resposta mais recente', NOW);
+    const previous = reply('r2', 'Resposta anterior', new Date(NOW.getTime() - 60_000));
+    const oldest = reply('r1', 'Resposta antiga', new Date(NOW.getTime() - 120_000));
+    const other = post({ id: 'p2', content: 'Outro post' });
+    const fetchNextPage = jest.fn();
+    await render(<PostList query={feedQuery({
+      data: {
+        pages: [{ items: [newest, other], nextCursor: 'c' }, { items: [newest, previous, oldest, original], nextCursor: 'd' }],
+        pageParams: [undefined, 'c'],
+      },
+      hasNextPage: true,
+      fetchNextPage,
+    })} />);
+
+    const group = screen.getByTestId('feed-reply');
+    const [first, second] = within(group).getAllByTestId('feed-thread-response');
+    expect(within(first).getByText('Resposta anterior')).toBeOnTheScreen();
+    expect(within(second).getByText('Resposta mais recente')).toBeOnTheScreen();
+    expect(screen.getAllByText('Um post com várias respostas')).toHaveLength(1);
+    expect(screen.queryByText('Resposta antiga')).toBeNull();
+    expect(screen.getByText('Outro post')).toBeOnTheScreen();
+    fetchNextPage.mockClear();
+    await fireEvent.press(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
   it('renders posts and activities from every page', async () => {

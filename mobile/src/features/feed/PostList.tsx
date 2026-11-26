@@ -9,17 +9,17 @@ import {
   type ComponentType,
   type ReactElement,
 } from 'react';
-import { ActivityIndicator, StyleSheet, View, type FlatList } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type FlatList } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { Button, Text } from '@/components';
 import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
 
-import { PostFeedItem } from './PostFeedItem';
+import { PostFeedItem, postFeedRowLayout } from './PostFeedItem';
 import { PostReplyRow } from './PostReplyRow';
 import { ActivityRow } from './ActivityRow';
-import { itemHref, postKey, toQuotedPost, type Post, type PostPage } from './types';
+import { itemHref, postKey, toQuotedPost, type Post, type PostPage, type PostReason } from './types';
 
 type Slot = ReactElement | ComponentType;
 
@@ -52,8 +52,11 @@ export type PostListProps = {
 
 type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
 
-// The same post can appear on its own and as the source of several reposts or replies.
-const keyExtractor = postKey;
+const MAX_PREVIEW_REPLIES = 2;
+type FeedReply = Extract<PostReason, { type: 'reply' }>;
+
+// A conversation uses the original post's key even when a reply puts it in the feed.
+const keyExtractor = (post: Post) => post.reason?.type === 'reply' ? `post:${post.id}` : postKey(post);
 
 export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostList(
   {
@@ -77,7 +80,29 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   const { data, hasNextPage, isFetchingNextPage, isFetchNextPageError } = query;
   const { fetchNextPage, refetch } = query;
 
-  const posts = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
+  const { posts, repliesByPost, groupedPosts } = useMemo(() => {
+    const items = data?.pages.flatMap((page) => page.items) ?? [];
+    const repliesByPost = new Map<string, FeedReply[]>();
+    for (const { id, type, reason } of items) {
+      if (type === 'activity' || reason?.type !== 'reply') continue;
+      const replies = repliesByPost.get(id);
+      if (!replies) repliesByPost.set(id, [reason]);
+      else if (replies.length < MAX_PREVIEW_REPLIES && !replies.some((reply) => reply.id === reason.id)) {
+        // The feed is newest first. Show the selected replies in conversation order.
+        replies.unshift(reason);
+      }
+    }
+
+    // Keep the conversation at its most recent feed event, including across loaded pages.
+    const seenThreads = new Set<string>();
+    const posts = items.filter((item) => {
+      if (!repliesByPost.has(item.id) || item.reason?.type === 'repost') return true;
+      if (seenThreads.has(item.id)) return false;
+      seenThreads.add(item.id);
+      return true;
+    });
+    return { posts, repliesByPost, groupedPosts: posts.length < items.length };
+  }, [data]);
 
   const open = useCallback(
     (post: Post) => {
@@ -91,13 +116,35 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     // Rows draw their own top line; the first one sits under the list's header.
     ({ item, index }: { item: Post; index: number }) => {
       if (item.type === 'activity') return <ActivityRow activity={item} />;
-      if (item.reason?.type === 'reply') {
-        return <PostReplyRow author={item.reason.by} createdAt={item.reason.at} content={item.reason.content}
-          post={toQuotedPost(item)} hideTopBorder={index === 0} testID="feed-reply" />;
+      const replies = item.reason?.type === 'repost' ? undefined : repliesByPost.get(item.id);
+      if (replies) {
+        const openPost = () => open(item);
+        const original = toQuotedPost(item);
+        return (
+          <View testID="feed-reply">
+            <PostFeedItem post={item} hideTopBorder={index === 0} hasReplyBelow onPress={openPost} />
+            {replies.map((reply, index) => (
+              <PostReplyRow
+                key={reply.id}
+                author={reply.by}
+                createdAt={reply.at}
+                content={reply.content}
+                post={original}
+                inThread
+                hasReplyBelow={index < replies.length - 1}
+                onOpenPost={openPost}
+                testID="feed-thread-response"
+              />
+            ))}
+            <Pressable accessibilityRole="link" onPress={openPost} style={styles.conversationLink}>
+              <Text size="sm" weight="semibold" tone="primary">Ver conversa</Text>
+            </Pressable>
+          </View>
+        );
       }
       return <PostFeedItem post={item} hideTopBorder={index === 0} onPress={() => open(item)} />;
     },
-    [open],
+    [open, repliesByPost],
   );
 
   const loadMore = useCallback(() => {
@@ -151,6 +198,13 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
         <Button label="Tentar de novo" color="secondary" onPress={() => void fetchNextPage()} />
       </View>
     );
+  } else if (hasNextPage && groupedPosts) {
+    // A page of replies to existing conversations may not change the list's height.
+    footer = (
+      <View style={styles.footer}>
+        <Button label="Carregar mais" color="secondary" onPress={loadMore} />
+      </View>
+    );
   } else if (posts.length > 0 && !hasNextPage) {
     footer = (
       <View style={styles.footer}>
@@ -189,6 +243,13 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
 const styles = StyleSheet.create({
   // Rows are full width; they pad themselves.
   content: { flexGrow: 1 },
+  conversationLink: {
+    alignSelf: 'flex-start',
+    marginLeft: postFeedRowLayout.paddingLeft + postFeedRowLayout.avatarSize + postFeedRowLayout.gap,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingRight: space.lg,
+  },
   footer: { alignItems: 'center', gap: space.md, paddingVertical: space._2xl, paddingHorizontal: space.lg },
   footerText: { textAlign: 'center' },
 });

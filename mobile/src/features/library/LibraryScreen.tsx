@@ -1,7 +1,7 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import {
   Button,
@@ -19,9 +19,10 @@ import { showToast } from '@/lib/toast';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
 import { colors, hairline, radii, space, type GameStatus } from '@/theme/tokens';
 
-import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
+import { buildLibraryOverview, type CompletionWindow, type LibraryGroup, type LibraryOverview } from './groups';
 import { useLibraryFilter } from './filterStore';
 import { LibraryCard } from './LibraryCard';
+import { ProgressSheet } from './ProgressSheet';
 import { SORT_OPTIONS, useLibraryPrefs, type LibrarySort } from './prefsStore';
 import { useLibrary } from './queries';
 import { STATUSES, statusLabel } from './status';
@@ -35,6 +36,7 @@ const COVER_RATIO = 4 / 3;
 const LIBRARY_MAX_WIDTH = 760;
 
 type TabValue = GameStatus | 'all';
+type FilterOption = string | null | CompletionWindow | 0 | boolean;
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
@@ -51,13 +53,13 @@ type HeaderProps = {
   tabItems: { value: TabValue; label: string }[];
   status: GameStatus | null;
   query: string;
-  platformLabel: string;
+  filterCount: number;
   filterActive: boolean;
-  sortChanged: boolean;
+  sortLabel?: string;
   resultCount: number;
   onSelectTab: (value: TabValue) => void;
   onChangeQuery: (text: string) => void;
-  onOpenPlatform: () => void;
+  onOpenFilters: () => void;
   onOpenSort: () => void;
   onClear: () => void;
 };
@@ -101,7 +103,7 @@ function LibraryHeader(props: HeaderProps) {
           accessibilityLabel="Ordenar"
           icon="swap-vertical-outline"
           shape="round"
-          color={props.sortChanged ? 'primary' : 'secondary'}
+          color={props.sortLabel ? 'primary' : 'secondary'}
           onPress={props.onOpenSort}
         />
       </View>
@@ -114,9 +116,16 @@ function LibraryHeader(props: HeaderProps) {
         </Text>
         {props.filterActive ? <Button label="Limpar" size="tiny" variant="ghost" onPress={props.onClear} /> : null}
         <View style={styles.platform}>
-          <Button label={props.platformLabel} icon="hardware-chip-outline" color="secondary" size="tiny" onPress={props.onOpenPlatform} />
+          <Button
+            label={props.filterCount ? `Filtros (${props.filterCount})` : 'Filtros'}
+            icon="options-outline"
+            size="tiny"
+            color={props.filterCount ? 'primary' : 'secondary'}
+            onPress={props.onOpenFilters}
+          />
         </View>
       </View>
+      {props.sortLabel ? <Text size="sm" tone="medium">{props.sortLabel}</Text> : null}
     </View>
   );
 }
@@ -127,21 +136,23 @@ export function LibraryScreen() {
   const router = useRouter();
   const library = useLibrary();
   const favorites = useMyFavorites();
-  const { query, status, platformKey } = useLibraryFilter();
+  const { query, status, platformKey, finishedWithin, onlyFavorites } = useLibraryFilter();
   const sort = useLibraryPrefs((state) => state.sort);
-  const [sheet, setSheet] = useState<'platform' | 'sort' | null>(null);
+  const [sheet, setSheet] = useState<'filters' | 'sort' | null>(null);
+  const [progressGroup, setProgressGroup] = useState<LibraryGroup | null>(null);
   const listRef = useRef<FlashListRef<LibraryGroup>>(null);
   useScrollToTopOnTabPress(listRef);
 
   const { data } = library;
-  const overview = useMemo(
-    () => buildLibraryOverview(data ?? [], { query, status, platformKey }, sort),
-    [data, query, status, platformKey, sort],
-  );
-
   const favoriteIds = useMemo(
     () => new Set((favorites.data ?? []).map((game) => game.id)),
     [favorites.data],
+  );
+  const overview = useMemo(
+    () => buildLibraryOverview(data ?? [], {
+      query, status, platformKey, finishedWithin, favoriteIds: onlyFavorites ? favoriteIds : undefined,
+    }, sort),
+    [data, query, status, platformKey, finishedWithin, onlyFavorites, favoriteIds, sort],
   );
 
   const openGame = useCallback(
@@ -172,8 +183,9 @@ export function LibraryScreen() {
   }
 
   const hasRecords = overview.summary.records > 0;
-  const filterActive = query.trim() !== '' || status !== null || platformKey !== null;
-  const activePlatform = overview.platforms.find((platform) => platform.key === platformKey);
+  const filterCount = Number(platformKey !== null) + Number(finishedWithin !== null) + Number(onlyFavorites);
+  const filterActive = query.trim() !== '' || status !== null || filterCount > 0;
+  const sortLabel = sort === 'recent' ? undefined : SORT_OPTIONS.find((option) => option.value === sort)?.label;
 
   const tabItems: HeaderProps['tabItems'] = [
     { value: 'all', label: `Todos (${overview.totalGames})` },
@@ -189,19 +201,19 @@ export function LibraryScreen() {
       tabItems={tabItems}
       status={status}
       query={query}
-      platformLabel={activePlatform?.label ?? 'Plataforma'}
+      filterCount={filterCount}
       filterActive={filterActive}
-      sortChanged={sort !== 'recent'}
+      sortLabel={sortLabel}
       resultCount={overview.groups.length}
       onSelectTab={(value) => useLibraryFilter.getState().setStatus(value === 'all' ? null : value)}
       onChangeQuery={(text) => useLibraryFilter.getState().setQuery(text)}
-      onOpenPlatform={() => setSheet('platform')}
+      onOpenFilters={() => setSheet('filters')}
       onOpenSort={() => setSheet('sort')}
       onClear={clear}
     />
   ) : null;
 
-  const empty = hasRecords ? (
+  let empty = hasRecords ? (
     <EmptyState
       icon="search-outline"
       title="Nenhum jogo com esses filtros"
@@ -216,6 +228,14 @@ export function LibraryScreen() {
       action={{ label: 'Encontrar jogo', onPress: () => router.push(EXPLORE_GAMES) }}
     />
   );
+  if (hasRecords && onlyFavorites && favorites.data === undefined) {
+    empty = favorites.isError ? (
+      <EmptyState
+        title="Não foi possível carregar os favoritos"
+        action={{ label: 'Tentar de novo', onPress: () => void favorites.refetch() }}
+      />
+    ) : <ActivityIndicator accessibilityLabel="Carregando favoritos" color={colors.primary} />;
+  }
 
   return (
     <Screen>
@@ -234,6 +254,7 @@ export function LibraryScreen() {
               favorite={favoriteIds.has(group.game.id)}
               showStatus={status === null}
               onPress={openGame}
+              onOpenProgress={() => setProgressGroup(group)}
             />
           )}
           listRef={listRef}
@@ -243,20 +264,50 @@ export function LibraryScreen() {
           ListEmptyComponent={empty}
         />
       </View>
-      <OptionSheet<string | null>
-        visible={sheet === 'platform'}
-        title="Plataforma"
-        options={[
-          { value: null, label: 'Todas as plataformas' },
-          ...overview.platforms.map((platform) => ({ value: platform.key, label: platform.label })),
+      {progressGroup ? <ProgressSheet entries={progressGroup.entries} onClose={() => setProgressGroup(null)} /> : null}
+      <OptionSheet<FilterOption>
+        visible={sheet === 'filters'}
+        title="Filtros"
+        scrollable
+        sections={[
+          {
+            title: 'Conclusão',
+            selected: finishedWithin ?? 0,
+            options: [
+              { value: 0, label: 'Qualquer período' },
+              { value: 30, label: 'Terminados nos últimos 30 dias' },
+              { value: 90, label: 'Terminados nos últimos 90 dias' },
+            ],
+          },
+          {
+            title: 'Favoritos',
+            selected: onlyFavorites,
+            options: [
+              { value: false, label: 'Todos os jogos' },
+              { value: true, label: 'Só favoritos' },
+            ],
+          },
+          {
+            title: 'Plataforma',
+            selected: platformKey,
+            options: [
+              { value: null, label: 'Todas as plataformas' },
+              ...overview.platforms.map((platform) => ({ value: platform.key, label: platform.label })),
+            ],
+          },
         ]}
-        selected={platformKey}
-        onSelect={(value) => useLibraryFilter.getState().setPlatform(value)}
+        onSelect={(value) => {
+          const filters = useLibraryFilter.getState();
+          if (typeof value === 'boolean') filters.setOnlyFavorites(value);
+          else if (typeof value === 'number') filters.setFinishedWithin(value || null);
+          else filters.setPlatform(value);
+        }}
         onClose={() => setSheet(null)}
       />
       <OptionSheet<LibrarySort>
         visible={sheet === 'sort'}
         title="Ordenar por"
+        scrollable
         options={SORT_OPTIONS}
         selected={sort}
         onSelect={(value) => useLibraryPrefs.getState().setSort(value)}

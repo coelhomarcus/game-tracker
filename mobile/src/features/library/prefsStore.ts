@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type LibrarySort = 'recent' | 'oldest' | 'mostPlayed' | 'rating' | 'name';
+export type LibrarySort = 'recent' | 'oldest' | 'finishedRecent' | 'startedRecent' | 'mostPlayed' | 'rating' | 'name';
 
 /** The sorts in display order, with the label every picker shows. */
 export const SORT_OPTIONS: { value: LibrarySort; label: string }[] = [
   { value: 'recent', label: 'Adicionados recentemente' },
   { value: 'oldest', label: 'Adicionados há mais tempo' },
+  { value: 'finishedRecent', label: 'Terminados recentemente' },
+  { value: 'startedRecent', label: 'Começados recentemente' },
   { value: 'mostPlayed', label: 'Mais horas registradas' },
   { value: 'rating', label: 'Minha nota' },
   { value: 'name', label: 'Nome A–Z' },

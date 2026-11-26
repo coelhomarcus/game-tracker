@@ -4,13 +4,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useMyFavorites } from '@/features/games/queries';
 import type { Game } from '@/features/games/types';
+import { formatDate, todayDate } from '@/lib/dateOnly';
 
 import { useLibraryFilter } from '../filterStore';
 import { buildLibraryOverview } from '../groups';
 import { LibraryScreen } from '../LibraryScreen';
 import { libraryFooter } from '../libraryFooter';
 import { useLibraryPrefs } from '../prefsStore';
-import { useLibrary } from '../queries';
+import { useLibrary, useUpdateEntry } from '../queries';
 import type { GameEntry } from '../types';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -18,7 +19,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
-jest.mock('../queries', () => ({ useLibrary: jest.fn() }));
+jest.mock('../queries', () => ({ useLibrary: jest.fn(), useUpdateEntry: jest.fn() }));
 jest.mock('@/features/games/queries', () => ({ useMyFavorites: jest.fn() }));
 
 const mockPush = jest.fn();
@@ -83,6 +84,7 @@ const ENTRIES: GameEntry[] = [
 ];
 
 const refetch = jest.fn();
+const update = jest.fn();
 
 function mockLibrary(overrides: Record<string, unknown> = {}) {
   jest.mocked(useLibrary).mockReturnValue({
@@ -117,6 +119,9 @@ function mockFavorites(games: Game[]) {
 }
 
 beforeEach(() => {
+  update.mockReset();
+  update.mockResolvedValue(undefined);
+  jest.mocked(useUpdateEntry).mockReturnValue({ mutateAsync: update } as unknown as ReturnType<typeof useUpdateEntry>);
   mockFavorites([]);
   mockPush.mockReset();
   refetch.mockReset();
@@ -147,6 +152,68 @@ function findRefreshControl(node: JsonNode | JsonNode[]): { props: Record<string
 
 const cards = () =>
   screen.queryAllByRole('button', { name: /, (Jogando|Concluído|Na fila|Abandonado|Vários status), / });
+
+describe('quick progress', () => {
+  async function open(name: string) {
+    await fireEvent.press(screen.getByRole('button', { name: `Atualizar progresso de ${name}` }));
+  }
+
+  it('suggests the local date when starting a game and saves an edited date', async () => {
+    await renderLibrary();
+    await open(onix.name);
+    await fireEvent.press(screen.getByRole('button', { name: 'Começar' }));
+
+    const date = screen.getByLabelText('Data de início');
+    expect(date.props.value).toBe(formatDate(todayDate()));
+    await fireEvent.changeText(date, '03042026');
+    await fireEvent.press(screen.getByRole('button', { name: 'Salvar progresso' }));
+
+    expect(update).toHaveBeenCalledWith({
+      original: ENTRIES[3],
+      edited: expect.objectContaining({ status: 'playing', startedAt: { day: 3, month: 4, year: 2026 } }),
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('completes the selected replay and shows it in the recent completions filter', async () => {
+    const completed = { ...ENTRIES[0], status: 'completed' as const, finishedAt: todayDate() };
+    update.mockImplementation(async () => mockLibrary({ data: [completed, ...ENTRIES.slice(1)] }));
+    await renderLibrary();
+    await open(hades.name);
+    await fireEvent.press(screen.getByRole('button', { name: /^Registro 1, PC, Jogando/ }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Marcar como zerado' }));
+    expect(screen.getByLabelText('Data de conclusão').props.value).toBe(formatDate(todayDate()));
+    await fireEvent.press(screen.getByRole('button', { name: 'Salvar progresso' }));
+
+    expect(update).toHaveBeenCalledWith({
+      original: ENTRIES[0],
+      edited: expect.objectContaining({ status: 'completed', finishedAt: completed.finishedAt }),
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Filtros' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Terminados nos últimos 30 dias' }));
+    expect(cards()).toHaveLength(1);
+    expect(cards()[0]).toHaveAccessibleName(/^Hades, Concluído/);
+  });
+
+  it('validates decimal hours and saves them without changing status or notes', async () => {
+    await renderLibrary();
+    await open(celeste.name);
+    await fireEvent.press(screen.getByRole('button', { name: 'Registrar horas' }));
+    const hours = screen.getByLabelText('Horas jogadas');
+    expect(hours.props.value).toBe('20');
+    await fireEvent.changeText(hours, '12h');
+    await fireEvent.press(screen.getByRole('button', { name: 'Salvar progresso' }));
+    expect(screen.getByText('Use só números, como 12 ou 12,5.')).toBeOnTheScreen();
+    expect(update).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(hours, '24,5');
+    await fireEvent.press(screen.getByRole('button', { name: 'Salvar progresso' }));
+    expect(update).toHaveBeenCalledWith({
+      original: ENTRIES[2],
+      edited: expect.objectContaining({ status: 'completed', hoursPlayed: 24.5, rating: 8, notes: 'Ótimo' }),
+    });
+  });
+});
 
 describe('summary and tabs', () => {
   it('shows the accessible summary and the tab counts', async () => {
@@ -265,6 +332,16 @@ describe('sort', () => {
     expect(screen.getByText('02/01/26')).toBeOnTheScreen();
   });
 
+  it('shows the completion date rather than the registration date when sorting by completion', async () => {
+    mockLibrary({ data: [entry({
+      id: 'done', game: hades, status: 'completed', finishedAt: { year: 2026, month: 3, day: 1 },
+    })] });
+    await renderLibrary();
+    await chooseSort('Terminados recentemente');
+    expect(useLibraryPrefs.getState().sort).toBe('finishedRecent');
+    expect(screen.getByText('01/03/2026')).toBeOnTheScreen();
+  });
+
   it('does not reset the sort when the filters are cleared', async () => {
     await renderLibrary();
     await chooseSort('Nome A–Z');
@@ -293,15 +370,28 @@ describe('search and platform', () => {
     expect(screen.getByLabelText('Buscar na biblioteca')).toBe(field);
   });
 
-  it('filters by platform and shows its label on the button', async () => {
+  it('filters by platform from the filters sheet and shows the active filter count', async () => {
     await renderLibrary();
-    await fireEvent.press(screen.getByRole('button', { name: 'Plataforma' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Filtros' }));
     expect(screen.getByRole('button', { name: 'Todas as plataformas' })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Switch' }));
     expect(useLibraryFilter.getState().platformKey).toBe('switch');
-    expect(screen.getByRole('button', { name: 'Switch' })).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: 'Plataforma' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Filtros (1)' })).toBeOnTheScreen();
     expect(cards()).toHaveLength(1);
+  });
+
+  it('selects favorites and a completion period independently and clears both', async () => {
+    mockFavorites([celeste]);
+    await renderLibrary();
+    await fireEvent.press(screen.getByRole('button', { name: 'Filtros' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Só favoritos' }));
+    expect(cards()).toHaveLength(1);
+    await fireEvent.press(screen.getByRole('button', { name: 'Filtros (1)' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Terminados nos últimos 90 dias' }));
+    expect(screen.getByRole('button', { name: 'Filtros (2)' })).toBeOnTheScreen();
+    expect(cards()).toHaveLength(0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Limpar filtros' }));
+    expect(cards()).toHaveLength(3);
   });
 
   it('shows Limpar only while a filter is active', async () => {

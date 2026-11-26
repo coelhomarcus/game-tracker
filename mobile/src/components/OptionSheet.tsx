@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { IoniconName } from '@/features/library/status';
@@ -32,6 +32,7 @@ export type OptionSheetProps<T> = {
   options?: OptionSheetOption<T>[];
   selected?: T;
   sections?: OptionSheetSection<T>[];
+  scrollable?: boolean;
   onSelect: (value: T) => void;
   onClose: () => void;
 };
@@ -43,16 +44,18 @@ export function OptionSheet<T>({
   options = [],
   selected,
   sections = [],
+  scrollable = false,
   onSelect,
   onClose,
 }: OptionSheetProps<T>) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
 
   const renderOption = (option: OptionSheetOption<T>, current: T | undefined) => {
     const isSelected = option.value === current;
     return (
       <Pressable
-        key={String(option.value)}
+        key={`${typeof option.value}:${String(option.value)}`}
         accessibilityRole="button"
         accessibilityLabel={option.label}
         accessibilityHint={option.description}
@@ -87,28 +90,34 @@ export function OptionSheet<T>({
     );
   };
 
+  const choices = (
+    <>
+      {options.map((option) => renderOption(option, selected))}
+      {sections.map((section, index) => (
+        <View
+          key={section.title}
+          testID="sheet-section"
+          style={(index > 0 || options.length > 0) && styles.sectionDivider}
+        >
+          <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium" style={styles.sectionTitle}>
+            {section.title}
+          </Text>
+          {section.options.map((option) => renderOption(option, section.selected))}
+        </View>
+      ))}
+    </>
+  );
+
   return (
     <SheetModal visible={visible} onRequestClose={onClose} backdropTestID="sheet-backdrop">
       <View
         accessibilityViewIsModal
-        style={[styles.sheet, { paddingBottom: space.sm + insets.bottom }]}
+        style={[styles.sheet, { paddingBottom: space.sm + insets.bottom }, scrollable && { maxHeight: height * 0.85 }]}
       >
         <Text accessibilityRole="header" size="xl" weight="bold" tone="high" style={styles.title}>
           {title}
         </Text>
-        {options.map((option) => renderOption(option, selected))}
-        {sections.map((section, index) => (
-          <View
-            key={section.title}
-            testID="sheet-section"
-            style={(index > 0 || options.length > 0) && styles.sectionDivider}
-          >
-            <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium" style={styles.sectionTitle}>
-              {section.title}
-            </Text>
-            {section.options.map((option) => renderOption(option, section.selected))}
-          </View>
-        ))}
+        {scrollable ? <ScrollView style={styles.scroll}>{choices}</ScrollView> : choices}
       </View>
     </SheetModal>
   );
@@ -126,6 +135,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
   },
   title: { marginBottom: space.sm },
+  scroll: { flexGrow: 0, flexShrink: 1 },
   row: {
     minHeight: 48,
     flexDirection: 'row',
