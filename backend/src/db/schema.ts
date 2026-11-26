@@ -249,6 +249,7 @@ export const comments = pgTable(
   (table) => ({
     postIdIdx: index('comments_post_id_idx').on(table.postId),
     parentCommentIdIdx: index('comments_parent_comment_id_idx').on(table.parentCommentId),
+    timelineIdx: index('comments_created_at_id_idx').on(table.createdAt, table.id),
   }),
 );
 

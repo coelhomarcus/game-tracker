@@ -300,7 +300,10 @@ export function useToggleFollow() {
     onSuccess: (_data, { id, follow, announce }) => {
       settle(id, follow);
       if (follow && announce !== undefined) showToast(`Seguindo ${announce}`);
-      return client.invalidateQueries({ queryKey: ['feed', 'following'] });
+      return Promise.all([
+        client.invalidateQueries({ queryKey: ['feed', 'following'] }),
+        client.invalidateQueries({ queryKey: ['activities', 'home', 'following'] }),
+      ]);
     },
     onError: (error, { id, follow }) => settle(id, follow, error),
   });
@@ -466,7 +469,9 @@ function applyModeration(
   });
   if (on) {
     // A mute only empties the feeds and the post search: profiles, threads and bookmarks keep showing a muted person.
-    const posts = removeUserPostsEverywhere(client, person.id, kind === 'blocks' ? undefined : [['feed'], ['postSearch']]);
+    const posts = removeUserPostsEverywhere(client, person.id, kind === 'blocks' ? undefined : [
+      ['feed'], ['postSearch'], ['activities', 'home'], ['activities', 'game'],
+    ]);
     if (posts.length > 0) {
       const removal = removals.get(lane) ?? { posts: [] };
       removal.posts.push(...posts);
@@ -510,6 +515,7 @@ function applyModeration(
 /** What a block changes: feeds, threads, searches, notifications and the post lists. */
 const BLOCK_KEYS: readonly (readonly string[])[] = [
   ['feed'],
+  ['activities'],
   ['post'],
   ['comments'],
   ['people'],
@@ -550,7 +556,7 @@ function refreshAfterModeration(client: QueryClient, kind: ModerationKind, id: s
   }
   // The feeds, post search and notifications filter the person in or out; read again on the next
   // visit.
-  for (const key of [['feed'], ['postSearch'], ['notifications']]) {
+  for (const key of [['feed'], ['postSearch'], ['notifications'], ['activities', 'home'], ['activities', 'game']]) {
     void client.invalidateQueries({ queryKey: key, refetchType: 'none' });
   }
   // Suggestions stay mounted under the profile and are cached for minutes: a new mute drops the

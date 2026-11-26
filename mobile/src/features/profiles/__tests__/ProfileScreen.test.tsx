@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import UserRoute from '@/app/users/[id]';
 import { useSession } from '@/features/auth';
 import { useStartConversation } from '@/features/chat/queries';
+import { useActivities } from '@/features/feed/queries';
 import type { Post } from '@/features/feed/types';
 import type { Game } from '@/features/games/types';
 import type { GameEntry } from '@/features/library/types';
@@ -36,6 +37,7 @@ jest.mock('../queries', () => ({
 }));
 jest.mock('@/features/chat/queries', () => ({ useStartConversation: jest.fn() }));
 jest.mock('@/features/feed/queries', () => ({
+  useActivities: jest.fn(),
   ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
     '@/test-utils/postControlHooks',
   ).postControlHooks(),
@@ -645,13 +647,13 @@ describe('Jogos', () => {
 });
 
 describe('tabs', () => {
-  it('lists Jogos, Posts, Respostas and Mídia on somebody else', async () => {
+  it('adds Atividades alongside Posts on somebody else’s profile', async () => {
     await renderProfile('u1');
 
     const tabs = within(screen.getByTestId('pager-tab-bar'))
       .getAllByRole('tab')
       .map((tab) => tab.props.accessibilityLabel);
-    expect(tabs).toEqual(['Jogos', 'Posts', 'Respostas', 'Mídia']);
+    expect(tabs).toEqual(['Jogos', 'Posts', 'Atividades', 'Respostas', 'Mídia']);
     expect(screen.queryByRole('tab', { name: 'Curtidas' })).toBeNull();
   });
 
@@ -662,7 +664,19 @@ describe('tabs', () => {
     const tabs = within(screen.getByTestId('pager-tab-bar'))
       .getAllByRole('tab')
       .map((tab) => tab.props.accessibilityLabel);
-    expect(tabs).toEqual(['Jogos', 'Posts', 'Respostas', 'Mídia', 'Curtidas']);
+    expect(tabs).toEqual(['Jogos', 'Posts', 'Atividades', 'Respostas', 'Mídia', 'Curtidas']);
+  });
+
+  it('fetches the activity history when its tab opens', async () => {
+    jest.mocked(useActivities).mockReturnValue({
+      data: { pages: [{ items: [post({ type: 'activity' })], nextCursor: null }], pageParams: [undefined] },
+    } as never);
+    await renderProfile('u1');
+    expect(useActivities).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Atividades' }));
+    expect(useActivities).toHaveBeenLastCalledWith({ kind: 'profile', id: 'u1' });
+    expect(screen.getByTestId('activity-row')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Publicar' })).toBeNull();
   });
 
   it('loads a tab only once it is opened', async () => {
@@ -799,6 +813,7 @@ describe('Respostas', () => {
     expect(within(row).getByText('Também zerei!')).toBeOnTheScreen();
     expect(within(row).getByText('Respondendo ao post de @bia')).toBeOnTheScreen();
     expect(within(row).getByText('Hades é o melhor roguelike')).toBeOnTheScreen();
+    expect(within(row).getByRole('link', { name: /Post original de Bia/ })).toBeOnTheScreen();
     expect(within(row).getByText('Ana Souza')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('button', { name: /^Resposta de Ana Souza/ }));

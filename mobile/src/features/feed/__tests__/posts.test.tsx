@@ -1,5 +1,5 @@
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 
 import type { Game } from '@/features/games/types';
@@ -275,6 +275,24 @@ function feedQuery(overrides: Record<string, unknown> = {}, items: Post[] = [pos
 }
 
 describe('PostList', () => {
+  it('renders a reply using its author and a link to the original publication', async () => {
+    const original = post({ content: 'O chefe final é difícil' });
+    const reply = post({ ...original, reason: {
+      type: 'reply', id: 'r1', by: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
+      content: 'Acertei na terceira tentativa', at: original.createdAt,
+    } });
+    await render(<PostList query={feedQuery({}, [original, reply])} />);
+
+    const row = screen.getByTestId('feed-reply');
+    expect(within(row).getByText('Acertei na terceira tentativa')).toBeOnTheScreen();
+    expect(within(row).getByText('Respondendo ao post de @ana')).toBeOnTheScreen();
+    const preview = within(row).getByRole('link', { name: /Post original de Ana Souza/ });
+    expect(within(preview).getByText('O chefe final é difícil')).toBeOnTheScreen();
+    expect(within(row).queryByTestId('post-controls')).toBeNull();
+    await fireEvent.press(preview);
+    expect(mockPush).toHaveBeenCalledWith('/posts/p1');
+  });
+
   it('renders posts and activities from every page', async () => {
     const activity = post({
       id: 'b',
@@ -294,8 +312,34 @@ describe('PostList', () => {
     await render(<PostList query={query} />);
 
     expect(screen.getByText('primeiro post')).toBeOnTheScreen();
-    expect(screen.getByText(/segundo/)).toBeOnTheScreen();
+    expect(screen.getByTestId('activity-row')).toBeOnTheScreen();
+    expect(screen.getByText('começou a jogar')).toBeOnTheScreen();
     expect(screen.getByText('Jogando')).toBeOnTheScreen();
+  });
+
+  it('uses game artwork in activities and keeps the banner link if the artwork fails', async () => {
+    const firstShot = 'https://example.test/first.jpg';
+    const nextShot = 'https://example.test/next.jpg';
+    const coverUrl = 'https://example.test/cover.jpg';
+    const activity = post({
+      type: 'activity',
+      activityStatus: 'playing',
+      game: { ...hades, screenshots: [firstShot, nextShot], coverUrl },
+      entry: { id: 'e1', platform: 'PC' },
+    });
+    await render(<PostList query={feedQuery({}, [activity])} activityTimeline />);
+
+    const art = () => screen.getByTestId('activity-game-art', { includeHiddenElements: true });
+    expect(art().props.source).toEqual({ uri: firstShot });
+    await fireEvent(art(), 'error');
+    expect(art().props.source).toEqual({ uri: nextShot });
+    await fireEvent(art(), 'error');
+    expect(art().props.source).toEqual({ uri: coverUrl });
+    await fireEvent(art(), 'error');
+    expect(screen.queryByTestId('activity-game-art', { includeHiddenElements: true })).toBeNull();
+    expect(screen.getByText('PC')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('link', { name: 'Abrir jogo Hades' }));
+    expect(mockPush).toHaveBeenCalledWith('/games/11');
   });
 
   it('lists full-width rows that draw their own lines, none above the first', async () => {

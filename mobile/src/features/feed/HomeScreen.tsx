@@ -1,19 +1,19 @@
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useRef, useState, type RefObject } from 'react';
-import { StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
+import { useCallback, useRef, useState, type ReactElement, type RefObject } from 'react';
+import { ActivityIndicator, StyleSheet, View, type FlatList, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useComposedEventHandler } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen } from '@/components';
+import { EmptyState, Fab, FAB_BOTTOM, FAB_SIZE, Screen, Tabs } from '@/components';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { colors } from '@/theme/tokens';
+import { colors, space } from '@/theme/tokens';
 
-import { HomeHeader } from './HomeHeader';
+import { HomeHeader, type HomeTab } from './HomeHeader';
 import { PostFeedItemSkeleton } from './PostFeedItem';
 import { PostList } from './PostList';
-import { useFeed } from './queries';
+import { useActivities, useFeed } from './queries';
 import type { FeedScope, Post } from './types';
 
 const SKELETON_ROWS = ['0', '1', '2'];
@@ -35,9 +35,14 @@ function FeedSkeleton() {
 }
 
 type HideOnScroll = ReturnType<typeof useHideOnScroll>;
+type TimelineKey = FeedScope | `activities-${FeedScope}`;
+
+const ACTIVITY_SCOPES = [
+  { value: 'following', label: 'Seguindo', accessibilityLabel: 'Atividades de quem sigo' },
+  { value: 'general', label: 'Todos' },
+] satisfies { value: FeedScope; label: string; accessibilityLabel?: string }[];
 
 type FeedProps = {
-  scope: FeedScope;
   /** The screen's handle on the list of the scope showing now (title and tab presses scroll it). */
   listRef: RefObject<FlatList<Post> | null>;
   /** Drives the header that floats over the list. */
@@ -45,8 +50,8 @@ type FeedProps = {
   /** Height of that header: the list starts below it. */
   headerHeight: number;
   /** The screen remembers each scope's scroll offset across the remounts of its list. */
-  getOffset: (scope: FeedScope) => number;
-  setOffset: (scope: FeedScope, offset: number) => void;
+  getOffset: (scope: TimelineKey) => number;
+  setOffset: (scope: TimelineKey, offset: number) => void;
 };
 
 /**
@@ -54,15 +59,19 @@ type FeedProps = {
  * loaded scope shows its cached posts instantly and refetches in the background, and the list
  * returns to the offset the user left it at.
  */
-function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset }: FeedProps) {
-  const router = useRouter();
-  const query = useFeed(scope);
+function Timeline({ channel, query, empty, header, listRef, hideOnScroll, headerHeight, getOffset, setOffset }: FeedProps & {
+  channel: TimelineKey;
+  query: ReturnType<typeof useFeed>;
+  empty: ReactElement;
+  header?: ReactElement;
+}) {
+  const activity = header !== undefined;
   const restored = useRef(false);
 
   // Cached posts are laid out in one pass: put the list back where this scope was left.
   const restoreOffset = (_width: number, height: number) => {
     if (restored.current) return;
-    const offset = getOffset(scope);
+    const offset = getOffset(channel);
     // Items render in batches: wait until the content reaches the saved offset.
     if (offset > 0 && height <= offset) return;
     restored.current = true;
@@ -71,9 +80,9 @@ function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset
   // Scroll events before the restore would overwrite the saved offset with the initial 0.
   const rememberOffset = useCallback(
     (offset: number) => {
-      if (restored.current) setOffset(scope, offset);
+      if (restored.current) setOffset(channel, offset);
     },
-    [scope, setOffset],
+    [channel, setOffset],
   );
   // Scroll events arrive on the UI thread for the header; the offset is kept on the JS side.
   const offsetHandler = useAnimatedScrollHandler({
@@ -83,30 +92,16 @@ function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset
   });
   const onScroll = useComposedEventHandler([hideOnScroll, offsetHandler]);
 
-  let empty;
+  let state = empty;
   if (query.isPending) {
-    empty = <FeedSkeleton />;
+    state = activity ? (
+      <ActivityIndicator accessibilityLabel="Carregando atividades" style={styles.loading} color={colors.primary} />
+    ) : <FeedSkeleton />;
   } else if (query.isError && query.data === undefined) {
-    empty = (
+    state = (
       <EmptyState
-        title="Não foi possível carregar o feed"
+        title={activity ? 'Não foi possível carregar as atividades' : 'Não foi possível carregar o feed'}
         action={{ label: 'Tentar de novo', onPress: () => void query.refetch() }}
-      />
-    );
-  } else if (scope === 'general') {
-    empty = (
-      <EmptyState
-        title="Ainda não há publicações"
-        message="Seja a primeira pessoa a publicar."
-        action={{ label: 'Publicar', onPress: () => router.push(COMPOSER) }}
-      />
-    );
-  } else {
-    empty = (
-      <EmptyState
-        title="Acompanhe quem joga com você"
-        message="Quando quem você segue publicar ou jogar algo, aparece aqui."
-        action={{ label: 'Encontrar pessoas', onPress: () => router.push(EXPLORE_PEOPLE) }}
       />
     );
   }
@@ -115,21 +110,56 @@ function Feed({ scope, listRef, hideOnScroll, headerHeight, getOffset, setOffset
     <PostList
       ref={listRef}
       query={query}
-      ListEmptyComponent={empty}
+      activityTimeline={activity}
+      ListHeaderComponent={header}
+      ListEmptyComponent={state}
       topInset={headerHeight}
-      bottomInset={FAB_SIZE + 2 * FAB_BOTTOM}
+      bottomInset={activity ? space._2xl : FAB_SIZE + 2 * FAB_BOTTOM}
       onScroll={onScroll}
       onContentSizeChange={restoreOffset}
     />
   );
 }
 
+function Feed({ scope, ...props }: FeedProps & { scope: FeedScope }) {
+  const router = useRouter();
+  const query = useFeed(scope);
+  const empty = scope === 'general' ? (
+      <EmptyState
+        title="Ainda não há publicações"
+        message="Seja a primeira pessoa a publicar."
+        action={{ label: 'Publicar', onPress: () => router.push(COMPOSER) }}
+      />
+    ) : (
+      <EmptyState
+        title="Acompanhe quem joga com você"
+        message="As publicações de quem você segue aparecem aqui."
+        action={{ label: 'Encontrar pessoas', onPress: () => router.push(EXPLORE_PEOPLE) }}
+      />
+    );
+  return <Timeline {...props} channel={scope} query={query} empty={empty} />;
+}
+
+function HomeActivities({ scope, onSelect, ...props }: FeedProps & { scope: FeedScope; onSelect: (scope: FeedScope) => void }) {
+  const query = useActivities({ kind: 'home', scope });
+  return (
+    <Timeline
+      {...props}
+      channel={`activities-${scope}`}
+      query={query}
+      header={<View style={styles.activityFilters}><Tabs items={ACTIVITY_SCOPES} selected={scope} onSelect={onSelect} /></View>}
+      empty={<EmptyState title="Nenhuma atividade ainda" message={scope === 'following' ? 'Os registros de quem você segue aparecem aqui.' : undefined} />}
+    />
+  );
+}
+
 export function HomeScreen() {
   const router = useRouter();
-  const [scope, setScope] = useState<FeedScope>('general');
-  const offsets = useRef<Record<FeedScope, number>>({ general: 0, following: 0 });
-  const getOffset = useCallback((key: FeedScope) => offsets.current[key], []);
-  const setOffset = useCallback((key: FeedScope, offset: number) => {
+  const [scope, setScope] = useState<HomeTab>('general');
+  const [activityScope, setActivityScope] = useState<FeedScope>('following');
+  const offsets = useRef<Partial<Record<TimelineKey, number>>>({});
+  const getOffset = useCallback((key: TimelineKey) => offsets.current[key] ?? 0, []);
+  const setOffset = useCallback((key: TimelineKey, offset: number) => {
     offsets.current[key] = offset;
   }, []);
 
@@ -147,6 +177,7 @@ export function HomeScreen() {
     reveal();
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [reveal]);
+  const feedProps = { listRef, hideOnScroll: scrollHandler, headerHeight, getOffset, setOffset };
 
   return (
     <Screen>
@@ -161,16 +192,14 @@ export function HomeScreen() {
           pointerEvents="none"
           style={[styles.statusBarScrim, { height: insets.top }]}
         />
-        <Feed
-          key={scope}
-          scope={scope}
-          listRef={listRef}
-          hideOnScroll={scrollHandler}
-          headerHeight={headerHeight}
-          getOffset={getOffset}
-          setOffset={setOffset}
-        />
-        <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
+        {scope === 'activities' ? (
+          <HomeActivities key={`activities-${activityScope}`} {...feedProps} scope={activityScope} onSelect={setActivityScope} />
+        ) : (
+          <>
+            <Feed key={scope} {...feedProps} scope={scope} />
+            <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
+          </>
+        )}
       </View>
     </Screen>
   );
@@ -178,6 +207,8 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  activityFilters: { flexDirection: 'row', paddingVertical: space.md },
+  loading: { marginVertical: space._2xl },
   // Floats over the list, which pads its content by the header's measured height.
   header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
   // Over the header too, so the header slides out beneath it.

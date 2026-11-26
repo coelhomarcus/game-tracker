@@ -1,5 +1,5 @@
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import {
   forwardRef,
   useCallback,
@@ -17,12 +17,15 @@ import { showToast } from '@/lib/toast';
 import { colors, space } from '@/theme/tokens';
 
 import { PostFeedItem } from './PostFeedItem';
-import { postKey, type Post, type PostPage } from './types';
+import { PostReplyRow } from './PostReplyRow';
+import { ActivityRow } from './ActivityRow';
+import { itemHref, postKey, toQuotedPost, type Post, type PostPage } from './types';
 
 type Slot = ReactElement | ComponentType;
 
 export type PostListProps = {
   query: UseInfiniteQueryResult<InfiniteData<PostPage>>;
+  activityTimeline?: boolean;
   ListHeaderComponent?: Slot;
   ListEmptyComponent?: Slot;
   /** Defaults to refetching the query and reporting a failure. */
@@ -49,12 +52,13 @@ export type PostListProps = {
 
 type AnimatedListProps = ComponentProps<typeof Animated.FlatList<Post>>;
 
-// The same post can be listed as the original and once per reposter.
+// The same post can appear on its own and as the source of several reposts or replies.
 const keyExtractor = postKey;
 
 export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostList(
   {
     query,
+    activityTimeline = false,
     ListHeaderComponent,
     ListEmptyComponent,
     onRefresh,
@@ -78,16 +82,21 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
   const open = useCallback(
     (post: Post) => {
       if (onPressPost) onPressPost(post);
-      else router.push(`/posts/${post.id}` as Href);
+      else router.push(itemHref(post.id, post.type));
     },
     [onPressPost, router],
   );
 
   const renderItem = useCallback(
     // Rows draw their own top line; the first one sits under the list's header.
-    ({ item, index }: { item: Post; index: number }) => (
-      <PostFeedItem post={item} hideTopBorder={index === 0} onPress={() => open(item)} />
-    ),
+    ({ item, index }: { item: Post; index: number }) => {
+      if (item.type === 'activity') return <ActivityRow activity={item} />;
+      if (item.reason?.type === 'reply') {
+        return <PostReplyRow author={item.reason.by} createdAt={item.reason.at} content={item.reason.content}
+          post={toQuotedPost(item)} hideTopBorder={index === 0} testID="feed-reply" />;
+      }
+      return <PostFeedItem post={item} hideTopBorder={index === 0} onPress={() => open(item)} />;
+    },
     [open],
   );
 
@@ -110,11 +119,11 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
         (result) => result.isError,
         () => true,
       );
-      if (failed) showToast('Não foi possível atualizar o feed');
+      if (failed) showToast(activityTimeline ? 'Não foi possível atualizar as atividades' : 'Não foi possível atualizar o feed');
     } finally {
       setPulling(false);
     }
-  }, [onRefresh, refetch]);
+  }, [activityTimeline, onRefresh, refetch]);
 
   const contentStyle = useMemo(
     () => [
@@ -137,7 +146,7 @@ export const PostList = forwardRef<FlatList<Post>, PostListProps>(function PostL
     footer = (
       <View style={styles.footer}>
         <Text size="sm" tone="medium" style={styles.footerText}>
-          Não foi possível carregar mais posts.
+          {activityTimeline ? 'Não foi possível carregar mais atividades.' : 'Não foi possível carregar mais posts.'}
         </Text>
         <Button label="Tentar de novo" color="secondary" onPress={() => void fetchNextPage()} />
       </View>

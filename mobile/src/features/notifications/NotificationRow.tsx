@@ -2,7 +2,7 @@ import type { Href } from 'expo-router';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Avatar, Text } from '@/components';
-import { displayName } from '@/features/feed/types';
+import { displayName, itemHref } from '@/features/feed/types';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { formatShortRelativeTime } from '@/lib/relativeTime';
 import { colors, hairline, radii, space } from '@/theme/tokens';
@@ -17,17 +17,18 @@ const THUMBNAIL_SIZE = 60;
 const ROW_PADDING_VERTICAL = 12;
 
 /** What one person did. Replies and comments quote their text when the server sent it. */
-function singleVerb(type: NotificationType, excerpt: string | null): string {
+function singleVerb(type: NotificationType, excerpt: string | null, activity: boolean): string {
   switch (type) {
     case 'like':
-      return 'curtiu seu post';
+      return activity ? 'curtiu sua atividade' : 'curtiu seu post';
     case 'repost':
-      return 'repostou seu post';
+      return activity ? 'repostou sua atividade' : 'repostou seu post';
     case 'follow':
       return 'começou a seguir você';
     case 'reply':
       return excerpt === null ? 'respondeu seu comentário' : `respondeu: ${excerpt}`;
     case 'comment':
+      if (activity) return excerpt === null ? 'comentou na sua atividade' : `comentou na sua atividade: ${excerpt}`;
       return excerpt === null ? 'comentou no seu post' : `comentou: ${excerpt}`;
     case 'mention':
       return 'mencionou você';
@@ -47,9 +48,11 @@ const GROUP_VERBS: Partial<Record<NotificationType, string>> = {
 function sentenceOf(group: NotificationGroup): { name: string; others: number; verb: string } {
   const name = displayName(group.first.actor);
   const others = group.actors.length - 1;
-  const plural = GROUP_VERBS[group.type];
+  const activity = group.first.postType === 'activity';
+  const plural = activity && group.type === 'like' ? 'curtiram sua atividade'
+    : activity && group.type === 'repost' ? 'repostaram sua atividade' : GROUP_VERBS[group.type];
   if (others > 0 && plural !== undefined) return { name, others, verb: plural };
-  return { name, others: 0, verb: singleVerb(group.type, group.first.excerpt) };
+  return { name, others: 0, verb: singleVerb(group.type, group.first.excerpt, activity) };
 }
 
 /** Whether the post text goes under the sentence; replies and comments already quote theirs. */
@@ -71,7 +74,7 @@ export function notificationTarget(group: NotificationGroup): Href | null {
   if (group.type === 'follow') {
     return isGroupedRow(group) ? null : (`/users/${group.first.actor.id}` as Href);
   }
-  return group.first.postId === null ? null : (`/posts/${group.first.postId}` as Href);
+  return group.first.postId === null ? null : itemHref(group.first.postId, group.first.postType);
 }
 
 export type NotificationRowProps = {

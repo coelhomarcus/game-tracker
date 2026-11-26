@@ -10,6 +10,7 @@ import { Text } from './Text';
 export type OptionSheetOption<T> = {
   value: T;
   label: string;
+  description?: string;
   icon?: IoniconName;
   /** Removes or throws something away: the label and icon are red. */
   destructive?: boolean;
@@ -54,6 +55,7 @@ export function OptionSheet<T>({
         key={String(option.value)}
         accessibilityRole="button"
         accessibilityLabel={option.label}
+        accessibilityHint={option.description}
         accessibilityState={{ selected: isSelected, disabled: option.disabled === true }}
         disabled={option.disabled}
         onPress={() => {
@@ -69,13 +71,17 @@ export function OptionSheet<T>({
             color={option.destructive ? colors.danger : colors.text}
           />
         ) : null}
-        <Text
-          weight={isSelected ? 'bold' : 'normal'}
-          tone={option.destructive ? 'danger' : isSelected ? 'high' : 'default'}
-          style={styles.label}
-        >
-          {option.label}
-        </Text>
+        <View style={styles.label}>
+          <Text
+            weight={isSelected ? 'bold' : 'normal'}
+            tone={option.destructive ? 'danger' : isSelected ? 'high' : 'default'}
+          >
+            {option.label}
+          </Text>
+          {option.description ? (
+            <Text size="sm" tone="medium">{option.description}</Text>
+          ) : null}
+        </View>
         {isSelected ? <Ionicons name="checkmark" size={22} color={colors.primary} /> : null}
       </Pressable>
     );
@@ -126,7 +132,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.md,
   },
-  label: { flex: 1 },
+  label: { flex: 1, paddingVertical: space.xs, gap: space._2xs },
   disabled: { opacity: 0.5 },
   sectionDivider: {
     borderTopWidth: hairline,

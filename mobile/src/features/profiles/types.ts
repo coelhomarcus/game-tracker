@@ -1,3 +1,4 @@
+import { parseQuotedPost, type PostReference } from '@/features/feed/types';
 import { parseUserSummary, type UserSummary } from '@/features/games/types';
 
 export type ImageKind = 'avatar' | 'banner';
@@ -67,8 +68,8 @@ export type UserReply = {
   parentCommentId: string | null;
   content: string;
   createdAt: Date;
-  /** The post the comment is on: its author and text, quoted under the comment. */
-  post: { id: string; author: UserSummary; content: string };
+  /** The original publication, shown below the reply. */
+  post: PostReference;
 };
 
 export type UserReplyPage = { items: UserReply[]; nextCursor: string | null };
@@ -142,18 +143,19 @@ export function parseSuggestedPerson(json: Json): SuggestedPerson {
 /** `GET /users/:id/comments`: comment rows, each with its post and the post's author. */
 export function parseUserReplyPage(json: Json): UserReplyPage {
   return {
-    items: (json.items as Json[]).map((item) => ({
-      id: item.id,
-      postId: item.postId,
-      parentCommentId: nullableString(item.parentCommentId),
-      content: typeof item.content === 'string' ? item.content : '',
-      createdAt: new Date(item.createdAt),
-      post: {
-        id: item.post?.id ?? item.postId,
-        author: parseUserSummary(item.post?.user ?? {}),
-        content: typeof item.post?.content === 'string' ? item.post.content : '',
-      },
-    })),
+    items: (json.items as Json[]).map((item) => {
+      const { id, author, content, type, images, game, createdAt } = parseQuotedPost({
+        ...item.post, id: item.post?.id ?? item.postId, user: item.post?.user ?? {},
+      });
+      return {
+        id: item.id,
+        postId: item.postId,
+        parentCommentId: nullableString(item.parentCommentId),
+        content: typeof item.content === 'string' ? item.content : '',
+        createdAt: new Date(item.createdAt),
+        post: { id, author, content, type, images, game, createdAt: Number.isNaN(createdAt.getTime()) ? undefined : createdAt },
+      };
+    }),
     nextCursor: nullableString(json.nextCursor),
   };
 }

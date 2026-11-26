@@ -31,6 +31,7 @@ export type PostMoreMenuProps = {
  */
 export function PostMoreMenu({ post, visible, narrow, onShare, onClose, onDone }: PostMoreMenuProps) {
   const isMine = useSession((state) => state.user?.id === post.author.id);
+  const activity = post.type === 'activity';
   const deletePost = useDeletePost();
   const [confirmDelete, setConfirmDelete] = useState(false);
   // A profile in the cache knows whether the author is already muted or blocked; without one the
@@ -52,16 +53,16 @@ export function PostMoreMenu({ post, visible, narrow, onShare, onClose, onDone }
   };
 
   const options: OptionSheetOption<Choice>[] = [];
-  if (narrow) options.push({ value: 'share', label: 'Compartilhar', icon: 'share-outline' });
-  if (post.content) options.push({ value: 'copy', label: 'Copiar texto', icon: 'copy-outline' });
-  if (isMine) options.push({ value: 'delete', label: 'Apagar post', icon: 'trash-outline' });
+  if (!activity && narrow) options.push({ value: 'share', label: 'Compartilhar', icon: 'share-outline' });
+  if (!activity && post.content) options.push({ value: 'copy', label: 'Copiar texto', icon: 'copy-outline' });
+  if (isMine) options.push({ value: 'delete', label: activity ? 'Apagar atividade' : 'Apagar post', icon: 'trash-outline' });
   else options.push(...moderation.options);
 
   return (
     <>
       <OptionSheet<Choice>
         visible={visible}
-        title="Opções do post"
+        title={activity ? 'Opções da atividade' : 'Opções do post'}
         options={options}
         onSelect={(choice) => {
           if (choice === 'share') onShare();
@@ -73,7 +74,7 @@ export function PostMoreMenu({ post, visible, narrow, onShare, onClose, onDone }
       />
       <ConfirmDialog
         visible={confirmDelete}
-        title="Apagar post?"
+        title={activity ? 'Apagar atividade?' : 'Apagar post?'}
         message="Isso não pode ser desfeito."
         confirmLabel="Apagar"
         cancelLabel="Cancelar"

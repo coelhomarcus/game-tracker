@@ -53,15 +53,15 @@ export const profilesApi = {
   async posts(id: string, type: 'activity' | 'post', cursor?: string): Promise<PostPage> {
     const query =
       cursor === undefined ? { type, limit: PAGE_SIZE } : { type, limit: PAGE_SIZE, cursor };
-    return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }));
+    return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }), type);
   },
 
   /** A profile's own posts. `media` keeps only the originals that carry an image (no reposts). */
   async userPosts(id: string, options: { filter?: 'media'; cursor?: string } = {}): Promise<PostPage> {
-    const query: Record<string, string | number> = { limit: PAGE_SIZE };
+    const query: Record<string, string | number> = { limit: PAGE_SIZE, type: 'post' };
     if (options.filter !== undefined) query.filter = options.filter;
     if (options.cursor !== undefined) query.cursor = options.cursor;
-    return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }));
+    return parsePostPage(await api.get<Json>(`/users/${id}/posts`, { query }), 'post');
   },
 
   /** Who follows `id`, newest follow first. The cursor is opaque. */

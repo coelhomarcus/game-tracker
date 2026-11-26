@@ -1,3 +1,5 @@
+import { QueryObserver } from '@tanstack/react-query';
+
 import { useSession, type User } from '@/features/auth';
 import { queryClient } from '@/lib/queryClient';
 import { chatSocket } from '@/test-utils/fakeChatSocket';
@@ -160,8 +162,8 @@ describe('lifecycle', () => {
   it('removes every listener and typing timer on stop and is idempotent', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
     realtimeBridge.start();
-    // Seven server events and the reconnect hook, registered once.
-    expect(chatSocket.listenerCount()).toBe(8);
+    // Eight server events and the reconnect hook, registered once.
+    expect(chatSocket.listenerCount()).toBe(9);
     chatSocket.fire('typing:start', { conversationId: 'c1', userId: 'u2' });
 
     realtimeBridge.stop();
@@ -170,6 +172,29 @@ describe('lifecycle', () => {
     expect(chatSocket.listenerCount()).toBe(0);
     expect(store().typing).toEqual({});
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('conversation:updated', () => {
+  it('refreshes a closed conversation list after an older request finishes', async () => {
+    const older = deferred<Conversation[]>();
+    const latest = { id: 'c1', otherUser: null, lastMessage: cached('m1', 'c1', 5), unread: true, muted: false };
+    mocked.list.mockReturnValueOnce(older.promise).mockResolvedValueOnce([latest]);
+    const observer = new QueryObserver(queryClient, { queryKey: conversationsKey, queryFn: chatApi.list });
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    try {
+      chatSocket.fire('conversation:updated', { conversationId: 'c1' });
+      expect(mocked.list).toHaveBeenCalledTimes(1);
+      older.resolve([]);
+      await flush();
+
+      expect(mocked.list).toHaveBeenCalledTimes(2);
+      expect(conversations()).toEqual([latest]);
+      expect(mocked.markRead).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
   });
 });
 

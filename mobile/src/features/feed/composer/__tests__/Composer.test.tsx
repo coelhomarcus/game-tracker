@@ -471,7 +471,7 @@ describe('Composer game link', () => {
     expect(mockByIgdbId).toHaveBeenCalledWith(11);
     expect(await screen.findByRole('button', { name: 'Remover vínculo com o jogo' })).toBeOnTheScreen();
     expect(within(screen.getByTestId('composer-game-card')).getByText('Hades')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Desvincular Hades' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Trocar jogo' })).toBeOnTheScreen();
     expect(screen.queryByLabelText('Buscar jogos')).not.toBeOnTheScreen();
 
     await press('Publicar');
@@ -501,15 +501,37 @@ describe('Composer game link', () => {
     expect(mockCreate).toHaveBeenCalledWith({ content: 'Oi' });
   });
 
-  it('removes the link from the pill', async () => {
+  it('reopens the picker to change the linked game and keeps it if cancelled', async () => {
+    const celeste = makeGame({ id: 'g2', igdbId: 22, name: 'Celeste' });
+    mockSearch([summary, celeste]);
+    mockByIgdbId.mockResolvedValueOnce(makeGame()).mockResolvedValueOnce(celeste);
     await renderScreen();
     await linkHadesThroughTheSheet();
     await screen.findByTestId('composer-game-card');
 
-    await press('Desvincular Hades');
+    await press('Trocar jogo');
+    await press('Fechar');
+    expect(within(screen.getByTestId('composer-game-card')).getByText('Hades')).toBeOnTheScreen();
+    await press('Trocar jogo');
+    await fireEvent.changeText(screen.getByLabelText('Buscar jogos'), 'Cel');
+    await press('Celeste');
+    expect(await within(screen.getByTestId('composer-game-card')).findByText('Celeste')).toBeOnTheScreen();
+    expect(mockByIgdbId).toHaveBeenLastCalledWith(22);
+  });
 
-    expect(screen.queryByTestId('composer-game-card')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Vincular jogo' })).toBeOnTheScreen();
+  it('presents a game from the library once and returns to it after clearing the search', async () => {
+    const game = makeGame();
+    mockEntries([makeEntry(game), makeEntry(game, { id: 'e2' })]);
+    await renderScreen();
+    await press('Vincular jogo');
+    expect(screen.getByText('Da sua biblioteca')).toBeOnTheScreen();
+    expect(screen.getAllByRole('button', { name: 'Hades' })).toHaveLength(1);
+    await fireEvent.changeText(screen.getByLabelText('Buscar jogos'), 'Had');
+    await press('Limpar busca');
+    expect(screen.getByLabelText('Buscar jogos').props.value).toBe('');
+    expect(screen.getByText('Da sua biblioteca')).toBeOnTheScreen();
+    await press('Hades');
+    expect(await screen.findByTestId('composer-game-card')).toBeOnTheScreen();
   });
 
   it('shows the linking state while the game is resolved', async () => {

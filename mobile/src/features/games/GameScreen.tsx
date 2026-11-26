@@ -1,15 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState, GameCover, Screen, Tabs, Text } from '@/components';
+import { EmptyState, Screen, TabBar } from '@/components';
 import { useLibrary } from '@/features/library/queries';
 import { ApiError } from '@/lib/http/errors';
 import { colors, space } from '@/theme/tokens';
 
 import { GameAbout } from './GameAbout';
 import { GameCommunity } from './GameCommunity';
+import { GameHeader } from './GameHeader';
 import { GameNotFound } from './GameNotFound';
 import { GameProgress } from './GameProgress';
 import { useGame, useToggleFavorite } from './queries';
@@ -23,7 +23,7 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: 'community', label: 'Comunidade' },
 ];
 
-const COVER_WIDTH = 120;
+const GAME_MAX_WIDTH = 760;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -40,7 +40,8 @@ export function GameScreen() {
   const params = useLocalSearchParams<{ igdbId?: string | string[]; tab?: string | string[] }>();
   const igdbId = parseIgdbId(firstParam(params.igdbId));
   if (igdbId === null) return <GameNotFound />;
-  const initialTab = firstParam(params.tab) === 'progress' ? 'progress' : 'about';
+  const requestedTab = firstParam(params.tab);
+  const initialTab = requestedTab === 'progress' || requestedTab === 'community' ? requestedTab : 'about';
   return <GameLoader igdbId={igdbId} initialTab={initialTab} />;
 }
 
@@ -91,63 +92,37 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
     router.push(`/games/${game.igdbId}/playthroughs/new` as Href);
   }
 
+  const recordLabel = entries.length === 0 ? 'Adicionar à biblioteca' : 'Novo registro';
+
   return (
     <Screen scroll>
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <GameCover name={game.name} url={game.coverUrl} width={COVER_WIDTH} />
-          <View style={styles.headerText}>
-            <Text accessibilityRole="header" size="_3xl" weight="bold" tone="high">
-              {game.name}
-            </Text>
-            {game.platforms.length > 0 ? (
-              <Text size="sm" tone="medium">
-                {game.platforms.join(' · ')}
-              </Text>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={game.isFavoritedByMe ? 'Remover dos favoritos' : 'Favoritar'}
-              hitSlop={space.sm}
-              onPress={() =>
-                toggleFavorite.mutate({ gameId: game.id, favorite: !game.isFavoritedByMe })
-              }
-              style={styles.favorite}
-            >
-              <Ionicons
-                name={game.isFavoritedByMe ? 'heart' : 'heart-outline'}
-                size={28}
-                color={colors.primary}
+      <View style={styles.page}>
+        <GameHeader
+          game={game}
+          recordLabel={library.data ? recordLabel : undefined}
+          onCreateRecord={createRecord}
+          onToggleFavorite={() => toggleFavorite.mutate({ gameId: game.id, favorite: !game.isFavoritedByMe })}
+        />
+
+        <TabBar items={TABS} selected={tab} onSelect={setTab} />
+
+        <View style={styles.content}>
+          {tab === 'about' ? <GameAbout game={game} /> : null}
+          {tab === 'progress' ? (
+            library.data ? (
+              <GameProgress igdbId={game.igdbId} entries={entries} onCreate={createRecord} />
+            ) : library.isError ? (
+              <EmptyState
+                title="Não foi possível carregar"
+                message="Verifique a conexão e tente de novo."
+                action={{ label: 'Tentar novamente', onPress: () => void library.refetch() }}
               />
-            </Pressable>
-          </View>
+            ) : (
+              <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
+            )
+          ) : null}
+          {tab === 'community' ? <GameCommunity gameId={game.id} igdbId={game.igdbId} /> : null}
         </View>
-        {library.data ? (
-          <Button
-            label={entries.length === 0 ? 'Adicionar à biblioteca' : 'Novo registro'}
-            onPress={createRecord}
-          />
-        ) : null}
-      </View>
-
-      <Tabs items={TABS} selected={tab} onSelect={setTab} />
-
-      <View style={styles.content}>
-        {tab === 'about' ? <GameAbout game={game} /> : null}
-        {tab === 'progress' ? (
-          library.data ? (
-            <GameProgress igdbId={game.igdbId} entries={entries} onCreate={createRecord} />
-          ) : library.isError ? (
-            <EmptyState
-              title="Não foi possível carregar"
-              message="Verifique a conexão e tente de novo."
-              action={{ label: 'Tentar novamente', onPress: () => void library.refetch() }}
-            />
-          ) : (
-            <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />
-          )
-        ) : null}
-        {tab === 'community' ? <GameCommunity gameId={game.id} igdbId={game.igdbId} /> : null}
       </View>
     </Screen>
   );
@@ -155,10 +130,6 @@ function GameBody({ game, initialTab }: { game: Game; initialTab: TabValue }) {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  header: { padding: space.lg, gap: space.lg },
-  headerRow: { flexDirection: 'row', gap: space.lg },
-  headerText: { flex: 1, gap: space.sm, alignItems: 'flex-start' },
-
-  favorite: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: space.lg },
+  page: { width: '100%', maxWidth: GAME_MAX_WIDTH, alignSelf: 'center' },
+  content: { padding: space.lg, paddingBottom: space._4xl },
 });

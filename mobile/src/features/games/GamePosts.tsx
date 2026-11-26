@@ -5,7 +5,7 @@ import { Button, Text } from '@/components';
 import { PostFeedItem } from '@/features/feed/PostFeedItem';
 import { useGamePosts } from '@/features/feed/queries';
 import { postKey } from '@/features/feed/types';
-import { colors, space } from '@/theme/tokens';
+import { colors, hairline, radii, space } from '@/theme/tokens';
 
 export type GamePostsProps = {
   gameId: string;
@@ -22,13 +22,19 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
 
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
-        Posts
-      </Text>
-      <Button
-        label="Publicar sobre este jogo"
-        onPress={() => router.push(`/posts/new?igdbId=${igdbId}` as Href)}
-      />
+      <View style={styles.header}>
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">
+          Posts
+        </Text>
+        <Button
+          label="Publicar"
+          accessibilityLabel="Publicar sobre este jogo"
+          icon="create-outline"
+          size="small"
+          color="secondary"
+          onPress={() => router.push(`/posts/new?igdbId=${igdbId}` as Href)}
+        />
+      </View>
       {posts ? (
         posts.length === 0 ? (
           <View style={styles.empty}>
@@ -77,7 +83,15 @@ export function GamePosts({ gameId, igdbId }: GamePostsProps) {
 }
 
 const styles = StyleSheet.create({
-  section: { gap: space.md },
-  empty: { gap: space.xs },
+  section: { gap: space.lg },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: space.sm },
+  empty: {
+    gap: space.xs,
+    padding: space.lg,
+    backgroundColor: colors.bgContrast25,
+    borderRadius: radii.lg,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+  },
   rows: { marginHorizontal: -space.lg },
 });

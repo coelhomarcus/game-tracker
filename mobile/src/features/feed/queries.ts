@@ -11,6 +11,7 @@ import {
 import { useCallback } from "react";
 
 import { authErrorMessage } from "@/features/auth";
+import { profilesApi } from "@/features/profiles/api";
 import {
   invalidateOwnLikes,
   invalidateOwnProfile,
@@ -79,6 +80,24 @@ export function useGamePosts(gameId?: string) {
       gameId === undefined
         ? skipToken
         : ({ pageParam }) => feedApi.gamePosts(gameId, pageParam),
+    initialPageParam: undefined,
+    getNextPageParam: nextPage,
+  });
+}
+
+export type ActivitySource =
+  | { kind: 'home'; scope: FeedScope }
+  | { kind: 'profile' | 'game'; id: string };
+
+export function useActivities(source: ActivitySource) {
+  const key = source.kind === 'home' ? source.scope : source.id;
+  return useInfiniteQuery<PostPage, Error, PostPages, readonly unknown[], string | undefined>({
+    queryKey: ['activities', source.kind, key],
+    queryFn: ({ pageParam }) => {
+      if (source.kind === 'home') return feedApi.feed(source.scope, pageParam, 'activity');
+      if (source.kind === 'game') return feedApi.gamePosts(source.id, pageParam, 'activity');
+      return profilesApi.posts(source.id, 'activity', pageParam);
+    },
     initialPageParam: undefined,
     getNextPageParam: nextPage,
   });
@@ -271,7 +290,7 @@ export function useDeletePost() {
       removePostEverywhere(client, post);
       // The post's comments went with it: any Respostas list may hold one of them.
       void client.invalidateQueries({ queryKey: ["userReplies"] });
-      showToast("Post apagado");
+      showToast(post.type === 'activity' ? 'Atividade apagada' : 'Post apagado');
       whenIdle(client, refreshOwnProfile);
     },
     onError: (error) => showToast(authErrorMessage(error)),
@@ -321,6 +340,7 @@ export function useAddComment(postId: string) {
       }));
       // The own profile lists the comment under Respostas.
       void invalidateOwnReplies(client);
+      void client.invalidateQueries({ queryKey: ['feed'] });
       return client.invalidateQueries({ queryKey: ["comments", postId] });
     },
   });
@@ -396,6 +416,7 @@ export function useDeleteComment(postId: string) {
       showToast("Comentário apagado");
       // Replies other people wrote to this comment went with it (cascade): any Respostas list may hold one.
       void client.invalidateQueries({ queryKey: ["userReplies"] });
+      void client.invalidateQueries({ queryKey: ['feed'] });
       whenIdle(client);
     },
     onError: (error) => showToast(authErrorMessage(error)),

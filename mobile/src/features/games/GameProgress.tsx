@@ -2,7 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, ConfirmDialog, EmptyState, OptionSheet } from '@/components';
+import { Button, ConfirmDialog, EmptyState, OptionSheet, Text } from '@/components';
 import { authErrorMessage } from '@/features/auth';
 import { EntryCard } from '@/features/library/EntryCard';
 import { useDeleteEntry, useUpdateEntry } from '@/features/library/queries';
@@ -50,6 +50,7 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
   if (entries.length === 0) {
     return (
       <EmptyState
+        icon="game-controller-outline"
         title="Você ainda não registrou este jogo"
         message="Crie um registro para acompanhar status, horas e nota."
         action={{ label: 'Novo registro', onPress: onCreate }}
@@ -89,10 +90,18 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
 
   return (
     <View style={styles.root}>
+      <View style={styles.heading}>
+        <Text accessibilityRole="header" size="xl" weight="bold" tone="high">Seus registros</Text>
+        <Text size="sm" tone="medium">
+          {`${entries.length} ${entries.length === 1 ? 'registro' : 'registros'}`}
+        </Text>
+      </View>
       {entries.map((entry) => (
         <EntryCard key={entry.id} entry={entry} onOpenMenu={() => setMenuEntry(entry)} />
       ))}
-      <Button color="secondary" label="Novo registro (replay)" onPress={onCreate} />
+      <View style={styles.replay}>
+        <Button color="secondary" variant="ghost" size="small" icon="add" label="Novo registro (replay)" onPress={onCreate} />
+      </View>
 
       <OptionSheet
         visible={menuEntry !== null}
@@ -125,4 +134,6 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
 
 const styles = StyleSheet.create({
   root: { gap: space.md },
+  heading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: space.sm },
+  replay: { alignSelf: 'flex-start' },
 });

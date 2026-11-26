@@ -1,19 +1,10 @@
-import { useRouter, type Href } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components';
-import { statusLabel } from '@/features/library/status';
-import { formatRelativeTime } from '@/lib/relativeTime';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
-import { PostMeta } from '../PostMeta';
-import { displayName, type QuotedPost as QuotedPostData } from '../types';
-import { ImageGrid } from './ImageGrid';
-
-const MAX_LINES = 20;
-const AVATAR_SIZE = 16;
-/** The quoted post's first image is a preview: a fixed landscape box, whatever its shape. */
-const PREVIEW_ASPECT = 16 / 9;
+import type { QuotedPost as QuotedPostData } from '../types';
+import { PostPreview } from './PostPreview';
 
 export type QuotedPostProps = {
   post: QuotedPostData;
@@ -23,70 +14,13 @@ export type QuotedPostProps = {
 
 /** The original of a quote post, one level deep: a card that opens it. */
 export function QuotedPost({ post, onPress }: QuotedPostProps) {
-  const router = useRouter();
-  const name = displayName(post.author);
-  const time = formatRelativeTime(post.createdAt);
-  const status = post.type === 'activity' ? post.activityStatus : null;
-  const label = [`Post citado de ${name}, ${time}`, status ? statusLabel[status] : null]
-    .filter(Boolean)
-    .join(', ');
-  const accessibilityLabel = post.content ? `${label}: ${post.content}` : label;
-
-  const content = (
-    <>
-      <PostMeta
-        author={post.author}
-        createdAt={post.createdAt}
-        linked={false}
-        avatarSize={AVATAR_SIZE}
-      />
-      {post.content ? <Text numberOfLines={MAX_LINES}>{post.content}</Text> : null}
-      {status ? (
-        <Text size="sm" style={{ color: colors.status[status] }}>
-          {statusLabel[status]}
-        </Text>
-      ) : null}
-      {post.images.length > 0 ? (
-        <View style={styles.image}>
-          <ImageGrid
-            images={post.images.slice(0, 1)}
-            interactive={false}
-            aspect={PREVIEW_ASPECT}
-          />
-        </View>
-      ) : null}
-    </>
-  );
-
-  if (onPress === null) {
-    return (
-      <View
-        testID="quoted-post"
-        accessible
-        accessibilityLabel={accessibilityLabel}
-        style={styles.card}
-      >
-        {content}
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      testID="quoted-post"
-      accessibilityRole="link"
-      accessibilityLabel={accessibilityLabel}
-      onPress={onPress ?? (() => router.push(`/posts/${post.id}` as Href))}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-    >
-      {content}
-    </Pressable>
-  );
+  return <PostPreview post={post} kind="quote" onPress={onPress} testID="quoted-post" />;
 }
 
 /** Where the original of a quote post was, once it is deleted. */
 export function RemovedQuote() {
   return (
-    <View testID="quoted-post-removed" style={[styles.card, styles.removed]}>
+    <View testID="quoted-post-removed" style={styles.removed}>
       <Text size="sm" tone="low">
         Post removido
       </Text>
@@ -95,14 +29,11 @@ export function RemovedQuote() {
 }
 
 const styles = StyleSheet.create({
-  card: {
+  removed: {
     padding: space.md,
     borderRadius: radii.md,
     borderWidth: hairline,
     borderColor: colors.borderLow,
-    gap: space.xs,
+    backgroundColor: colors.bgContrast25,
   },
-  pressed: { backgroundColor: colors.bgContrast25 },
-  removed: { backgroundColor: colors.bgContrast25 },
-  image: { marginTop: space.xs },
 });

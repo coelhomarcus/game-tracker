@@ -7,14 +7,17 @@ import { colors } from '@/theme/tokens';
 import { HomeHeaderLeft } from './HomeHeaderLeft';
 import type { FeedScope } from './types';
 
-export const FEED_SCOPES: { value: FeedScope; label: string }[] = [
+export type HomeTab = FeedScope | 'activities';
+
+export const FEED_SCOPES: { value: HomeTab; label: string }[] = [
   { value: 'general', label: 'Para você' },
   { value: 'following', label: 'Seguindo' },
+  { value: 'activities', label: 'Atividades' },
 ];
 
 export type HomeHeaderProps = {
-  scope: FeedScope;
-  onSelectScope: (scope: FeedScope) => void;
+  scope: HomeTab;
+  onSelectScope: (scope: HomeTab) => void;
   /** The title and the selected scope's tab take the feed back to the top. */
   onScrollToTop: () => void;
 };

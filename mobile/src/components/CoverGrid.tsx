@@ -53,6 +53,7 @@ export type CoverGridProps<T> = {
   listRef?: Ref<FlashListRef<T>>;
   /** A Reanimated scroll handler (`useAnimatedScrollHandler`), e.g. for a header over the grid. */
   onScroll?: ScrollHandlerProcessed<Record<string, unknown>>;
+  onContentSizeChange?: (width: number, height: number) => void;
   /** Room above the content for a header floating over the grid; the refresh spinner starts below it. */
   topInset?: number;
   /** Room below the content, e.g. to keep the last row clear of a floating button. */
@@ -75,6 +76,7 @@ export function CoverGrid<T>({
   inset = 0,
   listRef,
   onScroll,
+  onContentSizeChange,
   topInset = 0,
   bottomInset,
   minContentHeight,
@@ -116,6 +118,7 @@ export function CoverGrid<T>({
             )}
             contentContainerStyle={Object.keys(contentStyle).length > 0 ? contentStyle : undefined}
             contentOffset={initialOffset ? { x: 0, y: initialOffset } : undefined}
+            onContentSizeChange={onContentSizeChange}
             keyboardShouldPersistTaps="handled"
             onRefresh={onRefresh}
             refreshing={refreshing}

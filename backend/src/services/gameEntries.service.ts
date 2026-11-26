@@ -36,16 +36,16 @@ const ACTIVITY_VERB: Partial<Record<GameEntryStatus, (gameName: string) => strin
 };
 
 /** Best-effort: nunca deixa o post automático quebrar o fluxo principal de criar/atualizar o registro. */
-async function createActivityPost(userId: string, entryId: string, gameName: string, status: GameEntryStatus) {
-  const content = ACTIVITY_VERB[status]?.(gameName);
+async function recordActivity(userId: string, entryId: string, game: { id: string; name: string }, status: GameEntryStatus) {
+  const content = ACTIVITY_VERB[status]?.(game.name);
   if (!content) return;
 
   try {
     // activityStatus é o snapshot imutável do status no momento desta
     // atividade — não pode vir de gameEntry.status, que muda depois.
-    await postsService.create(userId, { content, gameEntryId: entryId, activityStatus: status, type: 'activity' });
+    await postsService.recordGameActivity({ userId, gameEntryId: entryId, gameId: game.id, activityStatus: status, content });
   } catch (err) {
-    console.error('Falha ao criar post de atividade automático:', err);
+    console.error('Falha ao gravar atividade automática:', err);
   }
 }
 
@@ -75,7 +75,7 @@ export async function create(userId: string, input: CreateInput) {
     })
     .returning();
 
-  void createActivityPost(userId, created!.id, game.name, input.status);
+  await recordActivity(userId, created!.id, game, input.status);
 
   return getWithGame(created!.id);
 }
@@ -140,7 +140,7 @@ export async function update(userId: string, entryId: string, input: UpdateInput
     result &&
     (input.status === 'playing' || input.status === 'completed' || input.status === 'dropped')
   ) {
-    void createActivityPost(userId, entryId, result.game.name, input.status);
+    await recordActivity(userId, entryId, result.game, input.status);
   }
 
   return result;

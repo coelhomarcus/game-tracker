@@ -12,6 +12,7 @@ type PostPages = InfiniteData<PostPage, string | undefined>;
 
 const LIST_KEYS: readonly QueryKey[] = [
   ['feed'],
+  ['activities'],
   ['gamePosts'],
   ['userPosts'],
   ['bookmarks'],

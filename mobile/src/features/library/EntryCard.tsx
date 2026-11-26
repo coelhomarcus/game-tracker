@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/dateOnly';
 import { formatHours } from '@/lib/hours';
 import { colors, hairline, radii, space } from '@/theme/tokens';
 
-import { statusIcon, statusLabel } from './status';
+import { statusIcon, statusLabel, type IoniconName } from './status';
 import type { GameEntry } from './types';
 
 const NOTES_LINES = 3;
@@ -19,24 +19,24 @@ export type EntryCardProps = {
 
 /** One playthrough of a game: status, platform, dates, hours, rating and private notes. */
 export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
-  const details: string[] = [];
-  if (entry.startedAt) details.push(`Início ${formatDate(entry.startedAt)}`);
-  if (entry.finishedAt) details.push(`Fim ${formatDate(entry.finishedAt)}`);
+  const statusColor = colors.status[entry.status];
+  const details: { icon: IoniconName; label: string }[] = [];
+  if (entry.startedAt) details.push({ icon: 'calendar-outline', label: `Início ${formatDate(entry.startedAt)}` });
+  if (entry.finishedAt) details.push({ icon: 'flag-outline', label: `Fim ${formatDate(entry.finishedAt)}` });
+  if (entry.hoursPlayed !== null) details.push({ icon: 'time-outline', label: `${formatHours(entry.hoursPlayed)} h` });
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.statusTile, { backgroundColor: `${statusColor}1A` }]}
+        >
+          <Ionicons name={statusIcon[entry.status]} size={21} color={statusColor} />
+        </View>
         <View style={styles.headerText}>
-          <View style={styles.statusRow}>
-            <Ionicons
-              name={statusIcon[entry.status]}
-              size={20}
-              color={colors.status[entry.status]}
-            />
-            <Text weight="bold" tone="high">
-              {statusLabel[entry.status]}
-            </Text>
-          </View>
+          <Text weight="bold" tone="high">{statusLabel[entry.status]}</Text>
           <Text size="sm" tone="medium">
             {entry.platform}
           </Text>
@@ -46,22 +46,20 @@ export function EntryCard({ entry, onOpenMenu }: EntryCardProps) {
           accessibilityLabel="Ações do registro"
           hitSlop={space.sm}
           onPress={onOpenMenu}
-          style={styles.menu}
+          style={({ pressed }) => [styles.menu, pressed && styles.menuPressed]}
         >
-          <Ionicons name="ellipsis-vertical" size={MENU_ICON_SIZE} color={colors.text} />
+          <Ionicons name="ellipsis-horizontal" size={MENU_ICON_SIZE} color={colors.textMedium} />
         </Pressable>
       </View>
 
-      {details.length > 0 || entry.hoursPlayed !== null ? (
+      {details.length > 0 ? (
         <View style={styles.facts}>
-          {details.map((text) => (
-            <Text key={text} size="sm">
-              {text}
-            </Text>
+          {details.map(({ icon, label }) => (
+            <View key={icon} style={styles.fact}>
+              <Ionicons name={icon} size={15} color={colors.textMedium} accessibilityElementsHidden importantForAccessibility="no" />
+              <Text size="sm">{label}</Text>
+            </View>
           ))}
-          {entry.hoursPlayed !== null ? (
-            <Text size="sm">{`${formatHours(entry.hoursPlayed)} h`}</Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -89,15 +87,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgContrast25,
     borderWidth: hairline,
     borderColor: colors.borderLow,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: space.lg,
     gap: space.md,
   },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  headerText: { flex: 1, gap: space.xs },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  menu: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  headerText: { flex: 1, gap: space._2xs },
+  statusTile: { width: 40, height: 40, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center' },
+  menu: { width: 40, height: 40, borderRadius: radii.full, alignItems: 'center', justifyContent: 'center' },
+  menuPressed: { backgroundColor: colors.bgContrast50 },
   facts: { flexDirection: 'row', flexWrap: 'wrap', columnGap: space.lg, rowGap: space.xs },
-  notes: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  fact: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  notes: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingTop: space.md,
+    borderTopWidth: hairline,
+    borderColor: colors.borderLow,
+  },
   notesText: { flex: 1 },
 });

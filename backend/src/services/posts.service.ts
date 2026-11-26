@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
 import {
   bookmarks,
@@ -123,6 +123,7 @@ function mapPost(row: PostRow, stats: PostStats, hideQuote = false) {
   const images = imagesOf(imageRows, row.imageUrl);
   return {
     ...rest,
+    game: row.game ?? (row.type === 'activity' ? row.gameEntry?.game ?? null : null),
     ...(hideQuote ? { quotedPostId: null, quotedPostRemoved: true } : {}),
     // Compatibilidade: `imageUrl` continua sendo a primeira imagem.
     imageUrl: images[0]?.url ?? null,
@@ -180,18 +181,22 @@ interface CreatePostInput {
   content: string;
   gameEntryId?: string;
   gameId?: string;
-  /**
-   * Só setado internamente por `createActivityPost` (gameEntries.service.ts)
-   * — nunca fica exposto no schema público de criação de post, senão um
-   * cliente poderia forjar o ícone de qualquer post comum.
-   */
-  activityStatus?: GameEntryStatus;
-  type: PostType;
+  type: Exclude<PostType, 'activity'>;
   /** Legado: equivale a `images: [{ url }]`. */
   imageUrl?: string;
   /** Imagens já enviadas por `POST /posts/images`, na ordem de exibição (no máximo 4). */
   images?: { url: string; width: number; height: number; alt?: string }[];
   quotedPostId?: string;
+}
+
+export async function recordGameActivity(input: {
+  userId: string;
+  gameEntryId: string;
+  gameId: string;
+  activityStatus: GameEntryStatus;
+  content: string;
+}) {
+  await db.insert(posts).values({ ...input, type: 'activity' });
 }
 
 /** Salva uma imagem de post e devolve a URL pública dela com o tamanho final. */
@@ -231,7 +236,7 @@ export async function create(userId: string, input: CreatePostInput) {
     if (!game) throw new AppError(404, 'not_found', 'Jogo não encontrado');
   }
 
-  const quoted = input.quotedPostId ? await getInteractablePostOrThrow(userId, input.quotedPostId) : null;
+  const quoted = input.quotedPostId ? await getPublicationOrThrow(userId, input.quotedPostId) : null;
   // O `imageUrl` legado é a primeira imagem: passa pela mesma validação e ganha sua linha em
   // `post_images` (o tamanho enviado aqui é só um espaço reservado; vale o do arquivo).
   const requested = input.images?.length ? input.images : input.imageUrl ? [{ url: input.imageUrl, width: 1, height: 1 }] : [];
@@ -242,7 +247,6 @@ export async function create(userId: string, input: CreatePostInput) {
     content: input.content,
     gameEntryId: input.gameEntryId,
     gameId: resolvedGameId,
-    activityStatus: input.activityStatus,
     type: input.type,
     // `imageUrl` segue sendo a primeira imagem (compatibilidade com quem lê só ele).
     imageUrl: images[0]?.url,
@@ -276,11 +280,12 @@ export async function create(userId: string, input: CreatePostInput) {
 
 /**
  * De onde vêm os itens de uma linha do tempo: o filtro dos posts originais e o dos reposts
- * (`null` = sem reposts). Os dois filtros são escritos sobre `posts` e `reposts` sem alias.
+ * (`null` = sem reposts), e o filtro opcional de respostas. Os filtros são escritos sobre as tabelas sem alias.
  */
 interface TimelineSource {
   posts: SQL;
   reposts: SQL | null;
+  replies?: SQL;
 }
 
 interface TimelineRow extends Record<string, unknown> {
@@ -288,17 +293,18 @@ interface TimelineRow extends Record<string, unknown> {
   item_id: string;
   at_text: string;
   post_id: string;
-  reposter_id: string | null;
-  reposter_username: string | null;
-  reposter_name: string | null;
-  reposter_avatar_url: string | null;
+  actor_id: string | null;
+  actor_username: string | null;
+  actor_name: string | null;
+  actor_avatar_url: string | null;
+  reply_content: string | null;
 }
 
 export type RepostReason = { type: 'repost'; by: UserSummary; at: Date };
+export type ReplyReason = { type: 'reply'; id: string; by: UserSummary; at: Date; content: string };
 
 /**
- * Linha do tempo de posts originais e reposts, pela hora da atividade (`posts.created_at` ou
- * `reposts.created_at`) desc, depois id desc e tipo desc — ordem total, então a paginação keyset
+ * Linha do tempo de posts, reposts e respostas pela data, depois id e tipo — ordem total, então a paginação keyset
  * não repete nem pula itens. O mesmo original pode aparecer de novo pelo repost de outra pessoa,
  * mas nunca duas vezes pelo mesmo repostador (unique post_id+user_id em `reposts`).
  *
@@ -316,7 +322,7 @@ async function timeline(viewerId: string, source: TimelineSource, cursor: string
     : sql``;
   const postsBranch = sql`(
     select 'post'::text as kind, ${posts.id} as item_id, ${posts.createdAt} as at, ${posts.id} as post_id,
-      null::uuid as reposter_id
+      null::uuid as actor_id, null::text as reply_content
     from ${posts}
     where ${source.posts} ${postsCut}
     order by ${posts.createdAt} desc, ${posts.id} desc
@@ -330,10 +336,25 @@ async function timeline(viewerId: string, source: TimelineSource, cursor: string
       : sql``;
     repostsBranch = sql`union all (
       select 'repost'::text as kind, ${reposts.id} as item_id, ${reposts.createdAt} as at,
-        ${reposts.postId} as post_id, ${reposts.userId} as reposter_id
+        ${reposts.postId} as post_id, ${reposts.userId} as actor_id, null::text as reply_content
       from ${reposts}
       where ${source.reposts} ${repostsCut}
       order by ${reposts.createdAt} desc, ${reposts.id} desc
+      limit ${branchLimit}
+    )`;
+  }
+
+  let repliesBranch = sql``;
+  if (source.replies) {
+    const repliesCut = decoded
+      ? sql`and (${comments.createdAt}, ${comments.id}) <= (${decoded.at}::timestamptz, ${decoded.id}::uuid)`
+      : sql``;
+    repliesBranch = sql`union all (
+      select 'reply'::text as kind, ${comments.id} as item_id, ${comments.createdAt} as at,
+        ${comments.postId} as post_id, ${comments.userId} as actor_id, ${comments.content} as reply_content
+      from ${comments}
+      where ${source.replies} ${repliesCut}
+      order by ${comments.createdAt} desc, ${comments.id} desc
       limit ${branchLimit}
     )`;
   }
@@ -343,11 +364,11 @@ async function timeline(viewerId: string, source: TimelineSource, cursor: string
     : sql``;
 
   const result = await db.execute<TimelineRow>(sql`
-    select f.kind, f.item_id, f.post_id, f.reposter_id,
+    select f.kind, f.item_id, f.post_id, f.actor_id, f.reply_content,
       to_char(f.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text,
-      u.username as reposter_username, u.name as reposter_name, u.avatar_url as reposter_avatar_url
-    from (${postsBranch} ${repostsBranch}) f
-    left join ${users} u on u.id = f.reposter_id
+      u.username as actor_username, u.name as actor_name, u.avatar_url as actor_avatar_url
+    from (${postsBranch} ${repostsBranch} ${repliesBranch}) f
+    left join ${users} u on u.id = f.actor_id
     ${exactCut}
     order by f.at desc, f.item_id desc, f.kind desc
     limit ${limit + 1}
@@ -360,25 +381,30 @@ async function timeline(viewerId: string, source: TimelineSource, cursor: string
     viewerId,
   );
 
-  const items: (PostView & { reason: RepostReason | null })[] = [];
+  const items: (PostView & { reason: RepostReason | ReplyReason | null })[] = [];
   for (const row of page) {
     // Um post apagado entre a união e a hidratação some da página; o cursor continua valendo.
     const post = postsById.get(row.post_id);
     if (!post) continue;
-    const reason: RepostReason | null =
-      row.kind === 'repost' && row.reposter_id && row.reposter_username !== null
-        ? {
-            type: 'repost',
-            by: {
-              id: row.reposter_id,
-              username: row.reposter_username,
-              name: row.reposter_name,
-              avatarUrl: row.reposter_avatar_url,
-            },
-            at: new Date(row.at_text),
-          }
-        : null;
-    items.push({ ...post, reason });
+    if (row.kind === 'post') {
+      items.push({ ...post, reason: null });
+      continue;
+    }
+    if (!row.actor_id || row.actor_username === null) continue;
+    const by: UserSummary = {
+      id: row.actor_id,
+      username: row.actor_username,
+      name: row.actor_name,
+      avatarUrl: row.actor_avatar_url,
+    };
+    const at = new Date(row.at_text);
+    if (row.kind === 'reply') {
+      if (row.reply_content !== null) {
+        items.push({ ...post, reason: { type: 'reply', id: row.item_id, by, at, content: row.reply_content } });
+      }
+    } else {
+      items.push({ ...post, reason: { type: 'repost', by, at } });
+    }
   }
 
   const last = page[page.length - 1];
@@ -393,6 +419,16 @@ function authorNotIn(hidden: SQL): SQL {
   return sql`${posts.userId} not in ${hidden}`;
 }
 
+export type TimelineType = 'post' | 'activity';
+
+function timelineTypeFilter(type: TimelineType | undefined): SQL | undefined {
+  if (type === 'activity') return eq(posts.type, 'activity');
+  if (type === 'post') return ne(posts.type, 'activity');
+  return undefined;
+}
+
+const repostOfPublication = sql`exists(select 1 from ${posts} op where op.id = ${reposts.postId} and op.type <> 'activity')`;
+
 /**
  * O repost (de `reposts`, sem alias) não é de alguém em `hidden`, e o post repostado também não é
  * de alguém em `hiddenOriginal` — exceto o autor `exempt` (o dono do perfil, nos posts dele).
@@ -403,28 +439,49 @@ function repostNotIn(hidden: SQL | null, hiddenOriginal: SQL, exempt?: string): 
   return hidden ? sql`(${reposts.userId} not in ${hidden} and ${originalFilter})` : originalFilter;
 }
 
+/** O feed só recomenda respostas que o leitor consegue acompanhar dentro da conversa. */
+function visibleFeedReply(hidden: SQL): SQL {
+  return sql`${comments.userId} not in ${hidden}
+    and exists (select 1 from ${posts} original where original.id = ${comments.postId}
+      and original.type <> 'activity' and original.user_id not in ${hidden})
+    and not exists (
+      with recursive ancestors as (
+        select c.user_id, c.parent_comment_id from ${comments} c where c.id = ${comments.parentCommentId}
+        union all
+        select c.user_id, c.parent_comment_id from ${comments} c join ancestors a on c.id = a.parent_comment_id
+      )
+      select 1 from ancestors a where a.user_id in ${hidden}
+    )`;
+}
+
 /**
- * Feeds (Seguindo e Para você): somem os posts e reposts de quem tem bloqueio com o usuário (em
- * qualquer sentido) ou foi silenciado por ele, e os reposts de posts dessas pessoas.
+ * Feeds (Seguindo e Para você): omitem publicações e interações de autores bloqueados ou
+ * silenciados pelo leitor, inclusive quando o autor do original está oculto.
  */
 export async function getFeed(
   userId: string,
   cursor: string | undefined,
   limit: number,
   scope: 'following' | 'general' = 'following',
+  type?: TimelineType,
+  includeReplies = false,
 ) {
   const hidden = moderationService.hiddenAuthorsSql(userId, true);
-  if (scope === 'general') {
-    return timeline(userId, { posts: authorNotIn(hidden), reposts: repostNotIn(hidden, hidden) }, cursor, limit);
-  }
-  // Seguindo: posts e reposts de quem o usuário segue, mais os dele mesmo.
-  const followed = (column: typeof posts.userId | typeof reposts.userId) =>
+  const followed = (column: typeof posts.userId | typeof reposts.userId | typeof comments.userId) =>
     sql`(${column} = ${userId} or ${column} in (select ${follows.followingId} from ${follows} where ${follows.followerId} = ${userId}))`;
   return timeline(
     userId,
     {
-      posts: and(followed(posts.userId), authorNotIn(hidden))!,
-      reposts: and(followed(reposts.userId), repostNotIn(hidden, hidden))!,
+      posts: and(scope === 'following' ? followed(posts.userId) : undefined, authorNotIn(hidden), timelineTypeFilter(type))!,
+      reposts: type === 'activity' ? null : and(
+        scope === 'following' ? followed(reposts.userId) : undefined,
+        repostNotIn(hidden, hidden),
+        type === 'post' ? repostOfPublication : undefined,
+      )!,
+      replies: includeReplies && type !== 'activity' ? and(
+        scope === 'following' ? followed(comments.userId) : undefined,
+        visibleFeedReply(hidden),
+      ) : undefined,
     },
     cursor,
     limit,
@@ -444,7 +501,7 @@ export async function getUserPosts(
   targetUserId: string,
   cursor: string | undefined,
   limit: number,
-  type?: 'activity' | 'post',
+  type?: TimelineType,
   filter?: 'media',
 ) {
   if (cursor !== undefined && !decodeTimelineCursor(cursor)) throw new AppError(400, 'validation_error', 'Cursor inválido');
@@ -452,16 +509,16 @@ export async function getUserPosts(
   if (filter === 'media') {
     // Só os posts do próprio usuário com ao menos uma imagem (tabela ou `image_url` legado); sem reposts.
     const hasImage = sql`(${posts.imageUrl} is not null or exists(select 1 from ${postImages} where ${postImages.postId} = ${posts.id}))`;
-    return timeline(viewerId, { posts: and(eq(posts.userId, targetUserId), hasImage)!, reposts: null }, cursor, limit);
+    return timeline(viewerId, { posts: and(eq(posts.userId, targetUserId), hasImage, timelineTypeFilter(type))!, reposts: null }, cursor, limit);
   }
-  const typeFilter = type === 'activity' ? eq(posts.type, 'activity') : type === 'post' ? ne(posts.type, 'activity') : undefined;
-  const postsFilter = typeFilter ? and(eq(posts.userId, targetUserId), typeFilter)! : eq(posts.userId, targetUserId);
+  const postsFilter = and(eq(posts.userId, targetUserId), timelineTypeFilter(type))!;
   const repostsFilter =
     type === 'activity'
       ? null
       : and(
           eq(reposts.userId, targetUserId),
           repostNotIn(null, moderationService.hiddenAuthorsSql(viewerId, true), targetUserId),
+          type === 'post' ? repostOfPublication : undefined,
         )!;
   return timeline(viewerId, { posts: postsFilter, reposts: repostsFilter }, cursor, limit);
 }
@@ -472,12 +529,12 @@ export async function getUserPosts(
  * originais; `%`, `_` e `\` do termo valem como caracteres comuns. Somem os posts de quem tem
  * bloqueio com quem busca (em qualquer sentido) ou foi silenciado por ele.
  */
-export async function searchPosts(viewerId: string, term: string, cursor: string | undefined, limit: number) {
+export async function searchPosts(viewerId: string, term: string, cursor: string | undefined, limit: number, type?: 'post') {
   const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
   const hidden = moderationService.hiddenAuthorsSql(viewerId, true);
   return timeline(
     viewerId,
-    { posts: and(sql`${posts.content} ilike ${pattern}`, authorNotIn(hidden))!, reposts: null },
+    { posts: and(sql`${posts.content} ilike ${pattern}`, authorNotIn(hidden), timelineTypeFilter(type))!, reposts: null },
     cursor,
     limit,
   );
@@ -527,9 +584,14 @@ export async function getLikedPosts(userId: string, cursor: string | undefined, 
  * Posts sobre um jogo: só os originais. É um feed: somem os de quem tem bloqueio com quem vê (em
  * qualquer sentido) ou foi silenciado por ele.
  */
-export async function getGamePosts(gameId: string, viewerId: string, cursor: string | undefined, limit: number) {
+export async function getGamePosts(gameId: string, viewerId: string, cursor: string | undefined, limit: number, type?: TimelineType) {
   const hidden = moderationService.hiddenAuthorsSql(viewerId, true);
-  return timeline(viewerId, { posts: and(eq(posts.gameId, gameId), authorNotIn(hidden))!, reposts: null }, cursor, limit);
+  const sameGame = eq(posts.gameId, gameId);
+  const gameFilter = type === 'activity' ? or(sameGame, and(
+    isNull(posts.gameId),
+    sql`exists(select 1 from ${gameEntries} where ${gameEntries.id} = ${posts.gameEntryId} and ${gameEntries.gameId} = ${gameId})`,
+  )) : sameGame;
+  return timeline(viewerId, { posts: and(gameFilter, authorNotIn(hidden), timelineTypeFilter(type))!, reposts: null }, cursor, limit);
 }
 
 /**
@@ -555,7 +617,14 @@ export async function getUserComments(viewerId: string, targetUserId: string, cu
     where: cursorFilter ? and(whereFilter, cursorFilter) : whereFilter,
     orderBy: [desc(comments.createdAt), desc(comments.id)],
     limit: limit + 1,
-    with: { post: { with: { user: { columns: userColumns } } } },
+    with: { post: { with: {
+      user: { columns: userColumns },
+      game: true,
+      images: {
+        columns: { url: true, width: true, height: true, alt: true },
+        orderBy: [asc(postImages.position)],
+      },
+    } } },
   });
 
   const hasMore = results.length > limit;
@@ -563,7 +632,13 @@ export async function getUserComments(viewerId: string, targetUserId: string, cu
   const last = items[items.length - 1];
   const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
 
-  return { items, nextCursor };
+  return {
+    items: items.map(({ post, ...reply }) => ({
+      ...reply,
+      post: { ...post, images: imagesOf(post.images, post.imageUrl) },
+    })),
+    nextCursor,
+  };
 }
 
 async function getPostOrThrow(postId: string) {
@@ -586,6 +661,14 @@ async function getInteractablePostOrThrow(userId: string, postId: string) {
   return post;
 }
 
+async function getPublicationOrThrow(userId: string, postId: string) {
+  const post = await getInteractablePostOrThrow(userId, postId);
+  if (post.type === 'activity') {
+    throw new AppError(400, 'invalid_operation', 'Esta ação está disponível apenas para publicações');
+  }
+  return post;
+}
+
 export async function like(userId: string, postId: string) {
   const post = await getInteractablePostOrThrow(userId, postId);
 
@@ -598,7 +681,7 @@ export async function like(userId: string, postId: string) {
     .returning({ id: likes.id });
 
   if (inserted.length > 0) {
-    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'like', postId });
+    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'like', postId, postType: post.type });
   }
 }
 
@@ -609,7 +692,7 @@ export async function unlike(userId: string, postId: string) {
 
 /** Repostar de novo é idempotente: só o primeiro repost notifica. Repostar o próprio post vale, sem notificar. */
 export async function repost(userId: string, postId: string) {
-  const post = await getInteractablePostOrThrow(userId, postId);
+  const post = await getPublicationOrThrow(userId, postId);
   const inserted = await db
     .insert(reposts)
     .values({ postId, userId })
@@ -628,7 +711,7 @@ export async function unrepost(userId: string, postId: string) {
 
 /** Salvos são privados e não geram notificação. */
 export async function bookmark(userId: string, postId: string) {
-  await getInteractablePostOrThrow(userId, postId);
+  await getPublicationOrThrow(userId, postId);
   await db
     .insert(bookmarks)
     .values({ postId, userId })
@@ -652,7 +735,7 @@ interface BookmarkRow extends Record<string, unknown> {
  * (user_id, created_at). Os itens têm `reason: null`, o mesmo formato dos itens do feed. Somem os
  * posts de quem tem bloqueio com o usuário (em qualquer sentido); desbloquear os traz de volta.
  */
-export async function getBookmarks(userId: string, cursor: string | undefined, limit: number) {
+export async function getBookmarks(userId: string, cursor: string | undefined, limit: number, type?: 'post') {
   const decoded = cursor === undefined ? null : decodeTimelineCursor(cursor);
   if (cursor !== undefined && !decoded) throw new AppError(400, 'validation_error', 'Cursor inválido');
   const cut = decoded
@@ -664,6 +747,7 @@ export async function getBookmarks(userId: string, cursor: string | undefined, l
       to_char(${bookmarks.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text
     from ${bookmarks}
     where ${bookmarks.userId} = ${userId} ${cut}
+      ${type === 'post' ? sql`and exists(select 1 from ${posts} op where op.id = ${bookmarks.postId} and op.type <> 'activity')` : sql``}
       and not exists(select 1 from ${posts} op where op.id = ${bookmarks.postId}
         and op.user_id in ${moderationService.blockedEitherWaySql(userId)})
     order by ${bookmarks.createdAt} desc, ${bookmarks.id} desc
@@ -764,10 +848,10 @@ export async function addComment(userId: string, postId: string, content: string
   // O autor do comentário respondido recebe "reply". O dono do post recebe "comment", exceto quando
   // ele mesmo é o autor do comentário respondido: aí só o "reply" (nunca os dois pelo mesmo comentário).
   if (parent) {
-    await notificationsService.notify({ userId: parent.userId, actorId: userId, type: 'reply', postId, commentId });
+    await notificationsService.notify({ userId: parent.userId, actorId: userId, type: 'reply', postId, commentId, postType: post.type });
   }
   if (!parent || parent.userId !== post.userId) {
-    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'comment', postId, commentId });
+    await notificationsService.notify({ userId: post.userId, actorId: userId, type: 'comment', postId, commentId, postType: post.type });
   }
   // Quem já recebeu comment ou reply por este comentário não recebe também a menção.
   await notificationsService.notifyMentions({

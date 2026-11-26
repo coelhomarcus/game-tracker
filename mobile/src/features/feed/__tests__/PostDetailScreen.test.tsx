@@ -283,8 +283,11 @@ describe('PostDetailScreen post', () => {
     await renderScreen();
 
     expect(screen.getByTestId('header-title')).toHaveTextContent('Atividade');
-    expect(screen.getByLabelText('Ana Souza zerou Hades, Concluído, há 5 min')).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: /^Ana Souza zerou/ })).toBeNull();
+    expect(screen.getByTestId('activity-row')).toBeOnTheScreen();
+    expect(screen.getByText('Concluído')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Repostar|Salvar post/ })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: /Comentar atividade/ }));
+    expect(queryField()).toBeOnTheScreen();
   });
 
   it('writes a comment on the post from the comment counter of the anchor', async () => {

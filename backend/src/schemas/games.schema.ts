@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { timelineTypeSchema } from './posts.schema';
 
 export const searchGamesQuerySchema = z.object({
   q: z.string().min(1).max(100),
@@ -15,6 +16,7 @@ export const gamePlayersQuerySchema = z.object({
 });
 
 export const gamePostsQuerySchema = z.object({
+  type: timelineTypeSchema.optional(),
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });

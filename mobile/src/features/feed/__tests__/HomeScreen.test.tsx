@@ -9,13 +9,14 @@ import { showToast } from '@/lib/toast';
 import { colors } from '@/theme/tokens';
 
 import { HomeScreen } from '../HomeScreen';
-import { useFeed } from '../queries';
+import { useActivities, useFeed } from '../queries';
 import type { Post } from '../types';
 import { socialDefaults } from '@/test-utils/postDefaults';
 
 jest.mock('@/lib/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../queries', () => ({
   useFeed: jest.fn(),
+  useActivities: jest.fn(),
   ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
     '@/test-utils/postControlHooks',
   ).postControlHooks(),
@@ -119,7 +120,7 @@ async function layOutHeader(height: number) {
 }
 
 describe('HomeScreen header', () => {
-  it('shows the avatar, the title, the bell and both scope tabs', async () => {
+  it('shows the avatar, the title, the bell and the three tabs', async () => {
     await renderHome();
 
     const header = within(screen.getByTestId('home-header'));
@@ -128,6 +129,23 @@ describe('HomeScreen header', () => {
     expect(header.getByRole('button', { name: 'Notificações, 2 não lidas' })).toBeOnTheScreen();
     expect(header.getByRole('tab', { name: 'Para você' })).toBeOnTheScreen();
     expect(header.getByRole('tab', { name: 'Seguindo' })).toBeOnTheScreen();
+    expect(header.getByRole('tab', { name: 'Atividades' })).toBeOnTheScreen();
+  });
+
+  it('opens activities for following first and offers community activities separately', async () => {
+    jest.mocked(useActivities).mockReturnValue(feedResult({
+      data: { pages: [{ items: [{ ...post(), id: 'a1', type: 'activity', content: 'Começou a jogar' }], nextCursor: null }], pageParams: [undefined] },
+    }));
+    await renderHome();
+    expect(useActivities).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Atividades' }));
+    expect(useActivities).toHaveBeenLastCalledWith({ kind: 'home', scope: 'following' });
+    expect(screen.getByTestId('activity-row')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Publicar' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: /Comentar atividade/ }));
+    expect(mockPush).toHaveBeenCalledWith('/activities/a1');
+    await fireEvent.press(screen.getByRole('tab', { name: 'Todos' }));
+    expect(useActivities).toHaveBeenLastCalledWith({ kind: 'home', scope: 'general' });
   });
 
   it('opens the notifications from the bell', async () => {
@@ -311,7 +329,7 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Acompanhe quem joga com você')).toBeOnTheScreen();
     expect(
-      screen.getByText('Quando quem você segue publicar ou jogar algo, aparece aqui.'),
+      screen.getByText('As publicações de quem você segue aparecem aqui.'),
     ).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Encontrar pessoas' }));

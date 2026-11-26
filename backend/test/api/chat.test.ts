@@ -79,6 +79,36 @@ describe('chat', () => {
     assert.deepEqual(await emitAck(sb, 'conversation:join', { conversationId: conv.id }), { ok: true });
   });
 
+  it('notifies the recipient about the first message while their conversation is closed', async () => {
+    const { body: other } = await api.http('POST', '/conversations', a.accessToken, { userId: c.user.id });
+    const unexpected: unknown[] = [];
+    const rejectEvent = (payload: unknown) => unexpected.push(payload);
+    sb.on('conversation:updated', rejectEvent);
+    sc.on('message:receive', rejectEvent);
+    try {
+      const refresh = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('conversation list was not notified')), 2500);
+        sc.once('conversation:updated', (event) => {
+          clearTimeout(timer);
+          resolve(event);
+        });
+      });
+      const [event, ack] = await Promise.all([
+        refresh,
+        emitAck(sa, 'message:send', { conversationId: other.id, content: 'Oi, primeira mensagem' }),
+      ]);
+      assert.equal(ack.message.content, 'Oi, primeira mensagem');
+      assert.deepEqual(event, { conversationId: other.id });
+      const { body: list } = await api.http('GET', '/conversations', c.accessToken);
+      assert.equal(list[0].lastMessage.id, ack.message.id);
+      assert.equal(list[0].unread, true);
+      assert.deepEqual(unexpected, []);
+    } finally {
+      sb.off('conversation:updated', rejectEvent);
+      sc.off('message:receive', rejectEvent);
+    }
+  });
+
   it('message legacy (without clientMessageId) continues working', async () => {
     const got = new Promise<any>((res) => sb.once('message:receive', res));
     const r = await emitAck(sa, 'message:send', { conversationId: conv.id, content: 'legado' });

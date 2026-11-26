@@ -57,7 +57,7 @@ export async function playersHandler(req: Request, res: Response) {
 }
 
 export async function gamePostsHandler(req: Request, res: Response) {
-  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
-  const result = await postsService.getGamePosts(req.params.id as string, req.user!.id, cursor, limit);
+  const { cursor, limit, type } = res.locals.query as { cursor?: string; limit: number; type?: postsService.TimelineType };
+  const result = await postsService.getGamePosts(req.params.id as string, req.user!.id, cursor, limit, type);
   res.json(result);
 }

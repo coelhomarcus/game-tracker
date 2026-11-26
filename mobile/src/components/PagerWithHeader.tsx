@@ -10,13 +10,11 @@ import {
   type Ref,
 } from 'react';
 import {
+  Platform,
   StyleSheet,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type ScrollViewInstance,
 } from 'react-native';
 import Animated, {
   useAnimatedReaction,
@@ -87,6 +85,7 @@ export type PagerScrollProps = {
   /** Callback ref for the list: the pager scrolls it to keep the header in place. */
   attachList: (list: PagerList | null) => void;
   onScroll: ScrollHandlerProcessed<Record<string, unknown>>;
+  onContentSizeChange?: (width: number, height: number) => void;
   /** Space above the content (header and tab bar) and the pull-to-refresh spinner's offset. */
   topInset: number;
   /** The content is at least this tall, so the header can always collapse. */
@@ -115,6 +114,7 @@ export type PagerWithHeaderProps = {
   statusBarHeight?: number;
   /** Told when the compact header shows or hides, e.g. to hide what it covers from screen readers. */
   onCompactHeaderChange?: (shown: boolean) => void;
+  onTabChange?: (key: string) => void;
   ref?: Ref<PagerWithHeaderHandle>;
 };
 
@@ -123,7 +123,6 @@ type PageEntry = { offset: SharedValue<number>; list: PagerList | null };
 type PageProps = {
   tab: PagerTab;
   index: number;
-  width: number;
   focused: boolean;
   focusedIndex: SharedValue<number>;
   scrollY: SharedValue<number>;
@@ -140,7 +139,6 @@ type PageProps = {
 const PagerPage = memo(function PagerPage({
   tab,
   index,
-  width,
   focused,
   focusedIndex,
   scrollY,
@@ -152,6 +150,8 @@ const PagerPage = memo(function PagerPage({
   // The first offset is the one the page mounted at; later ones come from its own scrolling.
   const [startOffset] = useState(initialOffset);
   const offset = useSharedValue(startOffset);
+  // React Native Web doesn't apply contentOffset. Wait for scrollable content before setting it.
+  const needsInitialScroll = useSharedValue(Platform.OS === 'web' && startOffset > 0);
   const entry = useRef<PageEntry>({ offset, list: null });
 
   useEffect(() => {
@@ -164,9 +164,17 @@ const PagerPage = memo(function PagerPage({
     entry.current.list = list;
   }, []);
 
+  const onContentSizeChange = useCallback((_width: number, height: number) => {
+    const list = entry.current.list;
+    if (!list || !needsInitialScroll.get() || height < minContentHeight - 1) return;
+    needsInitialScroll.set(false);
+    list.scrollToOffset({ offset: offset.get(), animated: false });
+  }, [minContentHeight, needsInitialScroll, offset]);
+
   // The worklets plugin tracks what the handler captures; no dependency list on native.
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
+      if (needsInitialScroll.get()) return;
       offset.set(event.contentOffset.y);
       if (focusedIndex.get() === index) scrollY.set(event.contentOffset.y);
     },
@@ -176,19 +184,22 @@ const PagerPage = memo(function PagerPage({
     () => ({
       attachList,
       onScroll,
+      onContentSizeChange: Platform.OS === 'web' && startOffset > 0 ? onContentSizeChange : undefined,
       topInset,
       minContentHeight,
       initialOffset: startOffset,
       isFocused: focused,
     }),
-    [attachList, onScroll, topInset, minContentHeight, startOffset, focused],
+    [attachList, onScroll, onContentSizeChange, topInset, minContentHeight, startOffset, focused],
   );
 
   return (
     <View
       testID={`pager-page-${tab.key}`}
-      style={{ width }}
-      // Only the page on screen is read; the others are off to the side.
+      style={[styles.page, !focused && styles.hidden]}
+      pointerEvents={focused ? 'auto' : 'none'}
+      {...(Platform.OS === 'web' ? { inert: !focused } : {})}
+      aria-hidden={!focused}
       accessibilityElementsHidden={!focused}
       importantForAccessibility={focused ? 'auto' : 'no-hide-descendants'}
     >
@@ -235,6 +246,8 @@ function CompactHeader({ scrollY, onLayout, onShownChange, children }: CompactHe
       testID="pager-compact-header"
       onLayout={onLayout}
       pointerEvents={shown ? 'auto' : 'none'}
+      {...(Platform.OS === 'web' ? { inert: !shown } : {})}
+      aria-hidden={!shown}
       accessibilityElementsHidden={!shown}
       importantForAccessibility={shown ? 'auto' : 'no-hide-descendants'}
       style={[styles.compact, style]}
@@ -249,11 +262,8 @@ function PageContent({ render, scroll }: { render: PagerTab['render']; scroll: P
 }
 
 /**
- * Pages of lists side by side under one header, after the design reference's pager: the header
- * and the `TabBar` float over the lists, move up with the focused list until only the compact
- * header is left (the tab bar then sticks below it), and switching pages keeps the header where
- * it is. A page mounts the first time it is shown (or swiped towards) and then stays mounted, so
- * each list keeps its own scroll position.
+ * Vertical lists share one viewport and an overlaid header. The tab bar switches the visible
+ * list, and already visited lists stay mounted so they keep their scroll positions.
  */
 export function PagerWithHeader({
   header,
@@ -262,15 +272,20 @@ export function PagerWithHeader({
   compactHeader,
   statusBarHeight = 0,
   onCompactHeaderChange,
+  onTabChange,
   ref,
 }: PagerWithHeaderProps) {
-  const window = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const initialIndex = Math.max(
     0,
     tabs.findIndex((tab) => tab.key === initialTab),
   );
   const [selected, setSelected] = useState(initialIndex);
-  const [size, setSize] = useState({ width: window.width, height: window.height });
+  const selectedKey = tabs[selected]?.key;
+  useEffect(() => {
+    if (selectedKey !== undefined) onTabChange?.(selectedKey);
+  }, [onTabChange, selectedKey]);
+  const [viewportHeight, setViewportHeight] = useState(windowHeight);
   const [headerHeight, setHeaderHeight] = useState(HEADER_ESTIMATE);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_ESTIMATE);
   const [compactHeight, setCompactHeight] = useState(
@@ -284,7 +299,6 @@ export function PagerWithHeader({
     [tabs[initialIndex]!.key]: 0,
   }));
 
-  const pagerRef = useRef<ScrollViewInstance>(null);
   const pages = useRef(new Map<string, PageEntry>());
   const scrollY = useSharedValue(0);
   const focusedIndex = useSharedValue(initialIndex);
@@ -315,96 +329,36 @@ export function PagerWithHeader({
     [focusedList],
   );
 
-  /** Puts every page but the focused one where the header says it must be. */
-  const syncOtherPages = useCallback(() => {
-    const current = scrollY.get();
-    const focusedKey = tabs[selected]?.key;
-    for (const [key, entry] of pages.current) {
-      if (key === focusedKey) continue;
-      const own = entry.offset.get();
-      const target = syncedOffset(current, own, headerHeight, compactHeight);
-      if (target === own) continue;
-      entry.offset.set(target);
-      entry.list?.scrollToOffset({ offset: target, animated: false });
-    }
-  }, [compactHeight, headerHeight, scrollY, selected, tabs]);
-
-  /** Mounts the pages at `indexes` that have not mounted yet, each at the synced offset. */
-  const mountPages = useCallback(
-    (indexes: number[]) => {
-      const start = syncedOffset(scrollY.get(), 0, headerHeight, compactHeight);
-      setMounted((current) => {
-        let next = current;
-        for (const index of indexes) {
-          const key = tabs[index]?.key;
-          if (key === undefined || key in next) continue;
-          next = { ...next, [key]: start };
-        }
-        return next;
-      });
-    },
-    [compactHeight, headerHeight, scrollY, tabs],
-  );
-
-  const focus = useCallback(
-    (index: number) => {
-      const key = tabs[index]?.key;
-      if (key === undefined || index === selected) return;
-      const offset =
-        pages.current.get(key)?.offset.get() ??
-        syncedOffset(scrollY.get(), 0, headerHeight, compactHeight);
-      focusedIndex.set(index);
-      scrollY.set(offset);
-      setSelected(index);
-    },
-    [compactHeight, focusedIndex, headerHeight, scrollY, selected, tabs],
-  );
-
   const selectTab = useCallback(
     (key: string) => {
       const index = tabs.findIndex((tab) => tab.key === key);
-      if (index < 0) return;
-      syncOtherPages();
-      mountPages([index]);
-      focus(index);
-      // Sliding across the pages in between shows their lists passing by; jump and fade in.
+      if (index < 0 || index === selected) return;
+      const page = pages.current.get(key);
+      const own = page?.offset.get() ?? 0;
+      const target = syncedOffset(scrollY.get(), own, headerHeight, compactHeight);
+      if (!page) {
+        setMounted((current) => key in current ? current : { ...current, [key]: target });
+      } else if (target !== own) {
+        page.offset.set(target);
+        page.list?.scrollToOffset({ offset: target, animated: false });
+      }
+      focusedIndex.set(index);
+      scrollY.set(target);
+      setSelected(index);
       pageOpacity.set(PAGE_FADE_FROM);
-      pagerRef.current?.scrollTo({ x: index * size.width, animated: false });
       pageOpacity.set(withTiming(1, { duration: PAGE_FADE_MS }));
     },
-    [focus, mountPages, pageOpacity, size.width, syncOtherPages, tabs],
+    [compactHeight, focusedIndex, headerHeight, pageOpacity, scrollY, selected, tabs],
   );
 
   const scrollFocusedToTop = useCallback(() => {
     focusedList()?.scrollToOffset({ offset: 0, animated: true });
   }, [focusedList]);
 
-  // A swipe shows the neighbours: they must be mounted and in place before they come into view.
-  const onBeginDrag = useCallback(() => {
-    syncOtherPages();
-    mountPages([selected - 1, selected + 1]);
-  }, [mountPages, selected, syncOtherPages]);
-
-  const onPageSettled = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (size.width <= 0) return;
-      focus(Math.round(event.nativeEvent.contentOffset.x / size.width));
-    },
-    [focus, size.width],
-  );
-
-  const onPagerLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const { width, height } = event.nativeEvent.layout;
-      setSize((current) =>
-        current.width === width && current.height === height ? current : { width, height },
-      );
-      if (width !== size.width) {
-        pagerRef.current?.scrollTo({ x: selected * width, animated: false });
-      }
-    },
-    [selected, size.width],
-  );
+  const onPagerLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height } = event.nativeEvent.layout;
+    if (height > 0) setViewportHeight(height);
+  }, []);
 
   const measure = (set: (height: number) => void) => (event: LayoutChangeEvent) => {
     const height = Math.round(event.nativeEvent.layout.height);
@@ -429,20 +383,13 @@ export function PagerWithHeader({
   }));
 
   const topInset = headerHeight + tabBarHeight;
-  const minContentHeight = size.height + Math.max(headerHeight - compactHeight, 0);
+  const minContentHeight = viewportHeight + Math.max(headerHeight - compactHeight, 0);
   const items = tabs.map((tab) => ({ value: tab.key, label: tab.label }));
 
   return (
     <View testID="pager-root" style={styles.container} onLayout={onPagerLayout}>
-      <Animated.ScrollView
-        ref={pagerRef}
+      <Animated.View
         testID="pager"
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        contentOffset={{ x: initialIndex * size.width, y: 0 }}
-        onScrollBeginDrag={onBeginDrag}
-        onMomentumScrollEnd={onPageSettled}
         style={[styles.pager, headerMeasured ? pageStyle : styles.hidden]}
       >
         {tabs.map((tab, index) =>
@@ -451,7 +398,6 @@ export function PagerWithHeader({
               key={tab.key}
               tab={tab}
               index={index}
-              width={size.width}
               focused={index === selected}
               focusedIndex={focusedIndex}
               scrollY={scrollY}
@@ -460,11 +406,9 @@ export function PagerWithHeader({
               initialOffset={mounted[tab.key]!}
               register={register}
             />
-          ) : (
-            <View key={tab.key} style={{ width: size.width }} />
-          ),
+          ) : null,
         )}
-      </Animated.ScrollView>
+      </Animated.View>
       {/* Touches on the header's empty parts reach the list below, so dragging there scrolls it. */}
       <Animated.View
         testID="pager-header"
@@ -504,8 +448,9 @@ export function PagerWithHeader({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, overflow: 'hidden' },
-  pager: { flex: 1 },
+  container: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  pager: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  page: { ...StyleSheet.absoluteFill, overflow: 'hidden' },
   hidden: { opacity: 0 },
   header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
   compact: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },

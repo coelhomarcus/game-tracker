@@ -430,7 +430,7 @@ describe('PostFeedItem embeds', () => {
     const card = screen.getByRole('link', {
       name: 'Post citado de Bia, há 2 h: O chefe final é impossível',
     });
-    expect(screen.getByText('O chefe final é impossível').props.numberOfLines).toBe(20);
+    expect(screen.getByText('O chefe final é impossível').props.numberOfLines).toBe(4);
     expect(screen.queryByTestId('quoted-post-removed')).toBeNull();
     await fireEvent.press(card);
 
@@ -444,7 +444,7 @@ describe('PostFeedItem embeds', () => {
 
     const previews = screen.getAllByTestId('post-image', HIDDEN);
     expect(previews).toHaveLength(1);
-    expect(previews[0]).toHaveStyle({ aspectRatio: 16 / 9 });
+    expect(previews[0]).toHaveStyle({ aspectRatio: 1 });
     expect(screen.queryByRole('imagebutton')).toBeNull();
 
     await fireEvent.press(previews[0]);
@@ -461,14 +461,13 @@ describe('PostFeedItem embeds', () => {
     expect(screen.queryByTestId('quoted-post')).toBeNull();
   });
 
-  it('labels a quoted activity with its status', async () => {
+  it('keeps a link to a previously quoted activity', async () => {
     const activity = quoted({ type: 'activity', activityStatus: 'completed', content: 'zerou Hades' });
     await render(<QuotedPost post={activity} />);
 
-    expect(
-      screen.getByRole('link', { name: 'Post citado de Bia, há 2 h, Concluído: zerou Hades' }),
-    ).toBeOnTheScreen();
-    expect(screen.getByText('Concluído')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('link', { name: 'Ver atividade de Bia' }));
+    expect(mockPush).toHaveBeenCalledWith(`/activities/${activity.id}`);
+    expect(screen.queryByText('zerou Hades')).toBeNull();
   });
 
   it('shows the images, the quoted post and the game in that order', async () => {
