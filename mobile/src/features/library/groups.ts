@@ -1,4 +1,5 @@
 import type { Game } from '@/features/games/types';
+import { compareDates, daysThrough, todayDate, type DateOnly } from '@/lib/dateOnly';
 import { foldText } from '@/lib/foldText';
 import type { GameStatus } from '@/theme/tokens';
 
@@ -7,11 +8,16 @@ import type { GameEntry } from './types';
 
 const STATUSES: readonly GameStatus[] = ['playing', 'completed', 'backlog', 'dropped'];
 
-/** Search, status and platform of the library. `platformKey` is already folded. */
+export type CompletionWindow = 30 | 90;
+
+/** Filters applied before ordering the library. `platformKey` is already folded. */
 export type LibraryFilterInput = {
   query: string;
   status: GameStatus | null;
   platformKey: string | null;
+  finishedWithin?: CompletionWindow | null;
+  /** When supplied, only games in this set are shown. */
+  favoriteIds?: ReadonlySet<string>;
 };
 
 /** One game of the library with the entries that satisfy the filters. Replays are never merged. */
@@ -25,9 +31,9 @@ export type LibraryGroup = {
 
 export type LibraryOverview = {
   groups: LibraryGroup[];
-  /** Distinct games per status after search and platform, before the chosen status. */
+  /** Distinct games per status after the other filters, before the chosen status. */
   statusCounts: Record<GameStatus, number>;
-  /** Distinct games after search and platform, before the chosen status. */
+  /** Distinct games after the other filters, before the chosen status. */
   totalGames: number;
   /** Every platform in the library: folded key, label as first written, sorted by key. */
   platforms: { key: string; label: string }[];
@@ -76,6 +82,27 @@ export function oldestAddedAt(group: LibraryGroup): Date {
   );
 }
 
+function latestDate(group: LibraryGroup, dateOf: (entry: GameEntry) => DateOnly | null): DateOnly | null {
+  let latest: DateOnly | null = null;
+  for (const entry of group.entries) {
+    const date = dateOf(entry);
+    if (date && (!latest || compareDates(date, latest) > 0)) latest = date;
+  }
+  return latest;
+}
+
+function completionDate(entry: GameEntry): DateOnly | null {
+  return entry.status === 'completed' ? entry.finishedAt : null;
+}
+
+export function latestFinishedAt(group: LibraryGroup): DateOnly | null {
+  return latestDate(group, completionDate);
+}
+
+export function latestStartedAt(group: LibraryGroup): DateOnly | null {
+  return latestDate(group, (entry) => entry.startedAt);
+}
+
 /** Distinct platforms (by folded text), in entry order. */
 export function platformsOf(group: LibraryGroup): string[] {
   const seen = new Set<string>();
@@ -112,6 +139,11 @@ function compareDescendingNullsLast(a: number | null, b: number | null): number 
   return b - a;
 }
 
+function compareNewestDate(a: DateOnly | null, b: DateOnly | null): number {
+  if (!a) return b ? 1 : 0;
+  return b ? compareDates(b, a) : -1;
+}
+
 /** Sort keys come from the entries that passed the filters. Ties: title, then game id. */
 function compareGroups(sort: LibrarySort, a: LibraryGroup, b: LibraryGroup): number {
   let primary: number;
@@ -121,6 +153,12 @@ function compareGroups(sort: LibrarySort, a: LibraryGroup, b: LibraryGroup): num
       break;
     case 'oldest':
       primary = oldestAddedAt(a).getTime() - oldestAddedAt(b).getTime();
+      break;
+    case 'finishedRecent':
+      primary = compareNewestDate(latestFinishedAt(a), latestFinishedAt(b));
+      break;
+    case 'startedRecent':
+      primary = compareNewestDate(latestStartedAt(a), latestStartedAt(b));
       break;
     case 'mostPlayed':
       primary = compareDescendingNullsLast(knownHours(a), knownHours(b));
@@ -139,6 +177,7 @@ export function buildLibraryOverview(
   entries: GameEntry[],
   filter: LibraryFilterInput,
   sort: LibrarySort,
+  today = todayDate(),
 ): LibraryOverview {
   // Every entry of each game, newest first.
   const byGame = new Map<string, GameEntry[]>();
@@ -163,16 +202,24 @@ export function buildLibraryOverview(
     if (list.some((e) => e.status === 'playing')) playingGames += 1;
   }
 
-  // Search and platform first; the status only narrows the result, so the status counts
-  // show what each status would bring.
+  // Apply the other filters first so each tab counts the games it would show.
   const query = foldText(filter.query);
+  const { platformKey, finishedWithin, favoriteIds } = filter;
   const base: { gameId: string; entries: GameEntry[] }[] = [];
   for (const [gameId, list] of byGame) {
     if (query !== '' && !foldText(list[0]!.game.name).includes(query)) continue;
+    if (favoriteIds && !favoriteIds.has(gameId)) continue;
     const kept =
-      filter.platformKey === null
+      platformKey === null && !finishedWithin
         ? list
-        : list.filter((e) => foldText(e.platform) === filter.platformKey);
+        : list.filter((entry) => {
+          if (platformKey !== null && foldText(entry.platform) !== platformKey) return false;
+          if (!finishedWithin) return true;
+          const finished = completionDate(entry);
+          if (!finished) return false;
+          const days = daysThrough(finished, today);
+          return days >= 1 && days <= finishedWithin;
+        });
     if (kept.length > 0) base.push({ gameId, entries: kept });
   }
 

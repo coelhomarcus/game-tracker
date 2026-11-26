@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { CoverFooter, GameCover, StatusIcon, Text } from '@/components';
+import { Button, CoverFooter, GameCover, StatusIcon, Text } from '@/components';
 import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
 
 import { platformsOf, singleStatus, type LibraryGroup } from './groups';
@@ -22,6 +22,7 @@ export type LibraryCardProps = {
   /** Adds the title and full status label to standalone library cards. */
   detailed?: boolean;
   onPress: (igdbId: number) => void;
+  onOpenProgress?: () => void;
 };
 
 function recordsLabel(group: LibraryGroup): string {
@@ -29,14 +30,14 @@ function recordsLabel(group: LibraryGroup): string {
   return platformsOf(group)[0] || 'Plataforma não informada';
 }
 
-export function LibraryCard({ group, width, sort, favorite, showStatus, detailed = false, onPress }: LibraryCardProps) {
+export function LibraryCard({ group, width, sort, favorite, showStatus, detailed = false, onPress, onOpenProgress }: LibraryCardProps) {
   const { fontScale } = useWindowDimensions();
   const status = singleStatus(group);
   const statusText = status ? statusLabel[status] : 'Vários status';
   const statusColor = status ? colors.status[status] : colors.textMedium;
   const records = recordsLabel(group);
   const footer = libraryFooter(group, sort, favorite);
-  return (
+  const card = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${group.game.name}, ${statusText}, ${records}`}
@@ -74,12 +75,30 @@ export function LibraryCard({ group, width, sort, favorite, showStatus, detailed
       )}
     </Pressable>
   );
+
+  if (!onOpenProgress) return card;
+  return (
+    <View style={{ width }}>
+      {card}
+      <View style={styles.progress}>
+        <Button
+          accessibilityLabel={`Atualizar progresso de ${group.game.name}`}
+          icon="ellipsis-horizontal"
+          shape="round"
+          size="small"
+          color="secondary"
+          onPress={onOpenProgress}
+        />
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   card: { gap: space.xs },
   detailed: { gap: space.sm, paddingBottom: space.sm },
   pressed: { opacity: 0.8 },
+  progress: { position: 'absolute', end: 0, top: 0, width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   status: {
     position: 'absolute',
     start: space.xs,

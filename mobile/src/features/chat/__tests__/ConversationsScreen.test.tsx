@@ -260,20 +260,27 @@ describe('ConversationsScreen', () => {
     expect(screen.queryByText('Conversa')).not.toBeOnTheScreen();
   });
 
-  it('counts conversations in the tabs and filters the unread ones', async () => {
-    await renderWithList([withAna, withJoao, withCarla]);
+  it('puts unread conversations ahead of the rest and keeps recency within each group', async () => {
+    await renderWithList([
+      orphan,
+      withAna,
+      { ...withCarla, lastMessage: message('m3', 'u3', 'Oi, tudo bem?', 60), unread: true },
+      { ...withJoao, lastMessage: message('m2', 'u2', 'Fechado', 120), unread: true, muted: true },
+    ]);
 
-    expect(screen.getByRole('tab', { name: 'Todas (3)' })).toBeOnTheScreen();
-    expect(screen.getByRole('tab', { name: 'Não lidas (1)' })).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByRole('tab', { name: 'Não lidas (1)' }));
-    expect(screen.getByText('Ana Souza')).toBeOnTheScreen();
-    expect(screen.queryByText('João Lima')).not.toBeOnTheScreen();
+    const rows = screen.getAllByRole('button', { name: /^(Ana Souza|João Lima|Conversa|carla),/ });
+    expect(rows).toEqual([
+      screen.getByRole('button', { name: /^Ana Souza, Não lida/ }),
+      screen.getByRole('button', { name: /^carla, Não lida/ }),
+      screen.getByRole('button', { name: /^Conversa, Oi/ }),
+      screen.getByRole('button', { name: /^João Lima, Silenciada/ }),
+    ]);
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(screen.getAllByTestId('conversation-unread-dot')).toHaveLength(2);
   });
 
   it('offers to clear the search when nothing matches', async () => {
     await renderWithList([withAna, withJoao]);
-    await fireEvent.press(screen.getByRole('tab', { name: 'Não lidas (1)' }));
     await type('Buscar conversas', 'zzz');
 
     expect(screen.getByText('Nenhuma conversa encontrada')).toBeOnTheScreen();
@@ -384,8 +391,6 @@ describe('conversation rows', () => {
     expect(screen.queryByTestId('conversation-unread-dot')).not.toBeOnTheScreen();
     expect(row).toHaveStyle({ backgroundColor: colors.bg });
     expect(screen.getByText('Bora jogar?')).toHaveStyle({ fontFamily: 'Inter_400Regular' });
-    // Nor among the unread ones.
-    expect(screen.getByRole('tab', { name: 'Não lidas (0)' })).toBeOnTheScreen();
   });
 });
 
@@ -432,13 +437,17 @@ describe('conversation menu', () => {
     expect(mockPush).toHaveBeenCalledWith('/users/u1');
   });
 
-  it('marks the conversation read', async () => {
-    await renderWithList([withAna]);
+  it('marks the conversation read and returns it to its chronological position', async () => {
+    await renderWithList([orphan, withAna]);
     await openMenu(/^Ana Souza/);
     await fireEvent.press(option('Marcar como lida'));
 
     expect(mockedApi.markRead).toHaveBeenCalledWith('c1');
     expect(screen.queryByTestId('conversation-unread-dot')).not.toBeOnTheScreen();
+    expect(screen.getAllByRole('button', { name: /^(Ana Souza|Conversa),/ })).toEqual([
+      screen.getByRole('button', { name: /^Conversa, Oi/ }),
+      screen.getByRole('button', { name: /^Ana Souza, Bora jogar/ }),
+    ]);
   });
 
   it('mutes the conversation', async () => {

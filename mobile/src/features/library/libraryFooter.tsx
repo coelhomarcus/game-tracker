@@ -3,10 +3,11 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { RatingStars } from '@/components';
+import { formatDate } from '@/lib/dateOnly';
 import { formatHours } from '@/lib/hours';
 import { colors, space } from '@/theme/tokens';
 
-import { bestRating, hasNotes, knownHours, newestAddedAt, oldestAddedAt, type LibraryGroup } from './groups';
+import { bestRating, hasNotes, knownHours, latestFinishedAt, latestStartedAt, newestAddedAt, oldestAddedAt, type LibraryGroup } from './groups';
 import type { LibrarySort } from './prefsStore';
 
 const ICON_SIZE = 12;
@@ -28,6 +29,14 @@ export function libraryFooter(
       return formatAddedDate(newestAddedAt(group));
     case 'oldest':
       return formatAddedDate(oldestAddedAt(group));
+    case 'finishedRecent': {
+      const date = latestFinishedAt(group);
+      return date ? formatDate(date) : null;
+    }
+    case 'startedRecent': {
+      const date = latestStartedAt(group);
+      return date ? formatDate(date) : null;
+    }
     case 'mostPlayed': {
       const hours = knownHours(group);
       return hours === null ? null : `${formatHours(hours)} h`;

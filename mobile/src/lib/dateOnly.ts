@@ -31,6 +31,16 @@ export function formatDate(d: DateOnly): string {
   return `${pad(d.day, 2)}/${pad(d.month, 2)}/${pad(d.year, 4)}`;
 }
 
+/** Keeps digits only and inserts the separators of dd/mm/aaaa while typing. */
+export function formatDateInput(text: string, previous: string): string {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  let formatted = digits.slice(0, 2);
+  if (digits.length > 2) formatted += `/${digits.slice(2, 4)}`;
+  if (digits.length > 4) formatted += `/${digits.slice(4)}`;
+  if (text.length > previous.length && (digits.length === 2 || digits.length === 4)) formatted += '/';
+  return formatted;
+}
+
 /** Parses `dd/mm/aaaa`; returns null for malformed text or dates that do not exist. */
 export function parseDisplayDate(text: string): DateOnly | null {
   const match = DISPLAY_DATE.exec(text.trim());

@@ -1,4 +1,5 @@
 import type { Game } from '@/features/games/types';
+import { parseApiDate } from '@/lib/dateOnly';
 import type { GameStatus } from '@/theme/tokens';
 
 import {
@@ -220,6 +221,24 @@ describe('statusCounts and totalGames', () => {
   });
 });
 
+it('combines favorites, platform and a completion window on the same record', () => {
+  const inWindow = entry({ game: zelda, platform: 'PC', status: 'completed', finishedAt: parseApiDate('2026-03-02') });
+  const entries = [
+    inWindow,
+    entry({ game: zelda, platform: 'PC', status: 'completed', finishedAt: parseApiDate('2026-03-01') }),
+    entry({ game: zelda, platform: 'PC', status: 'completed', finishedAt: parseApiDate('2026-04-01') }),
+    entry({ game: zelda, platform: 'PC', status: 'playing' }),
+    entry({ game: mario, platform: 'PS5', status: 'completed', finishedAt: parseApiDate('2026-03-31') }),
+    entry({ game: mario, platform: 'PC', status: 'dropped', finishedAt: parseApiDate('2026-03-31') }),
+    entry({ game: onix, platform: 'PC', status: 'completed', finishedAt: parseApiDate('2026-03-31') }),
+  ];
+  const overview = buildLibraryOverview(entries, {
+    ...NO_FILTER, platformKey: 'pc', finishedWithin: 30, favoriteIds: new Set(['g1', 'g2']),
+  }, 'finishedRecent', parseApiDate('2026-03-31'));
+  expect(overview.groups.map((group) => group.entries)).toEqual([[inWindow]]);
+  expect(overview.statusCounts).toEqual({ playing: 0, completed: 1, backlog: 0, dropped: 0 });
+});
+
 describe('platforms', () => {
   it('lists each platform once, labelled by first spelling, sorted by key', () => {
     const entries = [
@@ -246,6 +265,27 @@ describe('platforms', () => {
 });
 
 describe('sorting', () => {
+  it('uses the latest completed playthrough, with missing dates and abandoned playthroughs last', () => {
+    const entries = [
+      entry({ game: zelda, status: 'completed', finishedAt: parseApiDate('2026-01-09') }),
+      entry({ game: zelda, status: 'completed', platform: 'PS5', finishedAt: parseApiDate('2026-03-09') }),
+      entry({ game: mario, status: 'completed', finishedAt: parseApiDate('2026-02-09') }),
+      entry({ game: onix, status: 'dropped', finishedAt: parseApiDate('2026-04-09') }),
+    ];
+    expect(names(entries, NO_FILTER, 'finishedRecent')).toEqual(['Zelda', 'Mario', 'Pokémon Ônix']);
+    expect(names(entries, { ...NO_FILTER, platformKey: 'pc' }, 'finishedRecent')).toEqual(['Mario', 'Zelda', 'Pokémon Ônix']);
+  });
+
+  it('orders by recorded start date and puts missing dates last', () => {
+    const entries = [
+      entry({ game: zelda, startedAt: parseApiDate('2026-01-01'), createdAt: day(3) }),
+      entry({ game: zelda, startedAt: parseApiDate('2026-02-01'), createdAt: day(2) }),
+      entry({ game: onix, startedAt: parseApiDate('2026-01-29'), createdAt: day(5) }),
+      entry({ game: mario, createdAt: day(6) }),
+    ];
+    expect(names(entries, NO_FILTER, 'startedRecent')).toEqual(['Zelda', 'Pokémon Ônix', 'Mario']);
+  });
+
   it('recent: newest added first', () => {
     const entries = [
       entry({ game: zelda, createdAt: day(1) }),

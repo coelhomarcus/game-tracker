@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -465,7 +466,12 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
 
   return (
     <Screen topInset>
-      <KeyboardAvoidingView behavior="padding" style={styles.fill}>
+      <KeyboardAvoidingView
+        automaticOffset={Platform.OS === 'android'}
+        behavior="padding"
+        style={styles.fill}
+        testID="composer-keyboard-avoider"
+      >
         <ComposerTopBar
           canPublish={canPublish}
           publishing={publishing}

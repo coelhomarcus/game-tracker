@@ -1,8 +1,8 @@
 import { useRouter, type Href } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
-import { EmptyState, Screen, Tabs, TextField } from '@/components';
+import { EmptyState, Screen, TextField } from '@/components';
 import { displayName } from '@/features/feed/types';
 import { foldText } from '@/lib/foldText';
 import { showToast } from '@/lib/toast';
@@ -21,8 +21,6 @@ import {
 } from './sheetStore';
 import { showsUnread, type Conversation } from './types';
 
-type Filter = 'all' | 'unread';
-
 function matches(conversation: Conversation, query: string): boolean {
   if (query === '') return true;
   const person = conversation.otherUser;
@@ -30,49 +28,11 @@ function matches(conversation: Conversation, query: string): boolean {
   return foldText(displayName(person)).includes(query) || foldText(person.username).includes(query);
 }
 
-type HeaderProps = {
-  term: string;
-  filter: Filter;
-  total: number;
-  unread: number;
-  onChangeTerm: (text: string) => void;
-  onSelect: (filter: Filter) => void;
-};
-
-/**
- * Module scope, rendered as an element: a component created inside the screen would get a new
- * identity on every keystroke, remounting the field and closing the keyboard.
- */
-function ConversationsHeader({ term, filter, total, unread, onChangeTerm, onSelect }: HeaderProps) {
-  return (
-    <View style={styles.header}>
-      <View style={styles.search}>
-        <TextField
-          label="Buscar conversas"
-          value={term}
-          onChangeText={onChangeTerm}
-          returnKeyType="search"
-          maxLength={50}
-        />
-      </View>
-      <Tabs
-        items={[
-          { value: 'all', label: `Todas (${total})` },
-          { value: 'unread', label: `Não lidas (${unread})` },
-        ]}
-        selected={filter}
-        onSelect={onSelect}
-      />
-    </View>
-  );
-}
-
 export default function ConversationsScreen() {
   const router = useRouter();
   const query = useConversations();
   const sheetOpen = useNewConversationSheet((state) => state.open);
   const [term, setTerm] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
   const [refreshing, setRefreshing] = useState(false);
   // The menu's conversation stays set after the sheet closes: its block confirmation lives there.
   const [menuFor, setMenuFor] = useState<Conversation | null>(null);
@@ -80,6 +40,14 @@ export default function ConversationsScreen() {
   const [leaving, setLeaving] = useState<Conversation | null>(null);
   const markRead = useMarkRead();
   const leave = useLeaveConversation();
+  const all = query.data;
+  const shown = useMemo(() => {
+    const folded = foldText(term);
+    // Stable sorting keeps the existing most-recent-first order within both groups.
+    return (all ?? [])
+      .filter((item) => matches(item, folded))
+      .sort((a, b) => Number(showsUnread(b)) - Number(showsUnread(a)));
+  }, [all, term]);
   const listRef = useRef<FlatList<Conversation>>(null);
   useScrollToTopOnTabPress(listRef);
 
@@ -102,8 +70,6 @@ export default function ConversationsScreen() {
     setMenuFor(conversation);
     setMenuOpen(true);
   }
-  const all = query.data;
-
   // A failed background refetch keeps the loaded list: the error shows only without data.
   if (all === undefined) {
     return (
@@ -121,10 +87,6 @@ export default function ConversationsScreen() {
     );
   }
 
-  const folded = foldText(term);
-  const shown = all.filter((item) => (filter === 'all' || showsUnread(item)) && matches(item, folded));
-  const unreadCount = all.filter(showsUnread).length;
-
   const empty =
     all.length === 0 ? (
       <EmptyState
@@ -138,13 +100,7 @@ export default function ConversationsScreen() {
       <EmptyState
         title="Nenhuma conversa encontrada"
         message="Tente outro nome ou limpe a busca."
-        action={{
-          label: 'Limpar busca',
-          onPress: () => {
-            setTerm('');
-            setFilter('all');
-          },
-        }}
+        action={{ label: 'Limpar busca', onPress: () => setTerm('') }}
       />
     );
 
@@ -174,14 +130,15 @@ export default function ConversationsScreen() {
         }}
         ListHeaderComponent={
           all.length === 0 ? undefined : (
-            <ConversationsHeader
-              term={term}
-              filter={filter}
-              total={all.length}
-              unread={unreadCount}
-              onChangeTerm={setTerm}
-              onSelect={setFilter}
-            />
+            <View style={styles.search}>
+              <TextField
+                label="Buscar conversas"
+                value={term}
+                onChangeText={setTerm}
+                returnKeyType="search"
+                maxLength={50}
+              />
+            </View>
           )
         }
         ListEmptyComponent={empty}
@@ -212,6 +169,5 @@ export default function ConversationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { gap: space.md, paddingVertical: space.md },
-  search: { paddingHorizontal: space.lg },
+  search: { paddingHorizontal: space.lg, paddingVertical: space.md },
 });

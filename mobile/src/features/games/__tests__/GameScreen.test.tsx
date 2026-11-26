@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useActivities, useGamePosts } from '@/features/feed/queries';
 import { useDeleteEntry, useLibrary, useUpdateEntry } from '@/features/library/queries';
 import type { GameEntry } from '@/features/library/types';
+import { formatDate, todayDate } from '@/lib/dateOnly';
 import { ApiError } from '@/lib/http/errors';
 import { apiOrigin } from '@/lib/env';
 import { showToast } from '@/lib/toast';
@@ -306,6 +307,8 @@ describe('GameScreen', () => {
 
       await openStatusSheet();
       await fireEvent.press(await screen.findByRole('button', { name: 'Concluído' }));
+      expect(await screen.findByLabelText('Data de conclusão')).toHaveProp('value', formatDate(todayDate()));
+      await fireEvent.press(screen.getByRole('button', { name: 'Salvar progresso' }));
 
       expect(mockUpdate).toHaveBeenCalledWith({
         original: entry,
@@ -313,7 +316,7 @@ describe('GameScreen', () => {
           platform: 'PC',
           status: 'completed',
           startedAt: null,
-          finishedAt: null,
+          finishedAt: todayDate(),
           hoursPlayed: null,
           rating: null,
           notes: null,
@@ -324,15 +327,16 @@ describe('GameScreen', () => {
     });
 
     it('shows the API error when changing the status fails', async () => {
-      mockUpdate.mockRejectedValue(new ApiError(500, 'SERVER', 'x'));
+      mockUpdate.mockRejectedValue(new ApiError(500, 'SERVER', 'Erro temporário'));
       setup({ entries: [makeEntry()] });
       await renderScreen();
 
       await openStatusSheet();
       await fireEvent.press(await screen.findByRole('button', { name: 'Concluído' }));
-      await act(async () => {});
+      await fireEvent.press(await screen.findByRole('button', { name: 'Salvar progresso' }));
 
-      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('Erro temporário')).toBeOnTheScreen();
+      expect(screen.getByLabelText('Data de conclusão')).toBeOnTheScreen();
       expect(showToast).not.toHaveBeenCalledWith('Status alterado');
     });
 

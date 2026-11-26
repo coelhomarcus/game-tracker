@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 describe('LibrarySettings', () => {
-  it('shows the five sorts as radio rows with the stored one checked, and changes the preference', async () => {
+  it('shows the sorts as radio rows with the stored one checked, and changes the preference', async () => {
     await render(
       <SafeAreaProvider initialMetrics={metrics}>
         <LibrarySettings />
@@ -32,6 +32,8 @@ describe('LibrarySettings', () => {
     ).toBeOnTheScreen();
     for (const label of [
       'Adicionados há mais tempo',
+      'Terminados recentemente',
+      'Começados recentemente',
       'Mais horas registradas',
       'Minha nota',
       'Nome A–Z',

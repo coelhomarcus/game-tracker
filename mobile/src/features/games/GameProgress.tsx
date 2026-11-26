@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, ConfirmDialog, EmptyState, OptionSheet, Text } from '@/components';
 import { authErrorMessage } from '@/features/auth';
 import { EntryCard } from '@/features/library/EntryCard';
+import { ProgressSheet } from '@/features/library/ProgressSheet';
 import { useDeleteEntry, useUpdateEntry } from '@/features/library/queries';
 import { STATUSES, statusIcon, statusLabel } from '@/features/library/status';
 import type { EntryDraft, GameEntry } from '@/features/library/types';
@@ -45,6 +46,7 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
   const remove = useDeleteEntry();
   const [menuEntry, setMenuEntry] = useState<GameEntry | null>(null);
   const [statusEntry, setStatusEntry] = useState<GameEntry | null>(null);
+  const [progress, setProgress] = useState<{ entry: GameEntry; status: 'playing' | 'completed' } | null>(null);
   const [removeEntry, setRemoveEntry] = useState<GameEntry | null>(null);
 
   if (entries.length === 0) {
@@ -68,6 +70,11 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
   async function changeStatus(status: GameStatus) {
     if (!statusEntry) return;
     const entry = statusEntry;
+    if (status === 'playing' || status === 'completed') {
+      setProgress({ entry, status });
+      return;
+    }
+    if (status === entry.status) return;
     try {
       await update.mutateAsync({ original: entry, edited: draftOf(entry, status) });
       showToast('Status alterado');
@@ -118,6 +125,9 @@ export function GameProgress({ igdbId, entries, onCreate }: Props) {
         onSelect={(status) => void changeStatus(status)}
         onClose={() => setStatusEntry(null)}
       />
+      {progress ? (
+        <ProgressSheet entries={[progress.entry]} initialAction={progress.status} onClose={() => setProgress(null)} />
+      ) : null}
       <ConfirmDialog
         visible={removeEntry !== null}
         title="Remover registro?"
