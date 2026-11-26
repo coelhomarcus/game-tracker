@@ -77,6 +77,7 @@ export function PostFeedItem({
   hideTopBorder = false,
 }: PostFeedItemProps) {
   const name = displayName(post.author);
+  const reposter = post.reason?.type === 'repost' ? post.reason.by : null;
   const time = formatRelativeTime(post.createdAt);
   const status = post.type === 'activity' ? post.activityStatus : null;
   const game = hideGame ? null : post.game;
@@ -96,18 +97,18 @@ export function PostFeedItem({
       style={[
         styles.outer,
         !hideTopBorder && styles.topBorder,
-        !post.reason && styles.topWithoutReason,
+        reposter === null && styles.topWithoutReason,
       ]}
     >
-      {post.reason ? (
+      {reposter ? (
         <View testID="post-reason" style={styles.reason}>
           <ProfileLink
-            user={post.reason.by}
-            hitSlop={undefined}
-            accessibilityLabel={`Repostado por ${displayName(post.reason.by)}`}
+            user={reposter}
+            hitSlop={4}
+            accessibilityLabel={`Repostado por ${displayName(reposter)}`}
             style={styles.reasonLink}
           >
-            <Ionicons name="repeat" size={13} color={colors.textMedium} />
+            <Ionicons name="repeat" size={15} color={colors.repost} />
             <Text
               numberOfLines={1}
               size="sm"
@@ -115,7 +116,7 @@ export function PostFeedItem({
               tone="medium"
               style={styles.shrink}
             >
-              {`Repostado por ${displayName(post.reason.by)}`}
+                {`Repostado por ${displayName(reposter)}`}
             </Text>
           </ProfileLink>
         </View>
@@ -279,9 +280,12 @@ const styles = StyleSheet.create({
   topBorder: { borderTopWidth: hairline, borderTopColor: colors.borderLow },
   topWithoutReason: { paddingTop: TOP_WITHOUT_REASON },
   // Aligned with the text column, past the avatar.
-  reason: { paddingTop: space.sm, paddingLeft: TEXT_COLUMN_START, flexDirection: 'row' },
+  reason: { paddingTop: space.sm, paddingBottom: space.xs, paddingLeft: TEXT_COLUMN_START, flexDirection: 'row' },
   // An inline text link, as in the design reference; the row and the avatar are the large targets.
-  reasonLink: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
+  reasonLink: {
+    flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1,
+    backgroundColor: `${colors.repost}14`, paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: 16,
+  },
   shrink: { flexShrink: 1 },
   layout: { flexDirection: 'row' },
   avatarColumn: { paddingLeft: AVATAR_COLUMN_LEFT, paddingRight: AVATAR_COLUMN_RIGHT },

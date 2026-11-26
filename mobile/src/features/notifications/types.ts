@@ -1,3 +1,4 @@
+import type { PostType } from '@/features/feed/types';
 import { parseUserSummary, type UserSummary } from '@/features/games/types';
 
 export type NotificationType =
@@ -15,6 +16,7 @@ export type AppNotification = {
   actor: UserSummary;
   /** For a quote, the new quote post; for the others, the post the notification is about. */
   postId: string | null;
+  postType?: PostType | null;
   /** The comment behind a comment, reply or mention. */
   commentId: string | null;
   /** The start of the comment or post text; null for a follow. */
@@ -56,6 +58,7 @@ function parseNotification(json: Json): AppNotification | null {
     type: json.type,
     actor: parseUserSummary(json.actor),
     postId: typeof json.postId === 'string' ? json.postId : null,
+    ...(json.postType === 'activity' ? { postType: 'activity' as const } : {}),
     commentId: typeof json.commentId === 'string' ? json.commentId : null,
     excerpt: typeof json.excerpt === 'string' ? json.excerpt : null,
     postImageUrl: typeof json.postImageUrl === 'string' ? json.postImageUrl : null,

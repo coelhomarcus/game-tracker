@@ -4,7 +4,7 @@ import { colors, radii, space } from '@/theme/tokens';
 import { Text } from './Text';
 
 export type TabsProps<T extends string> = {
-  items: { value: T; label: string }[];
+  items: { value: T; label: string; accessibilityLabel?: string }[];
   selected: T;
   onSelect: (value: T) => void;
 };
@@ -18,7 +18,7 @@ export function Tabs<T extends string>({ items, selected, onSelect }: TabsProps<
           <Pressable
             key={item.value}
             accessibilityRole="tab"
-            accessibilityLabel={item.label}
+            accessibilityLabel={item.accessibilityLabel ?? item.label}
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(item.value)}
             style={[styles.tab, isSelected ? styles.tabSelected : styles.tabIdle]}

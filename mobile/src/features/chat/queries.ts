@@ -17,7 +17,7 @@ import { chatApi } from './api';
 import { mergeIntoPages } from './mergeMessages';
 import type { Conversation, Message, MessagePage } from './types';
 
-/** The list has no live event for conversations the app is not in, so it is polled lightly. */
+/** Polling catches up on missed events and keeps compatibility with older servers. */
 const CONVERSATIONS_POLL_MS = 30_000;
 
 export const conversationsKey = ['conversations'] as const;

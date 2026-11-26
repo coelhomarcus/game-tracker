@@ -1,9 +1,17 @@
+import type { Href } from 'expo-router';
+
 import { parseGame, parseUserSummary, type Game, type UserSummary } from '@/features/games/types';
 import { parseStatus } from '@/features/library/status';
 import type { GameStatus } from '@/theme/tokens';
 
 export type PostType = 'status' | 'review' | 'activity';
+export type TimelineType = 'post' | 'activity';
 export type FeedScope = 'general' | 'following';
+
+/** Unknown and older references use the legacy route, which resolves the type on load. */
+export function itemHref(id: string, type?: PostType | null): Href {
+  return (type === 'activity' ? `/activities/${id}` : `/posts/${id}`) as Href;
+}
 
 /** The playthrough a post is linked to. It may be gone: deleting a record keeps the post. */
 export type PostEntryRef = {
@@ -31,12 +39,14 @@ export type QuotedPost = {
   createdAt: Date;
 };
 
-/** Why a feed item is in the list when it is not the post itself: someone reposted it. */
-export type PostReason = {
-  type: 'repost';
-  by: UserSummary;
-  at: Date;
-};
+/** Preview fields are optional on replies returned by older servers. */
+export type PostReference = Pick<QuotedPost, 'id' | 'author' | 'content'> &
+  Partial<Pick<QuotedPost, 'type' | 'images' | 'game' | 'createdAt'>>;
+
+/** The repost or reply that brought the original post into the feed. */
+export type PostReason =
+  | { type: 'repost'; by: UserSummary; at: Date }
+  | { type: 'reply'; id: string; by: UserSummary; at: Date; content: string };
 
 export type Post = {
   id: string;
@@ -78,6 +88,7 @@ export type CommentSort = 'top' | 'oldest' | 'newest';
  * would repeat.
  */
 export function postKey(post: Pick<Post, 'id' | 'reason'>): string {
+  if (post.reason?.type === 'reply') return `reply:${post.reason.id}`;
   return post.reason ? `repost:${post.id}:${post.reason.by.id}` : `post:${post.id}`;
 }
 
@@ -161,7 +172,7 @@ function parseImages(json: Json): PostImage[] {
     : [];
 }
 
-function parseQuotedPost(json: Json): QuotedPost {
+export function parseQuotedPost(json: Json): QuotedPost {
   return {
     id: json.id,
     author: parseUserSummary(json.user),
@@ -175,8 +186,14 @@ function parseQuotedPost(json: Json): QuotedPost {
 }
 
 function parseReason(json: Json | null | undefined): PostReason | null {
-  if (json?.type !== 'repost' || json.by == null) return null;
-  return { type: 'repost', by: parseUserSummary(json.by), at: new Date(json.at) };
+  if (json?.by == null) return null;
+  const by = parseUserSummary(json.by);
+  const at = new Date(json.at);
+  if (json.type === 'repost') return { type: 'repost', by, at };
+  if (json.type === 'reply' && typeof json.id === 'string' && typeof json.content === 'string') {
+    return { type: 'reply', id: json.id, by, at, content: json.content };
+  }
+  return null;
 }
 
 function parseEntryRef(json: Json): PostEntryRef {
@@ -210,9 +227,12 @@ export function parsePost(json: Json): Post {
   };
 }
 
-export function parsePostPage(json: Json): PostPage {
+export function parsePostPage(json: Json, type?: TimelineType): PostPage {
+  const items = (json.items as Json[]).map(parsePost);
   return {
-    items: (json.items as Json[]).map(parsePost),
+    items: type === undefined ? items : items.filter((item) => type === 'activity'
+      ? item.type === 'activity' && item.reason === null
+      : item.type !== 'activity'),
     nextCursor: nullableString(json.nextCursor),
   };
 }

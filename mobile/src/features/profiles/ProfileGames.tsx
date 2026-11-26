@@ -143,6 +143,7 @@ export function ProfileGames({ userId, own, scroll, refetchProfile }: ProfileGam
       inset={space.lg}
       listRef={scroll.attachList as Ref<FlashListRef<LibraryGroup>>}
       onScroll={scroll.onScroll}
+      onContentSizeChange={scroll.onContentSizeChange}
       topInset={scroll.topInset}
       bottomInset={PROFILE_LIST_BOTTOM_INSET}
       minContentHeight={scroll.minContentHeight}

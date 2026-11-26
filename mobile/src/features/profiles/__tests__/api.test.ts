@@ -265,6 +265,10 @@ describe('parseUserReplyPage', () => {
         id: 'p1',
         author: { id: 'u2', username: 'bia', name: 'Bia', avatarUrl: null },
         content: 'Hades é ótimo',
+        createdAt: undefined,
+        game: null,
+        images: [],
+        type: 'status',
       },
     });
     // A row without its post still parses, pointing at the post id.
@@ -334,7 +338,7 @@ describe('profilesApi', () => {
 
     expect(seen[0]!.searchParams.get('limit')).toBe('20');
     expect(seen[0]!.searchParams.has('filter')).toBe(false);
-    expect(seen[0]!.searchParams.has('type')).toBe(false);
+    expect(seen[0]!.searchParams.get('type')).toBe('post');
     expect(seen[0]!.searchParams.has('cursor')).toBe(false);
     expect(seen[1]!.searchParams.get('filter')).toBe('media');
     expect(seen[1]!.searchParams.get('cursor')).toBe('abc');

@@ -16,15 +16,17 @@ export type GameCoverProps = {
    * do not stop on it a second time.
    */
   decorative?: boolean;
+  /** Uses a controller as the fallback when the title is already beside the cover. */
+  iconFallback?: boolean;
 };
 
 const ICON_ONLY_BELOW = 80;
 
-export function GameCover({ name, url, width, decorative = false }: GameCoverProps) {
+export function GameCover({ name, url, width, decorative = false, iconFallback = false }: GameCoverProps) {
   const uri = resolveImageUrl(url);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const showImage = uri !== null && failedUri !== uri;
-  const iconOnly = width !== undefined && width < ICON_ONLY_BELOW;
+  const iconOnly = iconFallback || (width !== undefined && width < ICON_ONLY_BELOW);
 
   return (
     <View
@@ -48,7 +50,7 @@ export function GameCover({ name, url, width, decorative = false }: GameCoverPro
       ) : iconOnly ? (
         <Ionicons
           name="game-controller-outline"
-          size={Math.max(16, (width ?? 0) * 0.4)}
+          size={Math.max(16, (width ?? ICON_ONLY_BELOW) * 0.4)}
           color={colors.textMedium}
         />
       ) : (

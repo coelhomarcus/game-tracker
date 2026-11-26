@@ -219,8 +219,9 @@ export function PostControls({ post, onReply, onDeleted, big = false }: PostCont
                 value: 'repost',
                 label: reposted ? 'Desfazer repost' : 'Repostar',
                 icon: 'repeat',
+                description: reposted ? 'Retira o repost do seu perfil e do feed.' : 'Compartilha a publicação como ela foi escrita.',
               },
-              { value: 'quote', label: 'Citar', icon: 'chatbox-ellipses-outline' },
+              { value: 'quote', label: 'Citar', icon: 'chatbox-ellipses-outline', description: 'Adiciona o seu texto acima da prévia do post.' },
               { value: 'cancel', label: 'Cancelar', icon: 'close' },
             ]}
             onSelect={(choice) => {

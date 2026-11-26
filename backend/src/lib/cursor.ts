@@ -17,8 +17,8 @@ export function decodeCursor(cursor: string): { createdAt: Date; id: string } {
   return { createdAt, id };
 }
 
-/** Um item de linha do tempo é um post original ou o repost de alguém. */
-export type TimelineKind = 'post' | 'repost';
+/** Um item de linha do tempo é um post, um repost ou uma resposta. */
+export type TimelineKind = 'post' | 'repost' | 'reply';
 
 /**
  * Cursor das linhas do tempo (feed, posts de um usuário, posts de um jogo). `at` é a hora da
@@ -65,6 +65,6 @@ export function decodeTimelineCursor(token: string): TimelineCursor | null {
   const { at, id, kind } = candidate;
   if (typeof at !== 'string' || !isRealTimestamp(at)) return null;
   if (typeof id !== 'string' || !isUuid(id)) return null;
-  if (kind !== 'post' && kind !== 'repost') return null;
+  if (kind !== 'post' && kind !== 'repost' && kind !== 'reply') return null;
   return { at, id, kind };
 }

@@ -149,9 +149,9 @@ const cards = () =>
   screen.queryAllByRole('button', { name: /, (Jogando|Concluído|Na fila|Abandonado|Vários status), / });
 
 describe('summary and tabs', () => {
-  it('shows the summary line and the tab counts', async () => {
+  it('shows the accessible summary and the tab counts', async () => {
     await renderLibrary();
-    expect(screen.getByText('3 jogos · 4 registros · 1 jogo em andamento')).toBeOnTheScreen();
+    expect(screen.getByLabelText('3 jogos · 4 registros · 1 jogo em andamento')).toBeOnTheScreen();
     expect(screen.getByRole('tab', { name: 'Todos (3)' })).toBeOnTheScreen();
     expect(screen.getByRole('tab', { name: 'Jogando (1)' })).toBeOnTheScreen();
     expect(screen.getByRole('tab', { name: 'Concluído (2)' })).toBeOnTheScreen();

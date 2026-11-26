@@ -125,8 +125,7 @@ export function CharProgress({ count, max = POST_MAX_LENGTH, style }: CharProgre
               fill="none"
               strokeDasharray={`${PROGRESS_CIRCUMFERENCE} ${PROGRESS_CIRCUMFERENCE}`}
               strokeDashoffset={PROGRESS_CIRCUMFERENCE * (1 - count / max)}
-              rotation={-90}
-              origin={`${CENTER}, ${CENTER}`}
+              transform={`rotate(-90 ${CENTER} ${CENTER})`}
             />
           ) : null}
         </Svg>

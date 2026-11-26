@@ -1,7 +1,7 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import {
   Button,
@@ -10,14 +10,14 @@ import {
   OptionSheet,
   Screen,
   Skeleton,
-  Tabs,
+  TabBar,
   Text,
   TextField,
 } from '@/components';
 import { useMyFavorites } from '@/features/games/queries';
 import { showToast } from '@/lib/toast';
 import { useScrollToTopOnTabPress } from '@/lib/useScrollToTopOnTabPress';
-import { radii, space, type GameStatus } from '@/theme/tokens';
+import { colors, hairline, radii, space, type GameStatus } from '@/theme/tokens';
 
 import { buildLibraryOverview, type LibraryGroup, type LibraryOverview } from './groups';
 import { useLibraryFilter } from './filterStore';
@@ -32,6 +32,7 @@ const SKELETON_COUNT = 8;
 const SKELETON_ITEMS = Array.from({ length: SKELETON_COUNT }, (_, index) => String(index));
 /** Covers are 3:4. */
 const COVER_RATIO = 4 / 3;
+const LIBRARY_MAX_WIDTH = 760;
 
 type TabValue = GameStatus | 'all';
 
@@ -46,12 +47,13 @@ function summaryLine({ games, records, playingGames }: LibraryOverview['summary'
 }
 
 type HeaderProps = {
-  summary: string;
+  summary: LibraryOverview['summary'];
   tabItems: { value: TabValue; label: string }[];
   status: GameStatus | null;
   query: string;
   platformLabel: string;
   filterActive: boolean;
+  sortChanged: boolean;
   resultCount: number;
   onSelectTab: (value: TabValue) => void;
   onChangeQuery: (text: string) => void;
@@ -65,32 +67,63 @@ type HeaderProps = {
  * would get a new identity on every keystroke, remounting the field and closing the keyboard.
  */
 function LibraryHeader(props: HeaderProps) {
+  const { games, records, playingGames } = props.summary;
   return (
     <View style={styles.header}>
-      <Text size="sm" tone="medium">
-        {props.summary}
-      </Text>
+      <View accessible accessibilityLabel={summaryLine(props.summary)} style={styles.summary}>
+        <View style={styles.stat}>
+          <Text size="_2xl" weight="bold" tone="high">{games}</Text>
+          <Text size="sm" tone="medium">Jogos</Text>
+        </View>
+        <View style={[styles.stat, styles.statDivider]}>
+          <Text size="_2xl" weight="bold" tone="high">{records}</Text>
+          <Text size="sm" tone="medium">Registros</Text>
+        </View>
+        <View style={[styles.stat, styles.statDivider]}>
+          <Text size="_2xl" weight="bold" style={styles.playingCount}>{playingGames}</Text>
+          <Text size="sm" tone="medium">Jogando</Text>
+        </View>
+      </View>
+      <View style={styles.searchRow}>
+        <View style={styles.search}>
+          <TextField
+            label="Buscar na biblioteca"
+            hideLabel
+            placeholder="Buscar na biblioteca"
+            leadingIcon="search-outline"
+            returnKeyType="search"
+            autoCapitalize="none"
+            value={props.query}
+            onChangeText={props.onChangeQuery}
+          />
+        </View>
+        <Button
+          accessibilityLabel="Ordenar"
+          icon="swap-vertical-outline"
+          shape="round"
+          color={props.sortChanged ? 'primary' : 'secondary'}
+          onPress={props.onOpenSort}
+        />
+      </View>
       <View style={styles.tabs}>
-        <Tabs items={props.tabItems} selected={props.status ?? 'all'} onSelect={props.onSelectTab} />
+        <TabBar items={props.tabItems} selected={props.status ?? 'all'} onSelect={props.onSelectTab} />
       </View>
-      <TextField label="Buscar na biblioteca" value={props.query} onChangeText={props.onChangeQuery} />
       <View style={styles.controls}>
-        <View style={styles.control}>
-          <Button label={props.platformLabel} color="secondary" onPress={props.onOpenPlatform} />
+        <Text accessibilityLiveRegion="polite" size="sm" tone="medium" weight="medium" style={styles.resultCount}>
+          {plural(props.resultCount, 'jogo encontrado', 'jogos encontrados')}
+        </Text>
+        {props.filterActive ? <Button label="Limpar" size="tiny" variant="ghost" onPress={props.onClear} /> : null}
+        <View style={styles.platform}>
+          <Button label={props.platformLabel} icon="hardware-chip-outline" color="secondary" size="tiny" onPress={props.onOpenPlatform} />
         </View>
-        <View style={styles.control}>
-          <Button label="Ordenar" color="secondary" onPress={props.onOpenSort} />
-        </View>
-        {props.filterActive ? <Button label="Limpar" variant="ghost" onPress={props.onClear} /> : null}
       </View>
-      <Text accessibilityLiveRegion="polite" size="sm" tone="medium">
-        {plural(props.resultCount, 'jogo encontrado', 'jogos encontrados')}
-      </Text>
     </View>
   );
 }
 
 export function LibraryScreen() {
+  const { width } = useWindowDimensions();
+  const minItemWidth = width >= 560 ? 138 : 104;
   const router = useRouter();
   const library = useLibrary();
   const favorites = useMyFavorites();
@@ -125,7 +158,7 @@ export function LibraryScreen() {
   }, [library]);
   const clear = useCallback(() => useLibraryFilter.getState().clear(), []);
 
-  if (library.isPending) return <LibrarySkeleton />;
+  if (library.isPending) return <LibrarySkeleton minItemWidth={minItemWidth} />;
 
   if (library.isError && data === undefined) {
     return (
@@ -152,12 +185,13 @@ export function LibraryScreen() {
 
   const header = hasRecords ? (
     <LibraryHeader
-      summary={summaryLine(overview.summary)}
+      summary={overview.summary}
       tabItems={tabItems}
       status={status}
       query={query}
       platformLabel={activePlatform?.label ?? 'Plataforma'}
       filterActive={filterActive}
+      sortChanged={sort !== 'recent'}
       resultCount={overview.groups.length}
       onSelectTab={(value) => useLibraryFilter.getState().setStatus(value === 'all' ? null : value)}
       onChangeQuery={(text) => useLibraryFilter.getState().setQuery(text)}
@@ -169,12 +203,14 @@ export function LibraryScreen() {
 
   const empty = hasRecords ? (
     <EmptyState
+      icon="search-outline"
       title="Nenhum jogo com esses filtros"
       message="Tente outra busca ou limpe os filtros."
       action={{ label: 'Limpar filtros', onPress: clear }}
     />
   ) : (
     <EmptyState
+      icon="library-outline"
       title="Sua biblioteca começa com um jogo"
       message="Adicione os jogos que você joga, quer jogar ou já zerou."
       action={{ label: 'Encontrar jogo', onPress: () => router.push(EXPLORE_GAMES) }}
@@ -186,9 +222,12 @@ export function LibraryScreen() {
       <View style={styles.page}>
         <CoverGrid<LibraryGroup>
           data={overview.groups}
+          minItemWidth={minItemWidth}
+          bottomInset={space.lg}
           keyExtractor={(group) => group.game.id}
           renderItem={(group, width) => (
             <LibraryCard
+              detailed
               group={group}
               width={width}
               sort={sort}
@@ -227,13 +266,20 @@ export function LibraryScreen() {
   );
 }
 
-function LibrarySkeleton() {
+function LibrarySkeleton({ minItemWidth }: { minItemWidth: number }) {
   return (
     <Screen>
       <View style={styles.page}>
         <CoverGrid<string>
           data={SKELETON_ITEMS}
+          minItemWidth={minItemWidth}
           keyExtractor={(id) => id}
+          ListHeaderComponent={(
+            <View style={styles.skeletonHeader}>
+              <Skeleton height={72} radius={radii.lg} />
+              <Skeleton height={48} radius={radii.md} />
+            </View>
+          )}
           renderItem={(_, width) => (
             <Skeleton testID="library-skeleton" width={width} height={width * COVER_RATIO} radius={radii.sm} />
           )}
@@ -244,12 +290,25 @@ function LibrarySkeleton() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, paddingHorizontal: space.lg },
-  header: { gap: space.md, paddingBottom: space.md },
-
+  page: { flex: 1, width: '100%', maxWidth: LIBRARY_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: space.lg },
+  header: { paddingTop: space.lg, paddingBottom: space.sm },
+  summary: {
+    flexDirection: 'row',
+    paddingVertical: space.md,
+    borderRadius: radii.lg,
+    borderWidth: hairline,
+    borderColor: colors.borderLow,
+    backgroundColor: colors.bgContrast25,
+  },
+  stat: { flex: 1, alignItems: 'center', gap: space._2xs, paddingHorizontal: space.xs },
+  statDivider: { borderStartWidth: hairline, borderColor: colors.borderLow },
+  playingCount: { color: colors.status.playing },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
+  search: { flex: 1, minWidth: 0 },
   // Tabs pad their own edges; pull them out to the screen edge so they scroll edge to edge.
-  tabs: { marginHorizontal: -space.lg },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  control: { flex: 1 },
-
+  tabs: { marginHorizontal: -space.lg, marginTop: space.xs },
+  controls: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 48 },
+  resultCount: { flex: 1 },
+  platform: { maxWidth: '45%' },
+  skeletonHeader: { gap: space.md, paddingTop: space.lg, paddingBottom: space._2xl },
 });

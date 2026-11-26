@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState, type ComponentRef, type Ref } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
-import { colors, lineHeight, primary, type } from '@/theme/tokens';
+import type { IoniconName } from '@/features/library/status';
+import { colors, lineHeight, primary, radii, type } from '@/theme/tokens';
 import { fontFamily, Text } from './Text';
 
 const FONT_SIZE = type.size.md;
@@ -15,6 +17,9 @@ export type TextFieldProps = {
   label: string;
   /** Keeps the label for screen readers only, for compact fields that carry a placeholder. */
   hideLabel?: boolean;
+  leadingIcon?: IoniconName;
+  /** Shows a clear button while the field contains text. */
+  clear?: { label: string; onPress: () => void };
   value: string;
   onChangeText: (text: string) => void;
   error?: string;
@@ -35,6 +40,7 @@ export type TextFieldProps = {
   autoComplete?: TextInputProps['autoComplete'];
   keyboardType?: TextInputProps['keyboardType'];
   autoCapitalize?: TextInputProps['autoCapitalize'];
+  autoCorrect?: TextInputProps['autoCorrect'];
   returnKeyType?: TextInputProps['returnKeyType'];
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
   onBlur?: () => void;
@@ -44,6 +50,8 @@ export type TextFieldProps = {
 export function TextField({
   label,
   hideLabel,
+  leadingIcon,
+  clear,
   error,
   helper,
   showCounter,
@@ -56,6 +64,7 @@ export function TextField({
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
   const { maxLength, value } = inputProps;
+  const canClear = clear !== undefined && value.length > 0 && inputProps.editable !== false;
   const multilineStyle = multiline
     ? maxLines
       ? [styles.inputGrowing, { maxHeight: LINE_HEIGHT * maxLines + (VERTICAL_PADDING + BORDER_WIDTH) * 2 }]
@@ -78,26 +87,45 @@ export function TextField({
           {label}
         </Text>
       )}
-      <TextInput
-        {...inputProps}
-        ref={inputRef}
-        multiline={multiline}
-        accessibilityLabel={label}
-        accessibilityHint={error}
-        placeholderTextColor={colors.textMedium}
-        selectionColor={primary[500]}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          onBlur?.();
-        }}
-        style={[
-          styles.input,
-          multilineStyle,
-          focused ? styles.inputFocused : null,
-          error ? styles.inputError : null,
-        ]}
-      />
+      <View>
+        <TextInput
+          {...inputProps}
+          ref={inputRef}
+          multiline={multiline}
+          accessibilityLabel={label}
+          accessibilityHint={error}
+          placeholderTextColor={colors.textMedium}
+          selectionColor={primary[500]}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            onBlur?.();
+          }}
+          style={[
+            styles.input,
+            multilineStyle,
+            leadingIcon && styles.inputWithIcon,
+            canClear && styles.inputWithClear,
+            focused && styles.inputFocused,
+            error && styles.inputError,
+          ]}
+        />
+        {leadingIcon ? (
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.icon}>
+            <Ionicons name={leadingIcon} size={18} color={focused ? colors.primary : colors.textMedium} />
+          </View>
+        ) : null}
+        {canClear ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={clear.label}
+            onPress={clear.onPress}
+            style={({ pressed }) => [styles.clear, pressed && styles.clearPressed]}
+          >
+            <Ionicons name="close-circle" size={18} color={colors.textMedium} />
+          </Pressable>
+        ) : null}
+      </View>
       {note || count !== null ? (
         <View style={styles.noteRow}>
           {note}
@@ -128,6 +156,14 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHT,
   },
   inputMultiline: { minHeight: 120, textAlignVertical: 'top' },
+  inputWithIcon: { paddingStart: 40 },
+  inputWithClear: { paddingEnd: 48 },
+  icon: { position: 'absolute', start: 13, top: 0, height: 48, justifyContent: 'center' },
+  clear: {
+    position: 'absolute', end: 1, top: 0, width: 48, height: 48, borderRadius: radii.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  clearPressed: { backgroundColor: colors.bgContrast25 },
   inputGrowing: { textAlignVertical: 'center' },
   inputFocused: { borderColor: primary[500] },
   inputError: { borderColor: colors.danger },

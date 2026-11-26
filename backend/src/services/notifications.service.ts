@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { notifications, notificationTypeEnum, postImages, users } from '../db/schema';
+import { notifications, notificationTypeEnum, postImages, postTypeEnum, users } from '../db/schema';
 import { decodeTimelineCursor, encodeTimelineCursor } from '../lib/cursor';
 import { AppError } from '../lib/errors';
 import { extractMentions } from '../lib/mentions';
@@ -9,9 +9,9 @@ import { hiddenAuthorsSql, suppressesNotification } from './moderation.service';
 
 type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
 
-const PUSH_MESSAGES: Record<NotificationType, (actor: string) => { title: string; body: string }> = {
-  like: (actor) => ({ title: 'Nova curtida', body: `${actor} curtiu seu post` }),
-  comment: (actor) => ({ title: 'Novo comentário', body: `${actor} comentou no seu post` }),
+const PUSH_MESSAGES: Record<NotificationType, (actor: string, activity: boolean) => { title: string; body: string }> = {
+  like: (actor, activity) => ({ title: 'Nova curtida', body: `${actor} curtiu ${activity ? 'sua atividade' : 'seu post'}` }),
+  comment: (actor, activity) => ({ title: 'Novo comentário', body: `${actor} comentou ${activity ? 'na sua atividade' : 'no seu post'}` }),
   follow: (actor) => ({ title: 'Novo seguidor', body: `${actor} começou a seguir você` }),
   reply: (actor) => ({ title: 'Nova resposta', body: `${actor} respondeu seu comentário` }),
   mention: (actor) => ({ title: 'Nova menção', body: `${actor} mencionou você` }),
@@ -24,6 +24,7 @@ interface NotifyInput {
   actorId: string;
   type: NotificationType;
   postId?: string;
+  postType?: (typeof postTypeEnum.enumValues)[number];
   /** Só nas notificações que nascem de um comentário (comment, reply e mention). */
   commentId?: string;
 }
@@ -32,7 +33,7 @@ interface NotifyInput {
  * Cria a notificação in-app e dispara o push (best-effort). Nunca notifica o próprio autor da ação,
  * nem quem tem bloqueio (em qualquer sentido) com quem agiu, nem quem silenciou quem agiu.
  */
-export async function notify({ userId, actorId, type, postId, commentId }: NotifyInput) {
+export async function notify({ userId, actorId, type, postId, commentId, postType }: NotifyInput) {
   if (userId === actorId) return;
   if (await suppressesNotification(userId, actorId)) return;
 
@@ -42,7 +43,7 @@ export async function notify({ userId, actorId, type, postId, commentId }: Notif
   ]);
 
   if (actor && notification) {
-    const { title, body } = PUSH_MESSAGES[type](actor.username);
+    const { title, body } = PUSH_MESSAGES[type](actor.username, postType === 'activity');
     // O destino é montado no app só a partir de ids (nunca de um caminho vindo no push).
     void sendPushToUser(userId, {
       title,
@@ -53,6 +54,7 @@ export async function notify({ userId, actorId, type, postId, commentId }: Notif
         notificationId: notification.id,
         actorId,
         ...(postId ? { postId } : {}),
+        ...(postType === 'activity' ? { postType } : {}),
         ...(commentId ? { commentId } : {}),
       },
     });
@@ -169,9 +171,8 @@ export async function list(userId: string, { cursor, filter = 'all', limit = 30 
     },
     with: {
       actor: { columns: { id: true, username: true, name: true, avatarUrl: true } },
-      // Só para montar o trecho e a miniatura; não vão na resposta.
       post: {
-        columns: { content: true, imageUrl: true },
+        columns: { content: true, imageUrl: true, type: true },
         with: { images: { columns: { url: true }, orderBy: [asc(postImages.position)], limit: 1 } },
       },
       comment: { columns: { content: true } },
@@ -187,6 +188,7 @@ export async function list(userId: string, { cursor, filter = 'all', limit = 30 
   return {
     items: page.map(({ post, comment, atText: _atText, ...notification }) => ({
       ...notification,
+      postType: post?.type ?? null,
       // O comentário, quando a notificação nasce de um; senão o texto do post.
       excerpt: excerptOf(comment ? comment.content : post?.content),
       // A primeira imagem do post; um post antigo só tem a coluna legada `image_url`.

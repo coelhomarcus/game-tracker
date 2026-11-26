@@ -201,6 +201,10 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           io.to(room).except(blindRooms).emit('message:receive', message);
           io.to(blindRooms).emit('message:receive', { ...message, replyTo: null });
         }
+        // These sockets only need to refresh their conversation preview and unread count.
+        // Keep the actual message and any quoted content scoped to the open conversation.
+        const participantRooms = [userRoom(userId), ...others.map((other) => userRoom(other.userId))];
+        io.to(participantRooms).except(room).emit('conversation:updated', { conversationId });
         ack?.({ message });
 
         // Quem silenciou a conversa não recebe push.

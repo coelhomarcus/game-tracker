@@ -13,7 +13,7 @@ const NBSP = ' ';
 
 export type PostMetaProps = {
   author: UserSummary;
-  createdAt: Date;
+  createdAt?: Date;
   /**
    * Whether the name and handle open the profile. Off inside a card that is a link as a whole
    * (a quoted post), where a second link would only steal its taps.
@@ -69,9 +69,11 @@ export function PostMeta({ author, createdAt, linked = true, avatarSize, style }
       ) : (
         <View style={styles.who}>{who}</View>
       )}
-      <Text numberOfLines={1} tone="medium" leading="tight" style={styles.time}>
-        {`· ${formatRelativeTime(createdAt)}`}
-      </Text>
+      {createdAt ? (
+        <Text numberOfLines={1} tone="medium" leading="tight" style={styles.time}>
+          {`· ${formatRelativeTime(createdAt)}`}
+        </Text>
+      ) : null}
     </View>
   );
 }

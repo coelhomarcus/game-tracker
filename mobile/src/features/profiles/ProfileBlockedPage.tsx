@@ -22,7 +22,7 @@ export type ProfileBlockedPageProps = {
  * page, so the header can collapse and the profile can be pulled to refresh.
  */
 export function ProfileBlockedPage({ profile, scroll, refetchProfile }: ProfileBlockedPageProps) {
-  const { attachList, onScroll, topInset, minContentHeight, initialOffset } = scroll;
+  const { attachList, onScroll, onContentSizeChange, topInset, minContentHeight, initialOffset } = scroll;
   const [pulling, setPulling] = useState(false);
   const handle = `@${profile.username}`;
 
@@ -58,6 +58,7 @@ export function ProfileBlockedPage({ profile, scroll, refetchProfile }: ProfileB
       ]}
       contentOffset={initialOffset ? { x: 0, y: initialOffset } : undefined}
       onScroll={onScroll}
+      onContentSizeChange={onContentSizeChange}
       scrollEventThrottle={16}
       onRefresh={() => void refresh()}
       refreshing={pulling}

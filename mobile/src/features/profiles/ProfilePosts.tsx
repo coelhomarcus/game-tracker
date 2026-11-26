@@ -20,12 +20,13 @@ export type ProfilePostFeedProps = {
   refetchProfile: Refetch;
   copy: { empty: string; error: string };
   emptyAction?: { label: string; onPress: () => void };
+  activityTimeline?: boolean;
 };
 
 /** A post list page of the profile (Posts, Mídia, Curtidas), with its loading and empty states. */
-export function ProfilePostFeed({ query, scroll, refetchProfile, copy, emptyAction }: ProfilePostFeedProps) {
+export function ProfilePostFeed({ query, scroll, refetchProfile, copy, emptyAction, activityTimeline }: ProfilePostFeedProps) {
   const { refetch } = query;
-  const { attachList, onScroll, topInset, minContentHeight, initialOffset } = scroll;
+  const { attachList, onScroll, onContentSizeChange, topInset, minContentHeight, initialOffset } = scroll;
 
   const refresh = useCallback(
     () => refreshAll([refetchProfile, () => refetch()]),
@@ -54,9 +55,11 @@ export function ProfilePostFeed({ query, scroll, refetchProfile, copy, emptyActi
     <PostList
       ref={attachList}
       query={query}
+      activityTimeline={activityTimeline}
       ListEmptyComponent={empty}
       onRefresh={refresh}
       onScroll={onScroll}
+      onContentSizeChange={onContentSizeChange}
       topInset={topInset}
       minContentHeight={minContentHeight}
       initialOffset={initialOffset}

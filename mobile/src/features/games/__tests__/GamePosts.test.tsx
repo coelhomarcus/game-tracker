@@ -85,20 +85,16 @@ describe('GamePosts', () => {
     expect(mockedUseGamePosts).toHaveBeenCalledWith('g1');
   });
 
-  it('renders posts and activities without the game link', async () => {
+  it('renders publications without repeating the game link', async () => {
     mockedUseGamePosts.mockReturnValue(
       result({
-        data: pages(
-          post(),
-          post({ id: 'p2', type: 'activity', content: 'começou a jogar', activityStatus: 'playing' }),
-        ),
+        data: pages(post()),
       }),
     );
     await renderPosts();
 
     expect(screen.getByRole('header', { name: 'Posts' })).toBeOnTheScreen();
     expect(screen.getByText('Zerei de primeira!')).toBeOnTheScreen();
-    expect(screen.getByText(/começou a jogar/)).toBeOnTheScreen();
     expect(screen.queryByRole('link', { name: 'Abrir jogo Hades' })).not.toBeOnTheScreen();
   });
 

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createRef } from 'react';
-import { FlatList, ScrollView, Text, View } from 'react-native';
+import { FlatList, Platform, Text, View } from 'react-native';
 import Animated, { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -77,7 +77,7 @@ describe('PagerWithHeader', () => {
   function List({ name, scroll }: { name: string; scroll: PagerScrollProps }) {
     received[name] = scroll;
     renders[name] = (renders[name] ?? 0) + 1;
-    const { attachList, onScroll, topInset, minContentHeight, initialOffset } = scroll;
+    const { attachList, onScroll, onContentSizeChange, topInset, minContentHeight, initialOffset } = scroll;
     return (
       <Animated.FlatList
         ref={attachList as (list: FlatList<string> | null) => void}
@@ -86,6 +86,7 @@ describe('PagerWithHeader', () => {
         keyExtractor={(item) => item}
         renderItem={({ item }) => <Text>{item}</Text>}
         onScroll={onScroll}
+        onContentSizeChange={onContentSizeChange}
         contentOffset={{ x: 0, y: initialOffset }}
         contentContainerStyle={{ paddingTop: topInset, minHeight: minContentHeight }}
         progressViewOffset={topInset}
@@ -184,15 +185,16 @@ describe('PagerWithHeader', () => {
     expect(screen.getByRole('tab', { name: 'Segunda', selected: true })).toBeOnTheScreen();
   });
 
-  it('cuts to the page on a tab press instead of sliding across the pages in between', async () => {
-    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo');
+  it('fills one viewport and switches pages without a horizontal scroll container', async () => {
     await renderPager();
 
     await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
 
-    expect(scrollTo).toHaveBeenCalledWith({ x: 360, animated: false });
-    expect(scrollTo).not.toHaveBeenCalledWith(expect.objectContaining({ animated: true }));
-    scrollTo.mockRestore();
+    expect(screen.getByTestId('pager').props.horizontal).toBeUndefined();
+    expect(screen.getByTestId('pager-page-b')).toHaveStyle({ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 });
+    const inactive = screen.getByTestId('pager-page-a', { includeHiddenElements: true });
+    expect(inactive).toHaveStyle({ opacity: 0 });
+    expect(inactive.props.pointerEvents).toBe('none');
   });
 
   it('moves the header with the list and stops with the tab bar under the compact header', async () => {
@@ -350,42 +352,35 @@ describe('PagerWithHeader', () => {
     expect(screen.getByTestId('pager')).not.toHaveStyle({ opacity: 0 });
   });
 
-  it('switches pages with a swipe: the neighbour mounts in place and takes the header', async () => {
+  it('keeps the tab selected when receiving horizontal scroll events', async () => {
     await renderPager();
-    await scroll('a', 600);
-
-    // The drag mounts the neighbour at the collapsed offset before it comes into view.
-    await fireEvent(screen.getByTestId('pager'), 'scrollBeginDrag', {
-      nativeEvent: { contentOffset: { x: 0, y: 0 } },
-    });
-    expect(received.b?.initialOffset).toBe(220);
-    expect(received.b?.isFocused).toBe(false);
-
     await fireEvent(screen.getByTestId('pager'), 'momentumScrollEnd', {
       nativeEvent: { contentOffset: { x: 360, y: 0 } },
     });
 
-    expect(screen.getByRole('tab', { name: 'Segunda', selected: true })).toBeOnTheScreen();
-    expect(received.b?.isFocused).toBe(true);
-    await scroll('b', 120);
-    expect(translateY()).toBeCloseTo(-120);
-    await scroll('a', 900);
-    expect(translateY()).toBeCloseTo(-120);
+    expect(screen.getByRole('tab', { name: 'Primeira', selected: true })).toBeOnTheScreen();
+    expect(screen.queryByTestId('pager-page-b', { includeHiddenElements: true })).toBeNull();
   });
 
-  it('syncs the neighbour already mounted when a swipe starts with the header partly open', async () => {
-    await renderPager();
-    await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
-    await scroll('b', 900);
-    await fireEvent.press(screen.getByRole('tab', { name: 'Primeira' }));
-    await scroll('a', 40);
-    scrollToOffset.mockClear();
+  it('restores the initial web position after the new list is measured', async () => {
+    const platform = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      await renderPager();
+      await scroll('a', 600);
+      await fireEvent.press(screen.getByRole('tab', { name: 'Segunda' }));
+      await scroll('b', 0);
+      expect(translateY()).toBeCloseTo(-220);
+      expect(screen.getByTestId('pager-page-a', { includeHiddenElements: true }).props.inert).toBe(true);
 
-    await fireEvent(screen.getByTestId('pager'), 'scrollBeginDrag', {
-      nativeEvent: { contentOffset: { x: 0, y: 0 } },
-    });
-
-    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 40, animated: false });
+      await fireEvent(screen.getByTestId('list-b'), 'contentSizeChange', 360, 700);
+      expect(scrollToOffset).not.toHaveBeenCalled();
+      await fireEvent(screen.getByTestId('list-b'), 'contentSizeChange', 360, 920);
+      expect(scrollToOffset).toHaveBeenCalledWith({ offset: 220, animated: false });
+      await fireEvent(screen.getByTestId('list-b'), 'contentSizeChange', 360, 1000);
+      expect(scrollToOffset).toHaveBeenCalledTimes(1);
+    } finally {
+      platform.restore();
+    }
   });
 
   it('tells the screen when the compact header shows and hides', async () => {

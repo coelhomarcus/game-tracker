@@ -100,6 +100,7 @@ export function SessionGate() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="games" options={{ headerShown: false }} />
+        <Stack.Screen name="activities" options={{ headerShown: false }} />
         <Stack.Screen
           name="posts"
           options={({ route }) =>

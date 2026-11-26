@@ -13,6 +13,7 @@ import {
   type PagerWithHeaderHandle,
 } from '@/components';
 import { useSession } from '@/features/auth';
+import { useActivities } from '@/features/feed/queries';
 import { ApiError } from '@/lib/http/errors';
 
 import { ProfileCompactHeader } from './ProfileCompactHeader';
@@ -21,7 +22,7 @@ import { ProfileBackButton, ProfileHeader, ProfileHeaderSkeleton } from './Profi
 import { ProfileBlockedPage } from './ProfileBlockedPage';
 import { ProfileLikes } from './ProfileLikes';
 import { ProfileMedia } from './ProfileMedia';
-import { ProfilePosts } from './ProfilePosts';
+import { ProfilePostFeed, ProfilePosts, type ProfilePostsProps } from './ProfilePosts';
 import { ProfileReplies } from './ProfileReplies';
 import { ScrollToTopOnTabPress, type Refetch } from './profileList';
 import { useProfile } from './queries';
@@ -36,8 +37,7 @@ export type ProfileScreenProps = {
 };
 
 /**
- * The profile of a user, own or somebody else's: the header over a pager of lists (Jogos, Posts,
- * Respostas, Mídia and, on the own profile, Curtidas). Each page is its own list, because a
+ * The profile of a user, own or somebody else's. Each tab has its own list, because a
  * virtualized grid cannot be nested in another scrolling list; the header moves with the list
  * that shows.
  */
@@ -100,12 +100,23 @@ type BodyProps = {
   refetchProfile: Refetch;
 };
 
+function ProfileActivities({ userId, scroll, refetchProfile }: Omit<ProfilePostsProps, 'own'>) {
+  const query = useActivities({ kind: 'profile', id: userId });
+  return (
+    <ProfilePostFeed
+      query={query} scroll={scroll} refetchProfile={refetchProfile} activityTimeline
+      copy={{ empty: 'Nenhuma atividade ainda', error: 'Não foi possível carregar as atividades' }}
+    />
+  );
+}
+
 function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const pagerRef = useRef<PagerWithHeaderHandle>(null);
   // The compact header is up: the overlay back button under it is not read out twice.
   const [collapsed, setCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('games');
   const { id, username, name, avatarUrl } = profile;
   const author = useMemo(() => ({ id, username, name, avatarUrl }), [id, username, name, avatarUrl]);
 
@@ -142,6 +153,13 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
         label: 'Posts',
         render: (scroll) => (
           <ProfilePosts userId={id} own={own} scroll={scroll} refetchProfile={refetchProfile} />
+        ),
+      },
+      {
+        key: 'activities',
+        label: 'Atividades',
+        render: (scroll) => (
+          <ProfileActivities userId={id} scroll={scroll} refetchProfile={refetchProfile} />
         ),
       },
       {
@@ -185,8 +203,9 @@ function ProfileBody({ profile, own, tabRoot, refetchProfile }: BodyProps) {
         compactHeader={own ? undefined : <ProfileCompactHeader profile={profile} />}
         statusBarHeight={own ? 0 : insets.top}
         onCompactHeaderChange={setCollapsed}
+        onTabChange={setActiveTab}
       />
-      <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} />
+      {activeTab !== 'activities' ? <Fab accessibilityLabel="Publicar" onPress={() => router.push(COMPOSER)} /> : null}
       {tabRoot ? <ScrollToTopOnTabPress listRef={pagerRef} /> : null}
     </View>
   );

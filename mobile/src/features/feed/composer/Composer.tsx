@@ -3,6 +3,7 @@ import { useLocalSearchParams, usePreventRemove, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import { Avatar, Button, ChoiceChip, GameCover, Screen, Text } from '@/components';
+import { Avatar, Button, ChoiceChip, Screen, Text } from '@/components';
 import { fontFamily } from '@/components/Text';
 import { authErrorMessage, useSession } from '@/features/auth';
 import { gamesApi } from '@/features/games/api';
@@ -27,7 +28,7 @@ import { ApiError } from '@/lib/http/errors';
 import { resolveImageUrl } from '@/lib/imageUrl';
 import { usePreferences } from '@/lib/preferences';
 import { showToast } from '@/lib/toast';
-import { colors, hairline, lineHeight, radii, space, type } from '@/theme/tokens';
+import { colors, lineHeight, radii, space, type } from '@/theme/tokens';
 
 import { QuotedPost, RemovedQuote } from '../embeds/QuotedPost';
 import { GamePickerSheet } from '../GamePickerSheet';
@@ -37,6 +38,7 @@ import { measurePost, POST_MAX_LENGTH } from './CharProgress';
 import { AltTextSheet } from './AltTextSheet';
 import { ComposerFooter } from './ComposerFooter';
 import { ComposerGallery } from './ComposerGallery';
+import { ComposerGameCard } from './ComposerGameCard';
 import { ComposerTopBar } from './ComposerTopBar';
 import {
   composerKind,
@@ -51,7 +53,6 @@ import { DiscardDraftPrompt } from './DiscardDraftPrompt';
 import { pickFromGallery, takePhoto, useComposerImages, type PickedAsset } from './ImagePicking';
 
 const AVATAR_SIZE = 42;
-const GAME_COVER_WIDTH = 36;
 const AUTOSAVE_DELAY_MS = 500;
 const INPUT_SIZE = type.size.lg;
 const MISSING_ALT_MESSAGE = 'Adicione uma descrição a todas as imagens.';
@@ -59,7 +60,7 @@ const MISSING_ALT_MESSAGE = 'Adicione uma descrição a todas as imagens.';
 /** What the composer knows about the game of the post. */
 type GameLink =
   | { kind: 'none' }
-  | { kind: 'resolving' }
+  | { kind: 'resolving'; previous?: Game }
   | { kind: 'failed'; retry: () => void }
   | { kind: 'linked'; game: Game };
 
@@ -70,6 +71,7 @@ type Quote =
   | { kind: 'loading' }
   | { kind: 'failed'; retry: () => void }
   | { kind: 'removed' }
+  | { kind: 'activity' }
   | { kind: 'ready'; post: QuotedPostData };
 
 function parseIgdbId(value: string | string[] | undefined): number | null {
@@ -120,7 +122,7 @@ function QuoteLoader({
 }) {
   const post = usePost(postId);
   let quote: Quote = { kind: 'loading' };
-  if (post.data) quote = { kind: 'ready', post: toQuotedPost(post.data) };
+  if (post.data) quote = post.data.type === 'activity' ? { kind: 'activity' } : { kind: 'ready', post: toQuotedPost(post.data) };
   else if (post.error instanceof ApiError && post.error.status === 404) quote = { kind: 'removed' };
   else if (post.isError) quote = { kind: 'failed', retry: () => void post.refetch() };
   return render(quote);
@@ -141,6 +143,8 @@ function QuotePreview({ quote }: { quote: Quote }) {
       return <QuotedPost post={quote.post} onPress={null} />;
     case 'removed':
       return <RemovedQuote />;
+    case 'activity':
+      return <Text size="sm" tone="medium">As citações estão disponíveis para publicações.</Text>;
     case 'failed':
       return (
         <View style={styles.failure}>
@@ -162,34 +166,6 @@ function QuotePreview({ quote }: { quote: Quote }) {
   }
 }
 
-/** The linked game under the editor, with the "x" that removes the link. */
-function GameCard({ game, onRemove }: { game: Game; onRemove: () => void }) {
-  const detail = game.platforms[0] ?? null;
-  return (
-    <View testID="composer-game-card" style={styles.gameCard}>
-      <GameCover decorative name={game.name} url={game.coverUrl} width={GAME_COVER_WIDTH} />
-      <View style={styles.gameText}>
-        <Text numberOfLines={2} weight="semibold" tone="high">
-          {game.name}
-        </Text>
-        {detail ? (
-          <Text numberOfLines={1} size="sm" tone="medium">
-            {detail}
-          </Text>
-        ) : null}
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Remover vínculo com o jogo"
-        onPress={onRemove}
-        style={({ pressed }) => [styles.remove, pressed && styles.removePressed]}
-      >
-        <Ionicons name="close" size={22} color={colors.text} />
-      </Pressable>
-    </View>
-  );
-}
-
 /**
  * A secondary small pill. The visible pill is 34 dp tall; the pressable around it is the real
  * 48 dp touch box.
@@ -197,14 +173,12 @@ function GameCard({ game, onRemove }: { game: Game; onRemove: () => void }) {
 function ComposerPill({
   icon,
   label,
-  accessibilityLabel,
   trailingIcon,
   disabled = false,
   onPress,
 }: {
   icon: IoniconName;
   label: string;
-  accessibilityLabel?: string;
   trailingIcon?: IoniconName;
   disabled?: boolean;
   onPress: () => void;
@@ -212,7 +186,7 @@ function ComposerPill({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityLabel={label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={() => {
@@ -244,7 +218,8 @@ type BodyProps = {
 /** The game link as a draft keeps it: untouched, a chosen game, or removed. */
 function draftLink(override: GameLink | null): ComposerDraft['link'] {
   if (override === null) return null;
-  return { game: override.kind === 'linked' ? override.game : null };
+  if (override.kind === 'linked') return { game: override.game };
+  return { game: override.kind === 'resolving' ? (override.previous ?? null) : null };
 }
 
 function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
@@ -313,7 +288,7 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
   const draft: Omit<ComposerDraft, 'savedAt'> = {
     text,
     link: draftLink(override),
-    entryId: linkedGame ? entryId : null,
+    entryId: linkedGame || (link.kind === 'resolving' && link.previous) ? entryId : null,
     quotedPostId: quoteId,
     // Only what finished uploading can be sent again later.
     images: images.uploaded,
@@ -385,16 +360,27 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
     setOverride(next);
   }
 
-  async function resolve(igdbId: number) {
+  function openGamePicker() {
+    Keyboard.dismiss();
+    setPickerOpen(true);
+  }
+
+  async function resolve(igdbId: number, previous: Game | null = linkedGame) {
     const current = ++lookup.current;
-    setEntryId(null);
-    setOverride({ kind: 'resolving' });
+    setOverride({ kind: 'resolving', previous: previous ?? undefined });
     try {
       const game = await gamesApi.byIgdbId(igdbId);
-      if (lookup.current === current) setOverride({ kind: 'linked', game });
+      if (mounted.current && lookup.current === current) {
+        setEntryId(null);
+        setOverride({ kind: 'linked', game });
+      }
     } catch {
-      if (lookup.current === current) {
-        setOverride({ kind: 'failed', retry: () => void resolve(igdbId) });
+      if (!mounted.current || lookup.current !== current) return;
+      if (previous) {
+        setOverride({ kind: 'linked', game: previous });
+        showToast('Não foi possível trocar de jogo. Tente novamente.');
+      } else {
+        setOverride({ kind: 'failed', retry: () => void resolve(igdbId, null) });
       }
     }
   }
@@ -545,7 +531,34 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
             {quote ? <QuotePreview quote={quote} /> : null}
 
             {link.kind === 'linked' ? (
-              <GameCard game={link.game} onRemove={() => setLink(NO_LINK)} />
+              <ComposerGameCard
+                game={link.game}
+                platform={chosenRecord?.platform ?? link.game.platforms[0]}
+                onRemove={() => setLink(NO_LINK)}
+              >
+                {records.length > 0 ? (
+                  <>
+                    <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium">
+                      Registro (opcional)
+                    </Text>
+                    <View style={styles.chips}>
+                      <ChoiceChip
+                        label="Nenhum"
+                        selected={chosenRecord === undefined}
+                        onPress={() => setEntryId(null)}
+                      />
+                      {records.map((entry) => (
+                        <ChoiceChip
+                          key={entry.id}
+                          label={`${statusLabel[entry.status]} · ${entry.platform}`}
+                          selected={entry.id === chosenRecord?.id}
+                          onPress={() => setEntryId(entry.id)}
+                        />
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </ComposerGameCard>
             ) : link.kind === 'resolving' ? (
               <View style={styles.pending}>
                 <ActivityIndicator accessibilityLabel="Carregando" color={colors.textMedium} />
@@ -562,29 +575,6 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
                 <Button label="Publicar sem vínculo" variant="ghost" onPress={() => setLink(NO_LINK)} />
               </View>
             ) : null}
-
-            {linkedGame && records.length > 0 ? (
-              <View style={styles.records}>
-                <Text accessibilityRole="header" size="sm" weight="semibold" tone="medium">
-                  Registro (opcional)
-                </Text>
-                <View style={styles.chips}>
-                  <ChoiceChip
-                    label="Nenhum"
-                    selected={chosenRecord === undefined}
-                    onPress={() => setEntryId(null)}
-                  />
-                  {records.map((entry) => (
-                    <ChoiceChip
-                      key={entry.id}
-                      label={`${statusLabel[entry.status]} · ${entry.platform}`}
-                      selected={entry.id === chosenRecord?.id}
-                      onPress={() => setEntryId(entry.id)}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
           </View>
         </ScrollView>
 
@@ -599,17 +589,16 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
           {linkedGame ? (
             <ComposerPill
               icon="game-controller-outline"
-              label={linkedGame.name}
-              accessibilityLabel={`Desvincular ${linkedGame.name}`}
-              trailingIcon="close"
-              onPress={() => setLink(NO_LINK)}
+              label="Trocar jogo"
+              trailingIcon="chevron-down"
+              onPress={openGamePicker}
             />
           ) : (
             <ComposerPill
               icon="game-controller-outline"
               label="Vincular jogo"
               disabled={link.kind === 'resolving'}
-              onPress={() => setPickerOpen(true)}
+              onPress={openGamePicker}
             />
           )}
         </ScrollView>
@@ -624,10 +613,12 @@ function ComposerBody({ kind, prelink = NO_LINK, quote, quoteId }: BodyProps) {
 
       <GamePickerSheet
         visible={pickerOpen}
+        entries={library.data}
+        selectedIgdbId={linkedGame?.igdbId}
         onClose={() => setPickerOpen(false)}
         onSelect={(game) => {
           setPickerOpen(false);
-          void resolve(game.igdbId);
+          if (game.igdbId !== linkedGame?.igdbId) void resolve(game.igdbId);
         }}
       />
       <AltTextSheet
@@ -671,27 +662,6 @@ const styles = StyleSheet.create({
   },
   gallery: { marginHorizontal: space.lg, marginTop: space.md },
   embeds: { marginHorizontal: space.lg, marginTop: space.lg, gap: space.md },
-  gameCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.xs,
-    paddingLeft: space.sm,
-    borderRadius: radii.md,
-    borderWidth: hairline,
-    borderColor: colors.borderLow,
-    backgroundColor: colors.bgContrast25,
-  },
-  gameText: { flex: 1, gap: space._2xs },
-  remove: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removePressed: { backgroundColor: colors.bgContrast50 },
-  records: { gap: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   pending: {
     minHeight: 48,

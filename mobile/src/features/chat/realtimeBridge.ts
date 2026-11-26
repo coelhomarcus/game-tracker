@@ -50,6 +50,7 @@ class RealtimeBridge {
     this.reads.clear();
     this.subscriptions = [
       chatSocket.on('message:receive', (payload: unknown) => this.handleMessage(payload)),
+      chatSocket.on('conversation:updated', (payload: unknown) => this.handleConversationUpdated(payload)),
       chatSocket.on('message:hidden', (payload: unknown) => this.handleHidden(payload)),
       chatSocket.on('message:reaction', (payload: unknown) => this.handleReaction(payload)),
       chatSocket.on('typing:start', (payload: unknown) => this.handleTyping(payload, true)),
@@ -208,6 +209,19 @@ class RealtimeBridge {
     applyLatestMessage(queryClient, message, !mine && !open);
 
     if (open && !mine) this.markRead(conversationId);
+  }
+
+  private handleConversationUpdated(payload: unknown): void {
+    if (!isJson(payload) || !isString(payload.conversationId)) return;
+    const run = this.generation;
+    const pending = queryClient.getQueryCache().find({ queryKey: conversationsKey, exact: true })?.promise;
+    const refresh = () => {
+      if (run !== this.generation) return;
+      void queryClient.invalidateQueries({ queryKey: conversationsKey }, { cancelRefetch: false });
+    };
+    // A request already in flight may have read the list before the message was saved.
+    if (pending) void pending.then(refresh, refresh);
+    else refresh();
   }
 
   /** I deleted a message for myself, maybe on another device: it goes away here too. */

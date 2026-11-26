@@ -49,8 +49,8 @@ export async function getMyLikesHandler(req: Request, res: Response) {
 }
 
 export async function getMyBookmarksHandler(req: Request, res: Response) {
-  const { cursor, limit } = res.locals.query as { cursor?: string; limit: number };
-  res.json(await postsService.getBookmarks(req.user!.id, cursor, limit));
+  const { cursor, limit, type } = res.locals.query as { cursor?: string; limit: number; type?: 'post' };
+  res.json(await postsService.getBookmarks(req.user!.id, cursor, limit, type));
 }
 
 export async function getUserCommentsHandler(req: Request, res: Response) {

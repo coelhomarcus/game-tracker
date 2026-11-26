@@ -13,18 +13,20 @@ export async function getByIdHandler(req: Request, res: Response) {
 }
 
 export async function feedHandler(req: Request, res: Response) {
-  const { cursor, limit, scope } = res.locals.query as {
+  const { cursor, limit, scope, type, includeReplies } = res.locals.query as {
     cursor?: string;
     limit: number;
     scope: 'following' | 'general';
+    type?: postsService.TimelineType;
+    includeReplies: boolean;
   };
-  const result = await postsService.getFeed(req.user!.id, cursor, limit, scope);
+  const result = await postsService.getFeed(req.user!.id, cursor, limit, scope, type, includeReplies);
   res.json(result);
 }
 
 export async function searchHandler(req: Request, res: Response) {
-  const { q, cursor, limit } = res.locals.query as { q: string; cursor?: string; limit: number };
-  res.json(await postsService.searchPosts(req.user!.id, q, cursor, limit));
+  const { q, cursor, limit, type } = res.locals.query as { q: string; cursor?: string; limit: number; type?: 'post' };
+  res.json(await postsService.searchPosts(req.user!.id, q, cursor, limit, type));
 }
 
 export async function likeHandler(req: Request, res: Response) {

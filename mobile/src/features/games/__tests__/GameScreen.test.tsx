@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useGamePosts } from '@/features/feed/queries';
+import { useActivities, useGamePosts } from '@/features/feed/queries';
 import { useDeleteEntry, useLibrary, useUpdateEntry } from '@/features/library/queries';
 import type { GameEntry } from '@/features/library/types';
 import { ApiError } from '@/lib/http/errors';
@@ -20,6 +20,7 @@ jest.mock('../queries', () => ({
 }));
 jest.mock('@/features/feed/queries', () => ({
   useGamePosts: jest.fn(),
+  useActivities: jest.fn(),
   ...jest.requireActual<typeof import('@/test-utils/postControlHooks')>(
     '@/test-utils/postControlHooks',
   ).postControlHooks(),
@@ -457,10 +458,19 @@ describe('GameScreen', () => {
       expect(within(row).getByText('caio')).toBeOnTheScreen();
     });
 
-    it('shows the posts of the game below the players', async () => {
+    it('separates the overview, activities and posts of the game', async () => {
+      jest.mocked(useActivities).mockReturnValue({
+        data: { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] },
+      } as never);
       await renderScreen();
       await fireEvent.press(screen.getByRole('tab', { name: 'Comunidade' }));
-
+      expect(screen.getByText('Jogando agora')).toBeOnTheScreen();
+      expect(useGamePosts).not.toHaveBeenCalled();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Atividades' }));
+      expect(useActivities).toHaveBeenLastCalledWith({ kind: 'game', id: 'g1' });
+      expect(screen.getByText('Nenhuma atividade para este jogo ainda')).toBeOnTheScreen();
+      expect(screen.queryByText('Jogando agora')).toBeNull();
+      await fireEvent.press(screen.getByRole('tab', { name: 'Posts' }));
       expect(useGamePosts).toHaveBeenLastCalledWith('g1');
       await fireEvent.press(screen.getByRole('button', { name: 'Publicar sobre este jogo' }));
       expect(mockPush).toHaveBeenCalledWith('/posts/new?igdbId=11');

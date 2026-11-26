@@ -16,6 +16,7 @@ function invalidateAfterChange(client: QueryClient) {
     client.invalidateQueries({ queryKey: LIBRARY_KEY }),
     client.invalidateQueries({ queryKey: ['gameStats'] }),
     client.invalidateQueries({ queryKey: ['gamePlayers'] }),
+    client.invalidateQueries({ queryKey: ['activities'] }),
     invalidateOwnProfile(client, { entries: true }),
   ]);
 }

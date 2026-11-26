@@ -314,25 +314,28 @@ describe('displayName', () => {
 });
 
 describe('feedApi', () => {
-  it('feed sends scope and limit, and cursor only when given', async () => {
+  it('feed requests the selected type and preserves the cursor', async () => {
     const seen: URLSearchParams[] = [];
     server.use(
       http.get(`${apiBaseUrl}/feed`, ({ request }) => {
         seen.push(new URL(request.url).searchParams);
-        return HttpResponse.json({ items: [postJson], nextCursor: 'c2' });
+        return HttpResponse.json({ items: [postJson, { ...postJson, id: 'p2', type: 'review' }], nextCursor: 'c2' });
       }),
     );
 
     const page = await feedApi.feed('following');
-    await feedApi.feed('general', 'c1');
+    const activities = await feedApi.feed('general', 'c1', 'activity');
 
     expect(seen[0].get('scope')).toBe('following');
+    expect(seen[0].get('type')).toBe('post');
     expect(seen[0].get('limit')).toBe('20');
     expect(seen[0].has('cursor')).toBe(false);
     expect(seen[1].get('scope')).toBe('general');
+    expect(seen[1].get('type')).toBe('activity');
     expect(seen[1].get('cursor')).toBe('c1');
     expect(page.nextCursor).toBe('c2');
-    expect(page.items[0].id).toBe('p1');
+    expect(page.items.map((item) => item.id)).toEqual(['p2']);
+    expect(activities.items.map((item) => item.id)).toEqual(['p1']);
   });
 
   it('gamePosts sends limit and cursor only when given', async () => {
@@ -541,7 +544,7 @@ describe('feedApi', () => {
       http.get(`${apiBaseUrl}/users/me/bookmarks`, ({ request }) => {
         seen.push(new URL(request.url).searchParams);
         return HttpResponse.json({
-          items: [{ ...postJson, bookmarkedByMe: true, reason: null }],
+          items: [postJson, { ...postJson, id: 'p2', type: 'status', bookmarkedByMe: true, reason: null }],
           nextCursor: 'eyJhIjoxfQ',
         });
       }),
@@ -553,7 +556,9 @@ describe('feedApi', () => {
     expect(seen[0].get('limit')).toBe('20');
     expect(seen[0].has('cursor')).toBe(false);
     expect(seen[1].get('cursor')).toBe('eyJhIjoxfQ');
-    expect(page.items[0]).toMatchObject({ id: 'p1', bookmarkedByMe: true, reason: null });
+    expect(seen[0].get('type')).toBe('post');
+    expect(page.items.map((item) => item.id)).toEqual(['p2']);
+    expect(page.items[0]).toMatchObject({ bookmarkedByMe: true, reason: null });
   });
 
   it('myLikes pages through /users/me/likes with the opaque cursor', async () => {
@@ -582,7 +587,7 @@ describe('feedApi', () => {
     server.use(
       http.get(`${apiBaseUrl}/posts/search`, ({ request }) => {
         seen.push(new URL(request.url).searchParams);
-        return HttpResponse.json({ items: [postJson], nextCursor: null });
+        return HttpResponse.json({ items: [postJson, { ...postJson, id: 'p2', type: 'status' }], nextCursor: null });
       }),
     );
 
@@ -593,7 +598,8 @@ describe('feedApi', () => {
     expect(seen[0].get('limit')).toBe('20');
     expect(seen[0].has('cursor')).toBe(false);
     expect(seen[1].get('cursor')).toBe('c1');
-    expect(page.items[0].id).toBe('p1');
+    expect(seen[0].get('type')).toBe('post');
+    expect(page.items.map((item) => item.id)).toEqual(['p2']);
     expect(page.nextCursor).toBeNull();
   });
 

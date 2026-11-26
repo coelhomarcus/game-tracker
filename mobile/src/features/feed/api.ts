@@ -11,6 +11,7 @@ import {
   type Post,
   type PostImage,
   type PostPage,
+  type TimelineType,
 } from './types';
 
 const PAGE_SIZE = 20;
@@ -41,16 +42,20 @@ function pageQuery(cursor?: string): Record<string, string | number> {
 
 export const feedApi = {
   /** The server defaults to `following`, so the scope is always sent explicitly. */
-  async feed(scope: FeedScope, cursor?: string): Promise<PostPage> {
+  async feed(scope: FeedScope, cursor?: string, type: TimelineType = 'post'): Promise<PostPage> {
     return parsePostPage(
-      await api.get<Json>('/feed', { query: { scope, ...pageQuery(cursor) } }),
+      await api.get<Json>('/feed', { query: {
+        scope, type, ...(type === 'post' ? { includeReplies: 'true' } : {}), ...pageQuery(cursor),
+      } }),
+      type,
     );
   },
 
   /** `gameId` is the internal game id (`Game.id`), never the IGDB id. */
-  async gamePosts(gameId: string, cursor?: string): Promise<PostPage> {
+  async gamePosts(gameId: string, cursor?: string, type: TimelineType = 'post'): Promise<PostPage> {
     return parsePostPage(
-      await api.get<Json>(`/games/${gameId}/posts`, { query: pageQuery(cursor) }),
+      await api.get<Json>(`/games/${gameId}/posts`, { query: { type, ...pageQuery(cursor) } }),
+      type,
     );
   },
 
@@ -113,7 +118,7 @@ export const feedApi = {
 
   /** The signed-in user's bookmarks, newest bookmark first. The cursor is opaque. */
   async bookmarks(cursor?: string): Promise<PostPage> {
-    return parsePostPage(await api.get<Json>('/users/me/bookmarks', { query: pageQuery(cursor) }));
+    return parsePostPage(await api.get<Json>('/users/me/bookmarks', { query: { type: 'post', ...pageQuery(cursor) } }), 'post');
   },
 
   /** The posts the signed-in user liked, newest like first. The cursor is opaque. */
@@ -127,7 +132,8 @@ export const feedApi = {
    */
   async searchPosts(term: string, cursor?: string): Promise<PostPage> {
     return parsePostPage(
-      await api.get<Json>('/posts/search', { query: { q: term.trim(), ...pageQuery(cursor) } }),
+      await api.get<Json>('/posts/search', { query: { q: term.trim(), type: 'post', ...pageQuery(cursor) } }),
+      'post',
     );
   },
 

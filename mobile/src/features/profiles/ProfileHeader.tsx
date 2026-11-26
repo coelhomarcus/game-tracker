@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar, Button, Skeleton, Text } from '@/components';
@@ -40,6 +40,8 @@ export function ProfileBackButton({ hidden = false }: { hidden?: boolean }) {
       accessibilityRole="button"
       accessibilityLabel="Voltar"
       // Scrolled away under the compact header, whose own Voltar is the one to read.
+      {...(Platform.OS === 'web' ? { inert: hidden } : {})}
+      aria-hidden={hidden}
       accessibilityElementsHidden={hidden}
       importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       onPress={() => {

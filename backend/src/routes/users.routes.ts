@@ -31,7 +31,7 @@ import { authLimiter } from '../middlewares/authLimiter';
 import { validateBody, validateQuery } from '../middlewares/validate';
 import { avatarUpload, bannerUpload } from '../lib/uploads';
 import { deleteAccountSchema } from '../schemas/auth.schema';
-import { bookmarksQuerySchema } from '../schemas/posts.schema';
+import { bookmarksQuerySchema, savedPostsQuerySchema } from '../schemas/posts.schema';
 import { listGameEntriesQuerySchema } from '../schemas/gameEntry.schema';
 import {
   followListQuerySchema,
@@ -51,7 +51,7 @@ usersRouter.post('/me/avatar', avatarUpload.single('avatar'), uploadAvatarHandle
 usersRouter.post('/me/banner', bannerUpload.single('banner'), uploadBannerHandler);
 usersRouter.delete('/me/avatar', removeAvatarHandler);
 usersRouter.delete('/me/banner', removeBannerHandler);
-usersRouter.get('/me/bookmarks', validateQuery(bookmarksQuerySchema), getMyBookmarksHandler);
+usersRouter.get('/me/bookmarks', validateQuery(savedPostsQuerySchema), getMyBookmarksHandler);
 usersRouter.get('/me/likes', validateQuery(bookmarksQuerySchema), getMyLikesHandler);
 usersRouter.get('/me/mutes', validateQuery(followListQuerySchema), getMyMutesHandler);
 usersRouter.get('/me/blocks', validateQuery(followListQuerySchema), getMyBlocksHandler);

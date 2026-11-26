@@ -10,6 +10,7 @@ import { useHeaderHeight } from '@/lib/useHeaderHeight';
 import { colors, space } from '@/theme/tokens';
 
 import { CommentComposer, type ReplyTarget } from './CommentComposer';
+import { ActivityRow } from './ActivityRow';
 import {
   useAddComment,
   useComments,
@@ -32,22 +33,22 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 }
 
 /** Route entry: validates the address, then waits for the post. */
-export function PostDetailScreen() {
+export function PostDetailScreen({ activityRoute = false }: { activityRoute?: boolean } = {}) {
   const params = useLocalSearchParams<{ postId?: string | string[] }>();
   const postId = firstParam(params.postId)?.trim() ?? '';
-  if (!isPostId(postId)) return <PostNotFound />;
-  return <PostLoader postId={postId} />;
+  if (!isPostId(postId)) return <PostNotFound activity={activityRoute} />;
+  return <PostLoader postId={postId} activityRoute={activityRoute} />;
 }
 
-function PostNotFound() {
+function PostNotFound({ activity }: { activity: boolean }) {
   const router = useRouter();
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
+      <Stack.Screen options={{ title: activity ? 'Atividade' : 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <EmptyState
-          title="Post não encontrado"
-          message="Ele pode ter sido removido."
+          title={activity ? 'Atividade não encontrada' : 'Post não encontrado'}
+          message={activity ? 'Ela pode ter sido removida.' : 'Ele pode ter sido removido.'}
           action={{ label: 'Voltar ao feed', onPress: () => router.replace('/') }}
         />
       </View>
@@ -55,7 +56,7 @@ function PostNotFound() {
   );
 }
 
-function PostLoader({ postId }: { postId: string }) {
+function PostLoader({ postId, activityRoute }: { postId: string; activityRoute: boolean }) {
   const wasDeleted = useDeletedPostCheck();
   const post = usePost(postId);
   // A page left open lower in the stack for a post the user then deleted elsewhere says so when
@@ -69,7 +70,9 @@ function PostLoader({ postId }: { postId: string }) {
 
   // The server no longer has it, even if a cached copy is still there.
   const gone = post.error instanceof ApiError && post.error.status === 404;
-  if (deleted || gone) return <PostNotFound />;
+  if (deleted || gone || (activityRoute && post.data && post.data.type !== 'activity')) {
+    return <PostNotFound activity={activityRoute || post.data?.type === 'activity'} />;
+  }
 
   // A failed background refetch keeps the previous data, so the loaded post stays.
   if (post.data) return <PostBody post={post.data} />;
@@ -77,10 +80,10 @@ function PostLoader({ postId }: { postId: string }) {
   if (post.isError) {
     return (
       <Screen>
-        <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
+        <Stack.Screen options={{ title: activityRoute ? 'Atividade' : 'Post', headerRight: undefined }} />
         <View style={styles.center}>
           <EmptyState
-            title="Não foi possível carregar o post"
+            title={activityRoute ? 'Não foi possível carregar a atividade' : 'Não foi possível carregar o post'}
             action={{ label: 'Tentar de novo', onPress: () => void post.refetch() }}
           />
         </View>
@@ -89,7 +92,7 @@ function PostLoader({ postId }: { postId: string }) {
   }
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Post', headerRight: undefined }} />
+      <Stack.Screen options={{ title: activityRoute ? 'Atividade' : 'Post', headerRight: undefined }} />
       <View style={styles.center}>
         <ActivityIndicator accessibilityLabel="Carregando" size="large" color={colors.primary} />
       </View>
@@ -247,11 +250,14 @@ function PostBody({ post }: { post: Post }) {
     );
   }
 
-  const anchor = (
+  const onDeleted = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const anchor = post.type === 'activity' ? (
+    <ActivityRow activity={post} onReply={onReplyToPost} onDeleted={onDeleted} />
+  ) : (
     <ThreadAnchor
       post={post}
       onReply={onReplyToPost}
-      onDeleted={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+      onDeleted={onDeleted}
     />
   );
 

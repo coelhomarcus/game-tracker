@@ -16,7 +16,7 @@ export const createPostSchema = z.object({
   // trackeado. Se gameEntryId também vier, o service deriva o gameId dali
   // e ignora este campo.
   gameId: z.string().uuid().optional(),
-  type: z.enum(['status', 'review', 'activity']).optional().default('status'),
+  type: z.enum(['status', 'review']).optional().default('status'),
   // Legado: aceito por compatibilidade, mas só vale uma imagem emitida por POST /posts/images
   // (o service a trata como `images[0]`).
   imageUrl: z.string().url().max(500).optional(),
@@ -36,8 +36,11 @@ export const bookmarksQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
+export const savedPostsQuerySchema = bookmarksQuerySchema.extend({ type: z.literal('post').optional() });
+export const timelineTypeSchema = z.enum(['post', 'activity']);
 
 export const searchPostsQuerySchema = z.object({
+  type: z.literal('post').optional(),
   // Aparado antes de medir: só espaços não é uma busca.
   q: z.string().trim().min(2).max(100),
   cursor: z.string().min(1).optional(),
@@ -45,6 +48,8 @@ export const searchPostsQuerySchema = z.object({
 });
 
 export const feedQuerySchema = z.object({
+  type: timelineTypeSchema.optional(),
+  includeReplies: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
   scope: z.enum(['following', 'general']).optional().default('following'),

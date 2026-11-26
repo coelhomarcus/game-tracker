@@ -41,6 +41,7 @@ export function cancelOwnProfileRefetch(client: QueryClient, me: string): Promis
  */
 const AVATAR_LISTS: readonly QueryKey[] = [
   ['feed'],
+  ['activities'],
   ['gamePosts'],
   ['userPosts'],
   ['bookmarks'],
